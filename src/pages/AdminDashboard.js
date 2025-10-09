@@ -87,28 +87,30 @@ export default function AdminDashboard() {
     }
   };
 
-  // === イベント削除 ===
+// === イベント削除 ===
 const handleDelete = async (id) => {
+  const eventId = Number(id);
+  if (!eventId) return alert("不正なIDです");
   if (!window.confirm("このイベントを削除しますか？")) return;
+
+  const urlPath = `/api/events/${eventId}`;     // ← ここが重要。:id ではなく実ID
   try {
-    const url = `/api/events/${encodeURIComponent(id)}`;
-    const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
+    // まず /api/events/{id} に DELETE
+    const res = await fetch(urlPath, { method: "DELETE" });
 
-    // 500のときにHTMLを返す環境でも落ちないようにする
-    const text = await res.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch (_) {}
-
-    if (!res.ok) {
-      throw new Error(data?.error || `HTTP ${res.status}`);
+    // Vercel 側に [id].js が未配置などで 405 の場合は ?id= にフォールバック
+    if (res.status === 405) {
+      const res2 = await fetch(`/api/events?id=${eventId}`, { method: "DELETE" });
+      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+    } else if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    alert("削除しました");
-    // 一覧を更新（fetchEvents は既存の再取得関数を想定）
-    fetchEvents?.();
+    // フロント側の一覧も即時反映
+    setEvents((prev) => prev.filter((e) => Number(e.id) !== eventId));
   } catch (err) {
-    console.error("DELETE /api/events/:id failed:", err);
-    alert(`削除に失敗しました: ${err.message}`);
+    console.error("DELETE failed:", err);
+    alert("削除に失敗しました");
   }
 };
 
