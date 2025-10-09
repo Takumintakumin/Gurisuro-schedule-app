@@ -7,32 +7,50 @@ export default function AdminLogin() {
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // 画面が描画されているか確認ログ
     console.log("[AdminLogin] mounted");
   }, []);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setMsg("送信中…");
+    setLoading(true);
     try {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: name, password: pw }),
       });
-      const data = await res.json();
+
+      // 500 などで HTML が返っても落ちないようにまずテキストで受ける
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        // そのまま data は {}
+      }
+
       if (!res.ok) {
-        setMsg(data.error || "ログイン失敗");
+        const reason = data?.error || `HTTP ${res.status}`;
+        setMsg(`ログイン失敗: ${reason}`);
         return;
       }
-      localStorage.setItem("userRole", data.role || "admin");
+
+      const role = data.role || "admin";
+      localStorage.setItem("userRole", role);
+      localStorage.setItem("userName", name);
+
       setMsg("ログイン成功。ダッシュボードへ移動します");
+      // ダッシュボードのルートに合わせて変更（/admin または /admin/dashboard）
       nav("/admin/dashboard");
     } catch (err) {
       console.error(err);
       setMsg("通信エラー");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -61,17 +79,18 @@ export default function AdminLogin() {
         </label>
         <button
           type="submit"
+          disabled={loading}
           style={{
             padding: "10px 12px",
             borderRadius: 10,
             border: 0,
-            background: "#2563eb",
+            background: loading ? "#94a3b8" : "#2563eb",
             color: "#fff",
             fontWeight: 600,
-            cursor: "pointer",
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          ログイン
+          {loading ? "送信中…" : "ログイン"}
         </button>
       </form>
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
