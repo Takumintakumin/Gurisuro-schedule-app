@@ -1,25 +1,24 @@
 // /api/events/[id].js
-import { pool } from "../_db.js";
+import { getClient } from "../_db.js";
 
 export default async function handler(req, res) {
-  try {
-    const { id } = req.query || {};
-    // id バリデーション（数字のみ許可）
-    if (!id || !/^\d+$/.test(String(id))) {
-      return res.status(400).json({ error: "有効な id が必要です" });
-    }
-
-    if (req.method === "DELETE") {
-      const result = await pool.query("DELETE FROM events WHERE id = $1", [id]);
-      if (result.rowCount === 0) {
-        return res.status(404).json({ error: "対象のイベントが見つかりません" });
-      }
-      return res.status(200).json({ message: "イベントを削除しました" });
-    }
-
+  if (req.method !== "DELETE") {
+    res.setHeader("Allow", ["DELETE"]);
     return res.status(405).json({ error: "Method Not Allowed" });
+  }
+
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: "id is required" });
+
+  let client;
+  try {
+    client = await getClient();
+    const result = await client.query("DELETE FROM events WHERE id = $1", [id]);
+    return res.json({ ok: true, deleted: result.rowCount });
   } catch (e) {
-    console.error("EVENTS_DELETE_ERROR:", e);
-    return res.status(500).json({ error: "サーバーエラー" });
+    console.error("DELETE /api/events/:id error", e);
+    return res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    client?.release?.();
   }
 }
