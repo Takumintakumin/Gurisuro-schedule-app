@@ -1,6 +1,7 @@
 // src/pages/AdminLogin.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/apiClient";
 
 export default function AdminLogin() {
   const nav = useNavigate();
@@ -18,24 +19,14 @@ export default function AdminLogin() {
     setMsg("送信中…");
     setLoading(true);
     try {
-      const res = await fetch("/api/login", {
+      const { ok, status, data } = await apiFetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: name, password: pw }),
       });
 
-      // 500 などで HTML が返っても落ちないようにまずテキストで受ける
-      const text = await res.text();
-      let data = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        // そのまま data は {}
-      }
-
-      if (!res.ok) {
-        const reason = data?.error || `HTTP ${res.status}`;
-        setMsg(`ログイン失敗: ${reason}`);
+      if (!ok) {
+        setMsg(data?.error || `ログイン失敗 (HTTP ${status})`);
         return;
       }
 
@@ -44,7 +35,6 @@ export default function AdminLogin() {
       localStorage.setItem("userName", name);
 
       setMsg("ログイン成功。ダッシュボードへ移動します");
-      // ダッシュボードのルートに合わせて変更（/admin または /admin/dashboard）
       nav("/admin/dashboard");
     } catch (err) {
       console.error(err);
