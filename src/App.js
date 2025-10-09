@@ -18,6 +18,17 @@ const AdminOnlyRoute = ({ children }) => {
   return children;
 };
 
+import AdminUsers from "./pages/AdminUsers.js";
+
+<Route
+  path="/admin/users"
+  element={
+    <AdminOnlyRoute>
+      <AdminUsers />
+    </AdminOnlyRoute>
+  }
+/>
+
 export default function App() {
   return (
     <BrowserRouter>
