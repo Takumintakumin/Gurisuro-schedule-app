@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
+import { toLocalYMD } from "../lib/date.js";
 
 // 固定イベントアイコンとラベル
 const FIXED_EVENTS = [
