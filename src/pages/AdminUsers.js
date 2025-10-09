@@ -1,128 +1,100 @@
-// src/pages/AdminUsers.js
+// /src/pages/AdminUsers.js
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../lib/apiClient.js";
 
 export default function AdminUsers() {
   const nav = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [list, setList] = useState([]);
+  const [name, setName] = useState("");
+  const [pw, setPw] = useState("");
+  const [role, setRole] = useState("user");
   const [msg, setMsg] = useState("");
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/users");
-      const text = await res.text();
-      let data = [];
-      try { data = text ? JSON.parse(text) : []; } catch {}
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-      setMsg("ユーザー一覧の取得に失敗しました。");
-    } finally {
-      setLoading(false);
-    }
+  const roleGuard = () => {
+    const r = localStorage.getItem("userRole");
+    if (r !== "admin") { alert("管理者のみアクセス可能です"); nav("/admin"); return false; }
+    return true;
   };
 
-  const deleteUser = async (id) => {
-    if (!window.confirm("本当に削除しますか？")) return;
-    try {
-      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
-      const text = await res.text();
-      let data = {};
-      try { data = text ? JSON.parse(text) : {}; } catch {}
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      await fetchUsers();
-      alert("削除しました");
-    } catch (err) {
-      console.error(err);
-      alert("削除に失敗しました");
-    }
+  const load = async () => {
+    const { ok, data } = await apiFetch("/api/users");
+    if (!ok) return setMsg(data.error || "取得エラー");
+    setList(Array.isArray(data) ? data : []);
   };
 
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です");
-      nav("/");
-      return;
-    }
-    fetchUsers();
-  }, [nav]);
+  useEffect(() => { if (roleGuard()) load(); }, []);
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    setMsg("登録中…");
+    const { ok, data } = await apiFetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: name, password: pw, role }),
+    });
+    if (!ok) return setMsg(data.error || "登録失敗");
+    setMsg("登録完了");
+    setName(""); setPw(""); setRole("user");
+    load();
+  };
+
+  const delUser = async (id) => {
+    if (!window.confirm("削除しますか？")) return;
+    const { ok, data } = await apiFetch(`/api/users/${id}`, { method: "DELETE" });
+    if (!ok) return alert(data.error || "削除失敗");
+    load();
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">👤 ユーザー管理</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => nav("/admin/dashboard")}
-              className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300"
-            >
-              ← カレンダーへ
-            </button>
-            <button
-              onClick={fetchUsers}
-              className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-            >
-              再読込
-            </button>
-          </div>
-        </div>
+    <div className="p-4 max-w-3xl mx-auto">
+      <h1 className="text-xl font-bold mb-4">👤 ユーザー管理</h1>
 
-        {loading ? (
-          <div>読み込み中…</div>
-        ) : msg ? (
-          <div className="text-red-600">{msg}</div>
-        ) : users.length === 0 ? (
-          <div className="text-gray-600">ユーザーがいません。</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border text-sm">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-2 border">ID</th>
-                  <th className="p-2 border">ユーザー名</th>
-                  <th className="p-2 border">権限</th>
-                  <th className="p-2 border">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="text-center">
-                    <td className="p-2 border">{u.id}</td>
-                    <td className="p-2 border">{u.username}</td>
-                    <td className="p-2 border">{u.role}</td>
-                    <td className="p-2 border">
-                      <button
-                        onClick={() => deleteUser(u.id)}
-                        className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                      >
-                        削除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="text-center mt-6">
-          <button
-            onClick={() => {
-              localStorage.clear();
-              nav("/");
-            }}
-            className="text-gray-500 underline"
-          >
-            ログアウト
-          </button>
+      <form onSubmit={addUser} className="grid gap-3 mb-6 p-4 rounded border">
+        <div>
+          <label className="block text-sm mb-1">ユーザー名</label>
+          <input className="border rounded p-2 w-full" value={name} onChange={(e)=>setName(e.target.value)} />
         </div>
-      </div>
+        <div>
+          <label className="block text-sm mb-1">パスワード</label>
+          <input className="border rounded p-2 w-full" value={pw} onChange={(e)=>setPw(e.target.value)} type="password" />
+        </div>
+        <div>
+          <label className="block text-sm mb-1">権限</label>
+          <select className="border rounded p-2 w-full" value={role} onChange={(e)=>setRole(e.target.value)}>
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <button className="bg-blue-600 text-white rounded px-4 py-2">追加</button>
+        {msg && <p className="text-sm text-gray-600">{msg}</p>}
+      </form>
+
+      <table className="w-full border text-sm">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="border p-2">ID</th>
+            <th className="border p-2">ユーザー名</th>
+            <th className="border p-2">権限</th>
+            <th className="border p-2">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map(u => (
+            <tr key={u.id}>
+              <td className="border p-2 text-center">{u.id}</td>
+              <td className="border p-2">{u.username}</td>
+              <td className="border p-2 text-center">{u.role}</td>
+              <td className="border p-2 text-center">
+                <button onClick={()=>delUser(u.id)} className="bg-red-500 text-white rounded px-3 py-1">削除</button>
+              </td>
+            </tr>
+          ))}
+          {list.length === 0 && (
+            <tr><td className="border p-2 text-center" colSpan={4}>データなし</td></tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
