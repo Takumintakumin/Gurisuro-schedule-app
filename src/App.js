@@ -12,7 +12,6 @@ const ProtectedRoute = ({ children }) => {
   if (!role) return <Navigate to="/" replace />;
   return children;
 };
-
 const AdminOnlyRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
   if (role !== "admin") return <Navigate to="/admin" replace />;
@@ -25,7 +24,6 @@ export default function App() {
       <Routes>
         <Route path="/" element={<UserLogin />} />
         <Route path="/admin" element={<AdminLogin />} />
-
         <Route
           path="/app"
           element={
@@ -34,8 +32,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* 管理者 */}
         <Route
           path="/admin/dashboard"
           element={
@@ -52,7 +48,6 @@ export default function App() {
             </AdminOnlyRoute>
           }
         />
-
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

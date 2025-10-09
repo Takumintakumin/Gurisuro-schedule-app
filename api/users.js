@@ -1,42 +1,43 @@
-// /api/users.js
-import { pool, ensureTables } from "./db.js";
+// api/users.js
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // Neon
+});
 
 export default async function handler(req, res) {
   try {
-    await ensureTables();
-
     if (req.method === "GET") {
-      const { rows } = await pool.query("select id, username, role from users order by id asc");
+      const { rows } = await pool.query(
+        "SELECT id, username, role FROM users ORDER BY id ASC"
+      );
       return res.status(200).json(rows);
     }
 
     if (req.method === "POST") {
-      let body = {};
-      try { body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {}; } catch {}
-      const { username, password, role = "user" } = body;
-      if (!username?.trim() || !password?.trim()) {
-        return res.status(400).json({ error: "お名前とパスワードは必須です。" });
+      const { username, password, role = "user" } = req.body || {};
+      if (!username || !password) {
+        return res.status(400).json({ error: "username と password は必須です" });
+      }
+      try {
+        await pool.query(
+          "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
+          [username, password, role]
+        );
+        return res.status(200).json({ message: "ok" });
+      } catch (e) {
+        if ((e?.message || "").includes("duplicate key")) {
+          return res.status(409).json({ error: "そのユーザー名は既に存在します" });
         }
-      await pool.query(
-        "insert into users (username, password, role) values ($1,$2,$3)",
-        [username.trim(), password.trim(), role]
-      );
-      return res.status(201).json({ message: "追加しました" });
+        throw e;
+      }
     }
 
-    if (req.method === "DELETE") {
-      const id = Number(req.query?.id);
-      if (!id) return res.status(400).json({ error: "id が必要です" });
-      await pool.query("delete from users where id=$1", [id]);
-      return res.status(200).json({ message: "削除しました" });
-    }
-
+    res.setHeader("Allow", "GET,POST");
     return res.status(405).json({ error: "Method Not Allowed" });
   } catch (e) {
-    if (e?.code === "23505") {
-      return res.status(409).json({ error: "このお名前は既に登録されています。" });
-    }
-    console.error("[users] error", e);
-    return res.status(500).json({ error: "サーバーエラー" });
+    console.error("users api error:", e);
+    return res.status(500).json({ error: "Server Error" });
   }
 }

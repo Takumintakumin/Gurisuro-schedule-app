@@ -1,185 +1,151 @@
 // src/pages/AdminUsers.js
 import React, { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-// 500時のHTMLも安全に受ける軽量ラッパ
-async function safeFetch(url, init) {
-  const res = await fetch(url, init);
-  const txt = await res.text();
+// 500エラーでHTMLが返っても落ちないfetch
+async function safeFetch(url, options) {
+  const res = await fetch(url, options);
+  const text = await res.text();
   let data = {};
-  try { data = txt ? JSON.parse(txt) : {}; } catch { /* ignore */ }
+  try { data = text ? JSON.parse(text) : {}; } catch {}
   return { ok: res.ok, status: res.status, data };
 }
 
 export default function AdminUsers() {
   const nav = useNavigate();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-
-  // 登録フォーム
+  const [list, setList] = useState([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
-  const mustBeAdmin = () => {
+  // 管理者チェック & 初回ロード
+  useEffect(() => {
     const r = localStorage.getItem("userRole");
     if (r !== "admin") {
-      alert("管理者のみアクセス可能です。");
+      alert("管理者のみアクセス可能です");
       nav("/admin");
-      return false;
+      return;
     }
-    return true;
-  };
+    load();
+  }, [nav]);
 
   const load = async () => {
     setLoading(true);
-    const { ok, data } = await safeFetch("/api/users");
+    setErr("");
+    const { ok, data } = await safeFetch("/api/users", {});
     if (!ok) {
-      setMsg(data?.error || "ユーザー一覧の取得に失敗しました");
+      setErr(data?.error || "一覧取得に失敗しました");
+      setList([]);
     } else {
-      setRows(Array.isArray(data) ? data : []);
+      setList(Array.isArray(data) ? data : []);
     }
     setLoading(false);
   };
 
-  const submit = async (e) => {
+  const onCreate = async (e) => {
     e.preventDefault();
-    setMsg("登録中…");
+    if (!username.trim() || !password.trim()) {
+      alert("ユーザー名とパスワードを入力してください");
+      return;
+    }
     const { ok, status, data } = await safeFetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify({ username: username.trim(), password: password.trim(), role }),
     });
     if (!ok) {
-      if (status === 409) setMsg("このユーザー名は既に登録されています。");
-      else setMsg(data?.error || "登録に失敗しました");
+      alert(`作成に失敗（${status}）：${data?.error || ""}`);
       return;
     }
-    setMsg("登録しました");
-    setUsername("");
-    setPassword("");
-    setRole("user");
-    await load();
+    setUsername(""); setPassword(""); setRole("user");
+    load();
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("本当に削除しますか？")) return;
-    setMsg("削除中…");
-    const { ok, data } = await safeFetch(`/api/users?id=${id}`, { method: "DELETE" });
+  const onDelete = async (id) => {
+    if (!window.confirm("削除しますか？")) return;
+    const { ok, status, data } = await safeFetch(`/api/users/${id}`, { method: "DELETE" });
     if (!ok) {
-      setMsg(data?.error || "削除に失敗しました");
+      alert(`削除に失敗（${status}）：${data?.error || ""}`);
       return;
     }
-    setMsg("削除しました");
-    await load();
+    load();
   };
-
-  useEffect(() => {
-    if (mustBeAdmin()) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (!mustBeAdmin) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">👥 ユーザー管理</h1>
-          <div className="flex items-center gap-3">
-            <Link className="text-blue-600 underline text-sm" to="/admin/dashboard">
-              ← 管理カレンダーへ
-            </Link>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="mx-auto w-full max-w-4xl bg-white rounded-xl shadow p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold">👥 ユーザー管理</h1>
+          <div className="flex gap-2">
+            <Link to="/admin/dashboard" className="px-3 py-2 rounded border hover:bg-gray-50 text-sm">← カレンダー</Link>
             <button
-              className="text-gray-500 underline text-sm"
-              onClick={() => { localStorage.clear(); nav("/"); }}
-            >
-              ログアウト
-            </button>
+              className="px-3 py-2 rounded border hover:bg-gray-50 text-sm"
+              onClick={() => { localStorage.clear(); nav("/admin"); }}
+            >ログアウト</button>
           </div>
         </div>
 
-        {/* 登録フォーム */}
-        <form onSubmit={submit} className="grid gap-3 bg-gray-50 border rounded p-4 mb-6">
-          <h2 className="font-semibold">新規ユーザー登録</h2>
-          <div className="grid sm:grid-cols-3 gap-3">
-            <input
-              className="border rounded p-2"
-              placeholder="ユーザー名"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-            <input
-              className="border rounded p-2"
-              placeholder="パスワード"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <select
-              className="border rounded p-2"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="user">user</option>
-              <option value="admin">admin</option>
-            </select>
+        {/* 新規作成 */}
+        <form onSubmit={onCreate} className="border rounded-lg p-4 bg-gray-50 mb-6 grid sm:grid-cols-4 gap-3">
+          <div className="sm:col-span-2">
+            <label className="block text-sm mb-1">ユーザー名</label>
+            <input className="w-full border rounded p-2" value={username} onChange={(e)=>setUsername(e.target.value)} />
           </div>
           <div>
-            <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-              追加する
-            </button>
+            <label className="block text-sm mb-1">パスワード</label>
+            <input className="w-full border rounded p-2" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} />
           </div>
-          {msg && <p className="text-sm text-gray-700">{msg}</p>}
+          <div>
+            <label className="block text-sm mb-1">権限</label>
+            <select className="w-full border rounded p-2" value={role} onChange={(e)=>setRole(e.target.value)}>
+              <option value="user">一般</option>
+              <option value="admin">管理者</option>
+            </select>
+          </div>
+          <div className="sm:col-span-4">
+            <button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">追加する</button>
+          </div>
         </form>
 
         {/* 一覧 */}
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-semibold">登録ユーザー一覧</h2>
-          <button
-            onClick={load}
-            className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
-          >
-            更新
-          </button>
+          <button onClick={load} className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">更新</button>
         </div>
 
         {loading ? (
-          <div>読み込み中…</div>
-        ) : rows.length === 0 ? (
-          <p className="text-gray-500 text-sm">ユーザーがいません。</p>
+          <div className="text-gray-500">読み込み中…</div>
+        ) : err ? (
+          <div className="text-red-600">{err}</div>
+        ) : list.length === 0 ? (
+          <div className="text-gray-500">ユーザーがいません。</div>
         ) : (
-          <table className="w-full border text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border p-2">ID</th>
-                <th className="border p-2">ユーザー名</th>
-                <th className="border p-2">権限</th>
-                <th className="border p-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((u) => (
-                <tr key={u.id} className="text-center">
-                  <td className="border p-2">{u.id}</td>
-                  <td className="border p-2">{u.username}</td>
-                  <td className="border p-2">{u.role}</td>
-                  <td className="border p-2">
-                    <button
-                      onClick={() => remove(u.id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
-                    >
-                      削除
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-2 border w-16">ID</th>
+                  <th className="p-2 border">ユーザー名</th>
+                  <th className="p-2 border w-28">権限</th>
+                  <th className="p-2 border w-28">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {list.map(u=>(
+                  <tr key={u.id} className="text-center">
+                    <td className="p-2 border">{u.id}</td>
+                    <td className="p-2 border break-all">{u.username}</td>
+                    <td className="p-2 border">{u.role}</td>
+                    <td className="p-2 border">
+                      <button onClick={()=>onDelete(u.id)} className="px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white">削除</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
