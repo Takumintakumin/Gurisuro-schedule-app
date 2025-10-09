@@ -1,127 +1,83 @@
-// src/pages/AdminDashboard.js
-import React, { useEffect, useState } from "react";
+// src/pages/AdminLogin.js
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import PageContainer from "../components/PageContainer.js";
-import Calendar from "../components/Calendar.js";
-import { inputCls, selectCls, primaryBtnCls } from "../styles/formClasses.js";
 
-const FIXED_EVENTS = [
-  { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
-  { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
-  { key: "eat", label: "食べようの会", icon: "/icons/eat.png" },
-  { key: "mamatomo", label: "ママ友の会", icon: "/icons/mamatomo.png" },
-  { key: "cafe", label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
-  { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
-];
-
-export default function AdminDashboard() {
+export default function AdminLogin() {
   const nav = useNavigate();
-  const [events, setEvents] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedEventKey, setSelectedEventKey] = useState(FIXED_EVENTS[0].key);
-  const [start, setStart] = useState("10:00");
-  const [end, setEnd] = useState("12:00");
-
-  const selectedEvent = FIXED_EVENTS.find(e => e.key === selectedEventKey) ?? FIXED_EVENTS[0];
-
-  const fetchEvents = async () => {
-    const res = await fetch("/api/events");
-    const data = await res.json();
-    setEvents(Array.isArray(data) ? data : []);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const body = {
-      date: selectedDate.toISOString().split("T")[0],
-      label: selectedEvent.label,
-      icon: selectedEvent.icon,
-      start_time: start,
-      end_time: end,
-    };
-    const res = await fetch("/api/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return alert("登録に失敗しました");
-    alert("イベントを登録しました");
-    fetchEvents();
-  };
+  const [name, setName] = useState("");
+  const [pw, setPw] = useState("");
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    localStorage.setItem("userRole", data.role); // 'admin'
-    localStorage.setItem("userName", username);
-    nav("/admin/dashboard"); // ダッシュボードへ
+    // 画面が描画されているか確認ログ
+    console.log("[AdminLogin] mounted");
+  }, []);
 
-    
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です");
-      nav("/");
-      return;
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setMsg("送信中…");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, password: pw }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error || "ログイン失敗");
+        return;
+      }
+      localStorage.setItem("userRole", data.role || "admin");
+      setMsg("ログイン成功。ダッシュボードへ移動します");
+      nav("/admin/dashboard");
+    } catch (err) {
+      console.error(err);
+      setMsg("通信エラー");
     }
-    fetchEvents();
-  }, [nav]);
+  };
 
   return (
-    <PageContainer maxWidth={1000}>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">管理者カレンダー</h1>
+    <div style={{ padding: 16, maxWidth: 420, margin: "40px auto", fontFamily: "system-ui" }}>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>管理者ログイン</h1>
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+        <label>
+          <div>ユーザー名</div>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="admin"
+            style={{ width: "100%", padding: 8, border: "1px solid #ddd", borderRadius: 8 }}
+          />
+        </label>
+        <label>
+          <div>パスワード</div>
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="admin123"
+            style={{ width: "100%", padding: 8, border: "1px solid #ddd", borderRadius: 8 }}
+          />
+        </label>
         <button
-          className="text-gray-500 underline text-sm sm:text-base"
-          onClick={() => {
-            localStorage.clear();
-            nav("/");
+          type="submit"
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: 0,
+            background: "#2563eb",
+            color: "#fff",
+            fontWeight: 600,
+            cursor: "pointer",
           }}
         >
-          ログアウト
+          ログイン
         </button>
-      </div>
-
-      <Calendar
-        currentMonth={selectedDate.getMonth()}
-        currentYear={selectedDate.getFullYear()}
-        selectedDate={selectedDate}
-        onMonthChange={(delta) =>
-          setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1))
-        }
-        onDateSelect={setSelectedDate}
-        events={events}
-      />
-
-      <form onSubmit={handleSubmit} className="mt-6 bg-gray-50 p-4 rounded-xl border space-y-3">
-        <h2 className="font-semibold">
-          {selectedDate.toISOString().split("T")[0]} に募集を追加
-        </h2>
-
-        <div>
-          <label className="block mb-1 text-sm">イベント種類</label>
-          <select
-            className={selectCls}
-            value={selectedEventKey}
-            onChange={(e) => setSelectedEventKey(e.target.value)}
-          >
-            {FIXED_EVENTS.map((e) => (
-              <option key={e.key} value={e.key}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <label className="block mb-1 text-sm">開始時間</label>
-            <input type="time" className={inputCls} value={start} onChange={(e) => setStart(e.target.value)} />
-          </div>
-          <div className="flex-1">
-            <label className="block mb-1 text-sm">終了時間</label>
-            <input type="time" className={inputCls} value={end} onChange={(e) => setEnd(e.target.value)} />
-          </div>
-        </div>
-
-        <button className={primaryBtnCls}>登録する</button>
       </form>
-    </PageContainer>
+      {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
+      <p style={{ marginTop: 16, fontSize: 12, color: "#666" }}>
+        ヒント: Vercel でも /admin が白くならず、このフォームが見えればOK
+      </p>
+    </div>
   );
 }

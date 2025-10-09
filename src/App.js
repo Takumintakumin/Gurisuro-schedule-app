@@ -20,24 +20,10 @@ const AdminOnlyRoute = ({ children }) => {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/">
+    <BrowserRouter>
       <Routes>
-        {/* ユーザー用ログイン */}
         <Route path="/" element={<UserLogin />} />
-        {/* 管理者ログイン */}
         <Route path="/admin" element={<AdminLogin />} />
-
-        {/* 一般ユーザー用画面 */}
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <MainApp />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 管理者ダッシュボード */}
         <Route
           path="/admin/dashboard"
           element={
@@ -46,8 +32,14 @@ export default function App() {
             </AdminOnlyRoute>
           }
         />
-
-        {/* その他はトップへ */}
+        <Route
+          path="/app"
+          element={
+            <ProtectedRoute>
+              <MainApp />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
