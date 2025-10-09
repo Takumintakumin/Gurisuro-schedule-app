@@ -1,5 +1,5 @@
 // /api/register.js
-import { pool, ensureTables } from "./db.js";
+import { pool, ensureTables } from "./_db.js";
 
 export default async function handler(req, res) {
   try {
