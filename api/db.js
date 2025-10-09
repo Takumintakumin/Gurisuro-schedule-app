@@ -1,19 +1,18 @@
 // api/db.js
-import { Pool } from "pg";
+const { Pool } = require("pg");
 
 let pool;
-
-// Vercel関数はコールドスタートするので、グローバルに再利用
-export function getPool() {
+function getPool() {
   if (!pool) {
-    const conn = process.env.DATABASE_URL; // ← Neon の接続文字列を入れておく
-    if (!conn) throw new Error("Missing env: DATABASE_URL");
+    const conn = process.env.DATABASE_URL;
+    if (!conn) throw new Error("Missing DATABASE_URL env var");
     pool = new Pool({
       connectionString: conn,
       ssl: { rejectUnauthorized: false },
-      max: 3,
-      idleTimeoutMillis: 30_000,
+      max: 3, // 無料枠でも安全に
     });
   }
   return pool;
 }
+
+module.exports = { getPool };

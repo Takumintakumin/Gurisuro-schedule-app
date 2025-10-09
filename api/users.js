@@ -1,40 +1,47 @@
 // api/users.js
-import { getPool } from "./db.js";
+const { getPool } = require("./db.js");
+const { readJson, setCors, json, ensureAdmin } = require("./_utils.js");
 
-export default async function handler(req, res) {
-  const pool = getPool();
-
+module.exports = async (req, res) => {
   try {
+    setCors(res);
+    if (req.method === "OPTIONS") return res.end();
+
+    // usersテーブル & admin を用意
+    await ensureAdmin();
+
+    const pool = getPool();
+
     if (req.method === "GET") {
-      const { rows } = await pool.query(
-        "SELECT id, username, role FROM users ORDER BY id ASC"
-      );
-      return res.status(200).json(rows);
+      const { rows } = await pool.query("SELECT id, username, role FROM users ORDER BY id ASC");
+      return json(res, 200, rows);
     }
 
     if (req.method === "POST") {
-      const { username, password, role = "user" } = req.body || {};
+      const body = await readJson(req);
+      const { username, password, role = "user" } = body || {};
       if (!username || !password) {
-        return res.status(400).json({ error: "username と password は必須です" });
+        return json(res, 400, { error: "username と password は必須です" });
       }
       await pool.query(
         "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
         [username, password, role]
       );
-      return res.status(201).json({ message: "created" });
+      return json(res, 201, { message: "created" });
     }
 
     if (req.method === "DELETE") {
-      const { id } = req.query;
-      if (!id) return res.status(400).json({ error: "id が必要です" });
+      // ?id= のクエリ優先、ボディにあればそれでもOK
+      const id = req.query?.id || (await readJson(req))?.id;
+      if (!id) return json(res, 400, { error: "id が必要です" });
       await pool.query("DELETE FROM users WHERE id = $1", [id]);
-      return res.status(200).json({ message: "deleted" });
+      return json(res, 200, { message: "deleted" });
     }
 
-    res.setHeader("Allow", "GET,POST,DELETE");
-    return res.status(405).json({ error: "Method Not Allowed" });
+    res.setHeader("Allow", "GET, POST, DELETE, OPTIONS");
+    return json(res, 405, { error: "Method Not Allowed" });
   } catch (e) {
-    console.error("users api error:", e);
-    return res.status(500).json({ error: "server error" });
+    console.error("api/users error:", e);
+    return json(res, 500, { error: "server error" });
   }
-}
+};

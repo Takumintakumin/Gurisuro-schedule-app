@@ -1,22 +1,39 @@
 // api/login.js
-import { pool } from "./db.js";
+const { getPool } = require("./db.js");
+const { readJson, setCors, json, ensureAdmin } = require("./_utils.js");
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-
+module.exports = async (req, res) => {
   try {
-    const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ error: "username/password必須" });
+    setCors(res);
+    if (req.method === "OPTIONS") return res.end();
 
-    const { rows } = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
-    if (!rows.length) return res.status(404).json({ error: "ユーザーが見つかりません" });
+    // 管理者を確実に用意（テーブルも）
+    await ensureAdmin();
 
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST, OPTIONS");
+      return json(res, 405, { error: "Method Not Allowed" });
+    }
+
+    const { username, password } = await readJson(req);
+    if (!username || !password) {
+      return json(res, 400, { error: "username と password は必須です" });
+    }
+
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
+      [username]
+    );
+    if (rows.length === 0) return json(res, 404, { error: "ユーザーが見つかりません" });
     const user = rows[0];
-    if (user.password !== password) return res.status(401).json({ error: "パスワードが違います" });
 
-    res.json({ message: "ログイン成功", role: user.role });
+    if (user.password !== password) {
+      return json(res, 401, { error: "パスワードが違います" });
+    }
+    return json(res, 200, { message: "ログイン成功", role: user.role, id: user.id });
   } catch (e) {
-    console.error("login error:", e);
-    res.status(500).json({ error: "サーバーエラー" });
+    console.error("api/login error:", e);
+    return json(res, 500, { error: "server error" });
   }
-}
+};

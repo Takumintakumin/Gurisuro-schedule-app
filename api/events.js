@@ -1,28 +1,41 @@
 // api/events.js
-import { pool } from "./db.js";
+const { getPool } = require("./db.js");
+const { readJson, setCors, json, ensureEventsTable } = require("./_utils.js");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
+    setCors(res);
+    if (req.method === "OPTIONS") return res.end();
+
+    // eventsテーブルが無ければ作る
+    await ensureEventsTable();
+
+    const pool = getPool();
+
     if (req.method === "GET") {
-      const { rows } = await pool.query("SELECT * FROM events ORDER BY date ASC, start_time ASC NULLS FIRST");
-      return res.json(rows);
+      const { rows } = await pool.query(
+        "SELECT id, date, label, icon, start_time, end_time FROM events ORDER BY date ASC"
+      );
+      return json(res, 200, rows);
     }
 
     if (req.method === "POST") {
-      const { date, label, icon, start_time, end_time } = req.body || {};
-      if (!date || !label) return res.status(400).json({ error: "date と label は必須です" });
-
+      const body = await readJson(req);
+      const { date, label, icon, start_time, end_time } = body || {};
+      if (!date || !label) {
+        return json(res, 400, { error: "date と label は必須です" });
+      }
       await pool.query(
-        `INSERT INTO events (date, label, icon, start_time, end_time)
-         VALUES ($1,$2,$3,$4,$5)`,
+        "INSERT INTO events (date, label, icon, start_time, end_time) VALUES ($1, $2, $3, $4, $5)",
         [date, label, icon || null, start_time || null, end_time || null]
       );
-      return res.json({ message: "イベント登録完了" });
+      return json(res, 201, { message: "created" });
     }
 
-    return res.status(405).json({ error: "Method Not Allowed" });
+    res.setHeader("Allow", "GET, POST, OPTIONS");
+    return json(res, 405, { error: "Method Not Allowed" });
   } catch (e) {
-    console.error("events error:", e);
-    res.status(500).json({ error: "サーバーエラー" });
+    console.error("api/events error:", e);
+    return json(res, 500, { error: "server error" });
   }
-}
+};
