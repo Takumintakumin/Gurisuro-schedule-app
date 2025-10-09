@@ -2,7 +2,9 @@
 import { Pool } from "pg";
 
 const connectionString = process.env.DATABASE_URL;
-// ローカルで .env を使う場合は next.config.js の env 経由か vercel dev を利用
+if (!connectionString) {
+  console.error("[_db] DATABASE_URL is missing");
+}
 
 export const pool = new Pool({
   connectionString,

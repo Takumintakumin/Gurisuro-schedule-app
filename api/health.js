@@ -3,10 +3,10 @@ import { pool } from "./_db.js";
 
 export default async function handler(req, res) {
   try {
-    const { rows } = await pool.query("SELECT NOW() AS now");
-    res.status(200).json({ ok: true, now: rows[0].now });
+    const { rows } = await pool.query("SELECT 1 as ok");
+    return res.status(200).json({ ok: rows?.[0]?.ok === 1 });
   } catch (e) {
-    console.error("HEALTH_ERROR:", e);
-    res.status(500).json({ ok: false, error: "DB connection failed" });
+    console.error("[/api/health] DB ERROR:", e);
+    return res.status(500).json({ error: "DB接続に失敗しました" });
   }
 }
