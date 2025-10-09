@@ -6,17 +6,28 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+function sendErr(res, code, msg) {
+  return res.status(code).json({ error: msg });
+}
+
 export default async function handler(req, res) {
-  const { id } = req.query;
+  if (!process.env.DATABASE_URL) {
+    return sendErr(res, 500, "Missing DATABASE_URL");
+  }
+
+  const { id } = req.query || {};
+  if (!id) return sendErr(res, 400, "id が必要です");
+
   if (req.method !== "DELETE") {
     res.setHeader("Allow", "DELETE");
-    return res.status(405).json({ error: "Method Not Allowed" });
+    return sendErr(res, 405, "Method Not Allowed");
   }
+
   try {
     await pool.query("DELETE FROM users WHERE id = $1", [id]);
     return res.status(200).json({ message: "deleted" });
   } catch (e) {
     console.error("users/[id] delete error:", e);
-    return res.status(500).json({ error: "Server Error" });
+    return sendErr(res, 500, e?.message || "Server Error");
   }
 }

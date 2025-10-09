@@ -2,13 +2,13 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-// 500エラーでHTMLが返っても落ちないfetch
+// 500でHTMLが返っても落ちないfetch
 async function safeFetch(url, options) {
   const res = await fetch(url, options);
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch {}
-  return { ok: res.ok, status: res.status, data };
+  return { ok: res.ok, status: res.status, raw: text, data };
 }
 
 export default function AdminUsers() {
@@ -19,6 +19,7 @@ export default function AdminUsers() {
   const [role, setRole] = useState("user");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [diag, setDiag] = useState(""); // デバッグ表示
 
   // 管理者チェック & 初回ロード
   useEffect(() => {
@@ -34,9 +35,11 @@ export default function AdminUsers() {
   const load = async () => {
     setLoading(true);
     setErr("");
-    const { ok, data } = await safeFetch("/api/users", {});
+    setDiag("");
+    const { ok, status, data, raw } = await safeFetch("/api/users", {});
     if (!ok) {
-      setErr(data?.error || "一覧取得に失敗しました");
+      setErr(data?.error || `一覧取得に失敗（HTTP ${status}）`);
+      setDiag(raw || "");
       setList([]);
     } else {
       setList(Array.isArray(data) ? data : []);
@@ -50,13 +53,14 @@ export default function AdminUsers() {
       alert("ユーザー名とパスワードを入力してください");
       return;
     }
-    const { ok, status, data } = await safeFetch("/api/users", {
+    const { ok, status, data, raw } = await safeFetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: username.trim(), password: password.trim(), role }),
     });
     if (!ok) {
       alert(`作成に失敗（${status}）：${data?.error || ""}`);
+      setDiag(raw || "");
       return;
     }
     setUsername(""); setPassword(""); setRole("user");
@@ -65,9 +69,10 @@ export default function AdminUsers() {
 
   const onDelete = async (id) => {
     if (!window.confirm("削除しますか？")) return;
-    const { ok, status, data } = await safeFetch(`/api/users/${id}`, { method: "DELETE" });
+    const { ok, status, data, raw } = await safeFetch(`/api/users/${id}`, { method: "DELETE" });
     if (!ok) {
       alert(`削除に失敗（${status}）：${data?.error || ""}`);
+      setDiag(raw || "");
       return;
     }
     load();
@@ -80,6 +85,8 @@ export default function AdminUsers() {
           <h1 className="text-xl sm:text-2xl font-bold">👥 ユーザー管理</h1>
           <div className="flex gap-2">
             <Link to="/admin/dashboard" className="px-3 py-2 rounded border hover:bg-gray-50 text-sm">← カレンダー</Link>
+            <a href="/api/health" target="_blank" rel="noreferrer" className="px-3 py-2 rounded border hover:bg-gray-50 text-sm">DBヘルス</a>
+            <a href="/api/users" target="_blank" rel="noreferrer" className="px-3 py-2 rounded border hover:bg-gray-50 text-sm">API確認</a>
             <button
               className="px-3 py-2 rounded border hover:bg-gray-50 text-sm"
               onClick={() => { localStorage.clear(); nav("/admin"); }}
@@ -118,7 +125,15 @@ export default function AdminUsers() {
         {loading ? (
           <div className="text-gray-500">読み込み中…</div>
         ) : err ? (
-          <div className="text-red-600">{err}</div>
+          <div className="space-y-2">
+            <div className="text-red-600">{err}</div>
+            {diag && (
+              <details className="text-xs">
+                <summary className="cursor-pointer">サーバーレスポンス詳細</summary>
+                <pre className="p-2 bg-gray-100 rounded overflow-auto">{diag}</pre>
+              </details>
+            )}
+          </div>
         ) : list.length === 0 ? (
           <div className="text-gray-500">ユーザーがいません。</div>
         ) : (

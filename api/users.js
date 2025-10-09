@@ -6,38 +6,46 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }, // Neon
 });
 
+// 500時にHTMLが返らないよう必ずJSONで返す
+function sendErr(res, code, msg) {
+  return res.status(code).json({ error: msg });
+}
+
 export default async function handler(req, res) {
   try {
+    if (!process.env.DATABASE_URL) {
+      return sendErr(res, 500, "Missing DATABASE_URL");
+    }
+
     if (req.method === "GET") {
-      const { rows } = await pool.query(
-        "SELECT id, username, role FROM users ORDER BY id ASC"
-      );
+      const { rows } = await pool.query("SELECT id, username, role FROM users ORDER BY id ASC");
       return res.status(200).json(rows);
     }
 
     if (req.method === "POST") {
       const { username, password, role = "user" } = req.body || {};
-      if (!username || !password) {
-        return res.status(400).json({ error: "username と password は必須です" });
-      }
+      if (!username || !password) return sendErr(res, 400, "username と password は必須です");
+
       try {
         await pool.query(
-          "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
+          "INSERT INTO users (username, password, role) VALUES ($1,$2,$3)",
           [username, password, role]
         );
         return res.status(200).json({ message: "ok" });
       } catch (e) {
-        if ((e?.message || "").includes("duplicate key")) {
-          return res.status(409).json({ error: "そのユーザー名は既に存在します" });
+        const m = String(e?.message || "");
+        if (m.includes("duplicate key") || m.includes("already exists")) {
+          return sendErr(res, 409, "そのユーザー名は既に存在します");
         }
-        throw e;
+        console.error("users POST error:", e);
+        return sendErr(res, 500, m);
       }
     }
 
     res.setHeader("Allow", "GET,POST");
-    return res.status(405).json({ error: "Method Not Allowed" });
+    return sendErr(res, 405, "Method Not Allowed");
   } catch (e) {
     console.error("users api error:", e);
-    return res.status(500).json({ error: "Server Error" });
+    return sendErr(res, 500, e?.message || "Server Error");
   }
 }
