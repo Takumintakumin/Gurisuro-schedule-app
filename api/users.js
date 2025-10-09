@@ -1,5 +1,5 @@
 // api/users.js
-const { getPool } = require("./db.js");
+const { getPool } = require("./_db.js");
 const { readJson, setCors, json, ensureAdmin } = require("./_utils.js");
 
 module.exports = async (req, res) => {
