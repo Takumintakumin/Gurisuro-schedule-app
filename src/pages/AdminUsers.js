@@ -6,94 +6,122 @@ export default function AdminUsers() {
   const nav = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
 
-  // 一般ユーザー一覧を取得
   const fetchUsers = async () => {
+    setLoading(true);
+    setMsg("");
     try {
       const res = await fetch("/api/users");
-      const data = await res.json();
-      if (Array.isArray(data)) setUsers(data);
+      const text = await res.text();
+      let data = [];
+      try { data = text ? JSON.parse(text) : []; } catch {}
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("ユーザー取得エラー:", err);
+      console.error(err);
+      setMsg("ユーザー一覧の取得に失敗しました。");
     } finally {
       setLoading(false);
     }
   };
 
-  // ユーザー削除
-  const handleDelete = async (id) => {
-    if (!window.confirm("このユーザーを削除しますか？")) return;
+  const deleteUser = async (id) => {
+    if (!window.confirm("本当に削除しますか？")) return;
     try {
       const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        alert("削除しました");
-        setUsers((prev) => prev.filter((u) => u.id !== id));
-      } else {
-        alert("削除に失敗しました");
-      }
+      const text = await res.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {}
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      await fetchUsers();
+      alert("削除しました");
     } catch (err) {
       console.error(err);
-      alert("通信エラーが発生しました");
+      alert("削除に失敗しました");
     }
   };
 
-  // 管理者権限チェック & データ読み込み
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
       alert("管理者のみアクセス可能です");
-      nav("/admin", { replace: true });
+      nav("/");
       return;
     }
     fetchUsers();
   }, [nav]);
 
-  if (loading) return <div className="p-6">読み込み中...</div>;
-
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        <div className="flex justify-between mb-4 items-center">
-          <h1 className="text-2xl font-bold">👥 ユーザー管理</h1>
-          <button
-            onClick={() => nav("/admin/dashboard")}
-            className="text-blue-600 underline"
-          >
-            ← イベント管理へ戻る
-          </button>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-bold">👤 ユーザー管理</h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => nav("/admin/dashboard")}
+              className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            >
+              ← カレンダーへ
+            </button>
+            <button
+              onClick={fetchUsers}
+              className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+            >
+              再読込
+            </button>
+          </div>
         </div>
 
-        {users.length === 0 ? (
-          <p className="text-gray-500">登録ユーザーはいません。</p>
+        {loading ? (
+          <div>読み込み中…</div>
+        ) : msg ? (
+          <div className="text-red-600">{msg}</div>
+        ) : users.length === 0 ? (
+          <div className="text-gray-600">ユーザーがいません。</div>
         ) : (
-          <table className="w-full text-sm border">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border p-2">ID</th>
-                <th className="border p-2">名前</th>
-                <th className="border p-2">メール</th>
-                <th className="border p-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td className="border p-2">{u.id}</td>
-                  <td className="border p-2">{u.name}</td>
-                  <td className="border p-2">{u.email}</td>
-                  <td className="border p-2 text-center">
-                    <button
-                      onClick={() => handleDelete(u.id)}
-                      className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
-                    >
-                      削除
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-2 border">ID</th>
+                  <th className="p-2 border">ユーザー名</th>
+                  <th className="p-2 border">権限</th>
+                  <th className="p-2 border">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} className="text-center">
+                    <td className="p-2 border">{u.id}</td>
+                    <td className="p-2 border">{u.username}</td>
+                    <td className="p-2 border">{u.role}</td>
+                    <td className="p-2 border">
+                      <button
+                        onClick={() => deleteUser(u.id)}
+                        className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                      >
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
+
+        <div className="text-center mt-6">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              nav("/");
+            }}
+            className="text-gray-500 underline"
+          >
+            ログアウト
+          </button>
+        </div>
       </div>
     </div>
   );
