@@ -12,6 +12,14 @@
     "build": "react-scripts build",
     "dev:server": "node server/server.js"
   },
+
+  "eslintConfig": {
+  "extends": [
+    "react-app",
+    "react-app/jest"
+  ]
+  },
+
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -36,5 +44,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+    
   }
 }
