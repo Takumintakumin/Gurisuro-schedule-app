@@ -87,22 +87,29 @@ export default function AdminDashboard() {
   };
 
   // === イベント削除 ===
-  const handleDelete = async (id) => {
-    if (!window.confirm("このイベントを削除しますか？")) return;
-    try {
-      const res = await fetch(`/api/events/${id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await parseJSON(res);
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      await fetchEvents();
-      alert("削除しました");
-    } catch (err) {
-      console.error("DELETE /api/events/:id failed:", err);
-      alert(`削除に失敗しました: ${err.message}`);
+const handleDelete = async (id) => {
+  if (!window.confirm("このイベントを削除しますか？")) return;
+  try {
+    const url = `/api/events/${encodeURIComponent(id)}`;
+    const res = await fetch(url, { method: "DELETE" });
+
+    // 500のときにHTMLを返す環境でも落ちないようにする
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+
+    if (!res.ok) {
+      throw new Error(data?.error || `HTTP ${res.status}`);
     }
-  };
+
+    alert("削除しました");
+    // 一覧を更新（fetchEvents は既存の再取得関数を想定）
+    fetchEvents?.();
+  } catch (err) {
+    console.error("DELETE /api/events/:id failed:", err);
+    alert(`削除に失敗しました: ${err.message}`);
+  }
+};
 
   if (loading) return <div className="p-6">読み込み中...</div>;
 
