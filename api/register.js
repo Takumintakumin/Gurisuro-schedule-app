@@ -1,38 +1,38 @@
 // /api/register.js
-import { pool } from "./_db.js";
+import { pool, ensureTables } from "./db.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-
-  // Vercelではbodyが文字列のことがあるので安全にパース
-  let body = {};
   try {
-    body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : (req.body || {});
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON body" });
-  }
-
-  const { username, password, role = "user" } = body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "username と password は必須です" });
-  }
-
-  try {
-    const sql =
-      "INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role";
-    const { rows } = await pool.query(sql, [username, password, role]);
-    return res.status(201).json({ message: "登録成功", user: rows[0] });
-  } catch (e) {
-    // 一意制約（既存ユーザー名）: PostgreSQLは 23505
-    if (e.code === "23505") {
-      return res.status(409).json({ error: "このユーザー名は既に存在します" });
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method Not Allowed" });
     }
-    console.error("[/api/register] ERROR:", e);
-    return res.status(500).json({ error: "サーバーエラー（/api/register）" });
+    await ensureTables();
+
+    // Vercelの500時はHTMLが返ることがあるため、安全にパース
+    let body = {};
+    try {
+      body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    } catch {
+      body = {};
+    }
+
+    const { username, password } = body;
+    if (!username?.trim() || !password?.trim()) {
+      return res.status(400).json({ error: "お名前とパスワードは必須です。" });
+    }
+
+    await pool.query(
+      "insert into users (username, password, role) values ($1,$2,$3)",
+      [username.trim(), password.trim(), "user"]
+    );
+
+    return res.status(201).json({ message: "登録成功" });
+  } catch (e) {
+    // 重複ユーザー名
+    if (e?.code === "23505") {
+      return res.status(409).json({ error: "このお名前は既に登録されています。" });
+    }
+    console.error("[register] error", e);
+    return res.status(500).json({ error: "サーバーエラー" });
   }
 }

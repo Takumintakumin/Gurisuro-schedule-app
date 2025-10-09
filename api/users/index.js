@@ -1,5 +1,5 @@
 // /api/users/index.js
-import { pool } from "../_db.js";
+import { pool } from "../db.js";
 
 export default async function handler(req, res) {
   try {

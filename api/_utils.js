@@ -1,6 +1,6 @@
 // api/_utils.js
 const { StringDecoder } = require("string_decoder");
-const { getPool } = require("./_db.js");
+const { getPool } = require("./db.js");
 
 // ---- JSON Body 読み取り（Vercel Node Functions は自動でパースされないことがある）----
 async function readJson(req) {
