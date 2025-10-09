@@ -5,7 +5,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import UserLogin from "./pages/UserLogin.js";
 import AdminLogin from "./pages/AdminLogin.js";
 import AdminDashboard from "./pages/AdminDashboard.js";
-import AdminUsers from "./pages/AdminUsers.js";   // ← ここで一度だけ
+import AdminUsers from "./pages/AdminUsers.js";
+import AdminLayout from "./pages/AdminLayout.js";
 import MainApp from "./pages/MainApp.js";
 
 // 共通: ログイン必須
@@ -39,6 +40,19 @@ export default function App() {
 
         {/* 管理者ログイン */}
         <Route path="/admin" element={<AdminLogin />} />
+
+        {/* 管理者共通レイアウト */}
+        <Route
+          path="/admin"
+          element={
+            <AdminOnlyRoute>
+              <AdminLayout />
+            </AdminOnlyRoute>
+          }
+        >
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="users" element={<AdminUsers />} />
+        </Route>
 
         {/* 管理者用画面 */}
         <Route
