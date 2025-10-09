@@ -92,7 +92,7 @@ const handleDelete = async (id) => {
   if (!window.confirm("このイベントを削除しますか？")) return;
   try {
     const url = `/api/events/${encodeURIComponent(id)}`;
-    const res = await fetch(url, { method: "DELETE" });
+    const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
 
     // 500のときにHTMLを返す環境でも落ちないようにする
     const text = await res.text();
