@@ -1,74 +1,40 @@
-// api/login.js
-const { getPool } = require("./db.js");
+// /api/login.js
+import { pool, ensureSchema } from "./_db.js";
 
-async function readBody(req) {
-  if (req.body) return req.body; // 既にパース済みのケース
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (c) => (data += c));
-    req.on("end", () => {
-      try { resolve(data ? JSON.parse(data) : {}); }
-      catch (e) { reject(e); }
-    });
-    req.on("error", reject);
-  });
-}
-
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
   }
 
   try {
-    const body = await readBody(req);
-    const { username, password } = body || {};
+    await ensureSchema();
+
+    // 500 で HTML が返ってもフロントが落ちないよう JSON 返却を徹底
+    const { username, password } = req.body || {};
     if (!username || !password) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      return res.end(JSON.stringify({ error: "usernameとpasswordは必須です" }));
+      res.status(400).json({ error: "username と password は必須です" });
+      return;
     }
 
-    const pool = getPool();
-
-    // 初回に備えてテーブル＆管理者を用意
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users(
-        id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT DEFAULT 'user'
-      )
-    `);
-    await pool.query(`
-      INSERT INTO users(username,password,role)
-      VALUES('admin','admin123','admin')
-      ON CONFLICT (username) DO NOTHING
-    `);
-
-    const r = await pool.query(
-      "SELECT id, username, password, role FROM users WHERE username=$1 LIMIT 1",
+    const { rows } = await pool.query(
+      "select id, username, password, role from users where username = $1 limit 1",
       [username]
     );
-    const user = r.rows[0];
+
+    const user = rows[0];
     if (!user) {
-      res.statusCode = 401;
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      return res.end(JSON.stringify({ error: "ユーザーが見つかりません" }));
+      res.status(404).json({ error: "ユーザーが見つかりません" });
+      return;
     }
     if (user.password !== password) {
-      res.statusCode = 401;
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      return res.end(JSON.stringify({ error: "パスワードが違います" }));
+      res.status(401).json({ error: "パスワードが違います" });
+      return;
     }
 
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ message: "ログイン成功", role: user.role }));
+    res.status(200).json({ message: "ok", role: user.role, username: user.username });
   } catch (e) {
-    console.error("api/login error:", e);
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ error: "server error", detail: String(e && e.message || e) }));
+    console.error("login error:", e);
+    res.status(500).json({ error: "サーバーエラー" });
   }
-};
+}
