@@ -50,7 +50,11 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole");
+    localStorage.setItem("userRole", data.role); // 'admin'
+    localStorage.setItem("userName", username);
+    nav("/admin/dashboard"); // ダッシュボードへ
+
+    
     if (role !== "admin") {
       alert("管理者のみアクセス可能です");
       nav("/");

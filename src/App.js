@@ -1,15 +1,20 @@
+// src/App.js
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import UserLogin from "./pages/UserLogin.js";
 import AdminLogin from "./pages/AdminLogin.js";
-import MainApp from "./pages/MainApp.js";
 import AdminDashboard from "./pages/AdminDashboard.js";
+import MainApp from "./pages/MainApp.js";
 
-// ログイン必須ルート
-const ProtectedRoute = ({ children, roleRequired }) => {
+const ProtectedRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
   if (!role) return <Navigate to="/" replace />;
-  if (roleRequired && role !== roleRequired) return <Navigate to="/" replace />;
+  return children;
+};
+
+const AdminOnlyRoute = ({ children }) => {
+  const role = localStorage.getItem("userRole");
+  if (role !== "admin") return <Navigate to="/admin" replace />;
   return children;
 };
 
@@ -17,33 +22,31 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* 公開 */}
         <Route path="/" element={<UserLogin />} />
         <Route path="/admin" element={<AdminLogin />} />
-        <Route
-  path="/admin/dashboard"
-  element={
-    <ProtectedRoute>
-      <AdminDashboard />
-    </ProtectedRoute>
-  }
-/>
+
+        {/* 保護（一般ユーザー用） */}
         <Route
           path="/app"
           element={
-            <ProtectedRoute roleRequired="user">
+            <ProtectedRoute>
               <MainApp />
             </ProtectedRoute>
           }
         />
+
+        {/* 保護（管理者用） */}
         <Route
-          path="/dashboard"
+          path="/admin/dashboard"
           element={
-            <ProtectedRoute roleRequired="admin">
+            <AdminOnlyRoute>
               <AdminDashboard />
-            </ProtectedRoute>
+            </AdminOnlyRoute>
           }
         />
-        <Route path="*" element={<Navigate to="/" />} />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

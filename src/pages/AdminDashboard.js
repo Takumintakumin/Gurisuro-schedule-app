@@ -90,9 +90,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
-      alert("管理者のみアクセス可能です。");
-      nav("/");
-      return;
+      alert("管理者のみアクセス可能です。管理者ログインへ移動します。");
+      nav("/admin", { replace: true });
+    return;
     }
     fetchEvents();
   }, [nav]);
