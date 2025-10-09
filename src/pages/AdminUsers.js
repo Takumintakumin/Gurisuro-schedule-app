@@ -1,106 +1,55 @@
-// src/pages/AdminDashboard.js
+// src/pages/AdminUsers.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Calendar from "../components/Calendar.js";
 
-const FIXED_EVENTS = [
-  { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
-  { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
-  { key: "eat", label: "食べようの会", icon: "/icons/eat.png" },
-  { key: "mamatomo", label: "ママ友の会", icon: "/icons/mamatomo.png" },
-  { key: "cafe", label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
-  { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
-];
-
-export default function AdminDashboard() {
+export default function AdminUsers() {
   const nav = useNavigate();
-  const [events, setEvents] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
-  const [start, setStart] = useState("10:00");
-  const [end, setEnd] = useState("12:00");
-
+  const [users, setUsers] = useState([]);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
-  const [fetchInfo, setFetchInfo] = useState({ ok: null, status: "", note: "" });
 
-  async function fetchEvents() {
-    setLoading(true);
-    setFetchInfo({ ok: null, status: "loading", note: "" });
+  async function fetchUsers() {
     try {
-      const res = await fetch("/api/events", { method: "GET" });
-      const raw = await res.text(); // 失敗時(500のHTML)でも中身を拾う
-      console.log("[/api/events] status:", res.status, "raw:", raw);
-
-      let data = [];
-      try {
-        data = raw ? JSON.parse(raw) : [];
-      } catch (e) {
-        console.warn("JSON parse failed:", e);
-        setFetchInfo({
-          ok: false,
-          status: `${res.status}`,
-          note: "JSON解析に失敗。サーバー返却テキストをConsoleに出力しました。",
-        });
-        setEvents([]);
-        return;
-      }
-
-      if (!res.ok) {
-        setFetchInfo({
-          ok: false,
-          status: `${res.status}`,
-          note: data?.error || "APIエラー（サーバーログ参照）",
-        });
-        setEvents([]);
-        return;
-      }
-
-      setEvents(Array.isArray(data) ? data : []);
-      setFetchInfo({
-        ok: true,
-        status: `${res.status}`,
-        note: `取得: ${Array.isArray(data) ? data.length : 0}件`,
-      });
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("fetch /api/events failed:", err);
-      setFetchInfo({ ok: false, status: "network_error", note: String(err) });
-      setEvents([]);
+      console.error("ユーザー取得エラー:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSubmit(e) {
+  async function addUser(e) {
     e.preventDefault();
-    const body = {
-      date: selectedDate.toISOString().split("T")[0],
-      label: selectedEvent.label,
-      icon: selectedEvent.icon,
-      start_time: start,
-      end_time: end,
-    };
-
+    if (!username || !password) {
+      alert("名前とパスワードを入力してください");
+      return;
+    }
     try {
-      const res = await fetch("/api/events", {
+      const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ username, password }),
       });
-      const raw = await res.text();
-      console.log("[POST /api/events] status:", res.status, "raw:", raw);
-
-      let data = {};
-      try { data = raw ? JSON.parse(raw) : {}; } catch {}
-
-      if (!res.ok) {
-        alert(`登録失敗: ${data?.error || `HTTP ${res.status}`}`);
-        return;
-      }
-      alert("イベントを登録しました");
-      fetchEvents();
+      if (!res.ok) throw new Error("登録に失敗しました");
+      setUsername("");
+      setPassword("");
+      fetchUsers();
     } catch (err) {
-      console.error("register event failed:", err);
-      alert("通信エラーで登録できませんでした");
+      alert(err.message);
+    }
+  }
+
+  async function deleteUser(id) {
+    if (!window.confirm("このユーザーを削除しますか？")) return;
+    try {
+      const res = await fetch(`/api/users?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("削除に失敗しました");
+      fetchUsers();
+    } catch (err) {
+      alert(err.message);
     }
   }
 
@@ -111,86 +60,54 @@ export default function AdminDashboard() {
       nav("/");
       return;
     }
-    fetchEvents();
+    fetchUsers();
   }, [nav]);
 
   if (loading) return <div className="p-6">読み込み中...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        <div className="flex justify-between mb-4 items-center">
-          <h1 className="text-2xl font-bold">🗓 管理者カレンダー</h1>
-          <button
-            className="text-gray-500 underline"
-            onClick={() => { localStorage.clear(); nav("/"); }}
-          >
-            ログアウト
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-3xl mx-auto bg-white shadow rounded-xl p-6">
+        <h1 className="text-2xl font-bold mb-4">👥 ユーザー管理</h1>
+
+        <form onSubmit={addUser} className="flex gap-3 mb-6">
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="ユーザー名"
+            className="border p-2 rounded flex-1"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="パスワード"
+            className="border p-2 rounded flex-1"
+          />
+          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+            登録
           </button>
-        </div>
-
-        {/* API ステータス表示 */}
-        <div className={`mb-3 text-sm ${fetchInfo.ok === false ? "text-red-600" : "text-gray-600"}`}>
-          API: /api/events → status: <b>{fetchInfo.status}</b> {fetchInfo.note && ` / ${fetchInfo.note}`}
-        </div>
-
-        <Calendar
-          currentMonth={selectedDate.getMonth()}
-          currentYear={selectedDate.getFullYear()}
-          selectedDate={selectedDate}
-          onMonthChange={(delta) =>
-            setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1))
-          }
-          onDateSelect={setSelectedDate}
-          events={events}
-        />
-
-        <form onSubmit={handleSubmit} className="mt-6 bg-gray-50 p-4 rounded border">
-          <h2 className="font-semibold mb-2">
-            {selectedDate.toISOString().split("T")[0]} に募集を追加
-          </h2>
-
-          <label className="block text-sm mb-1">イベント種類</label>
-          <select
-            className="border p-2 rounded w-full mb-3"
-            value={selectedEvent.key}
-            onChange={(e) =>
-              setSelectedEvent(FIXED_EVENTS.find((f) => f.key === e.target.value) || FIXED_EVENTS[0])
-            }
-          >
-            {FIXED_EVENTS.map((e) => (
-              <option key={e.key} value={e.key}>{e.label}</option>
-            ))}
-          </select>
-
-          <div className="flex gap-2 mb-3">
-            <div className="flex-1">
-              <label className="block text-sm mb-1">開始</label>
-              <input className="border p-2 rounded w-full" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm mb-1">終了</label>
-              <input className="border p-2 rounded w-full" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-            </div>
-          </div>
-
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">登録</button>
         </form>
 
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">登録済みイベント一覧（{events.length}件）</h3>
-          {events.length === 0 ? (
-            <p className="text-gray-500 text-sm">まだ登録はありません。</p>
-          ) : (
-            <ul className="text-sm space-y-1">
-              {events.map((ev) => (
-                <li key={ev.id}>
-                  📅 {ev.date}：{ev.label}（{ev.start_time}〜{ev.end_time}）
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <h2 className="font-semibold mb-2">登録済みユーザー一覧</h2>
+        {users.length === 0 ? (
+          <p className="text-gray-500 text-sm">まだユーザーがいません。</p>
+        ) : (
+          <ul className="divide-y divide-gray-200">
+            {users.map((u) => (
+              <li key={u.id} className="flex justify-between py-2">
+                <span>{u.username} ({u.role})</span>
+                <button
+                  onClick={() => deleteUser(u.id)}
+                  className="text-red-600 hover:underline"
+                >
+                  削除
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

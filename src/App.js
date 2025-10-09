@@ -7,6 +7,17 @@ import AdminDashboard from "./pages/AdminDashboard.js";
 import AdminUsers from "./pages/AdminUsers.js";
 import MainApp from "./pages/MainApp.js";
 
+import AdminUsers from "./pages/AdminUsers.js";
+
+<Route
+  path="/admin/users"
+  element={
+    <ProtectedRoute>
+      <AdminUsers />
+    </ProtectedRoute>
+  }
+/>
+
 const ProtectedRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
   if (!role) return <Navigate to="/" replace />;
