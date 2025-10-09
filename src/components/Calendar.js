@@ -77,40 +77,57 @@ export default function Calendar({
         </div>
 
         {/* 管理者のイベントアイコン or タグ（最大4つ） */}
-        {(dayEvents.length > 0 || hasTags) && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {dayEvents.slice(0, 3).map((ev, idx) => (
-              ev.icon ? (
-                <img
-                  key={`e-${idx}`}
-                  src={ev.icon}
-                  alt={ev.label || "event"}
-                  title={ev.label ? `${ev.label}${ev.start_time ? ` ${ev.start_time}` : ""}` : ""}
-                  className="h-5 w-5 object-contain"
-                  loading="lazy"
-                />
-              ) : (
+        {(dayEvents.length > 0 || hasTags) && (() => {
+          const maxBadges = 4;
+          const eventBadges = (dayEvents || []).map((ev) =>
+            ev && ev.icon ? { type: "icon", icon: ev.icon, label: ev.label, start: ev.start_time } 
+                           : { type: "text", label: ev?.label || "" }
+          );
+          const tagBadges = (tags || []).map((t) =>
+            ({ type: "text", label: t?.label || t?.key || "" })
+          );
+          const allBadges = [...eventBadges, ...tagBadges];
+          const visible = allBadges.slice(0, maxBadges);
+          const overflow = Math.max(allBadges.length - maxBadges, 0);
+
+          return (
+            <div className="mt-1 flex flex-wrap gap-1 items-center">
+              {visible.map((b, idx) => {
+                if (b.type === "icon" && b.icon) {
+                  return (
+                    <img
+                      key={`b-${idx}`}
+                      src={b.icon}
+                      alt={b.label || "event"}
+                      title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
+                      className="h-5 w-5 object-contain"
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  );
+                }
+                // text fallback
+                return (
+                  <span
+                    key={`b-${idx}`}
+                    className="px-1 rounded bg-white/80 text-[10px] border border-gray-300"
+                    title={b.label}
+                  >
+                    {b.label.slice(0, 4)}
+                  </span>
+                );
+              })}
+              {overflow > 0 && (
                 <span
-                  key={`e-${idx}`}
                   className="px-1 rounded bg-white/80 text-[10px] border border-gray-300"
-                  title={ev.label || ""}
+                  title={`他 ${overflow} 件`}
                 >
-                  {(ev.label || "").slice(0, 4)}
+                  +{overflow}
                 </span>
-              )
-            ))}
-            {hasTags &&
-              tags.slice(0, 3 - Math.min(dayEvents.length, 3)).map((t, idx) => (
-                <span
-                  key={`t-${idx}`}
-                  className="px-1 rounded bg-white/80 text-[10px] border border-gray-300"
-                  title={t.label || t.key}
-                >
-                  {t.label ? t.label.slice(0, 4) : t.key}
-                </span>
-              ))}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };

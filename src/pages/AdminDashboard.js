@@ -20,18 +20,22 @@ export default function AdminDashboard() {
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
-  const [capD, setCapD] = useState(1);
-  const [capA, setCapA] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
 
   // イベント取得
   const fetchEvents = async () => {
     try {
+      setErrMsg("");
       const res = await fetch("/api/events");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []); // 安全対策
+      setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("イベント取得エラー:", err);
+      setErrMsg("イベント一覧の取得に失敗しました。");
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -40,20 +44,25 @@ export default function AdminDashboard() {
   // イベント登録
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedDate || !selectedEvent) {
-      alert("日付とイベントを選択してください");
+    if (!selectedDate) {
+      alert("日付を選択してください");
+      return;
+    }
+    if (!selectedEvent) {
+      alert("イベント種類を選択してください");
       return;
     }
 
     try {
+      setSubmitting(true);
+      setErrMsg("");
+
       const body = {
         date: selectedDate.toISOString().split("T")[0],
         label: selectedEvent.label,
         icon: selectedEvent.icon,
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),
-        capacity_attendant: Number(capA),
       };
 
       const res = await fetch("/api/events", {
@@ -63,15 +72,17 @@ export default function AdminDashboard() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "登録に失敗しました");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `登録失敗 (HTTP ${res.status})`);
       }
 
       alert("イベントを登録しました！");
-      fetchEvents(); // 更新
+      await fetchEvents(); // 反映
     } catch (err) {
       console.error("登録エラー:", err);
-      alert("登録に失敗しました: " + err.message);
+      setErrMsg(`登録に失敗しました：${err.message}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -105,7 +116,13 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* カレンダー部分 */}
+        {errMsg && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+            {errMsg}
+          </div>
+        )}
+
+        {/* カレンダー */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
@@ -135,10 +152,10 @@ export default function AdminDashboard() {
             <label className="block mb-1 text-sm">イベント種類</label>
             <select
               className="border p-2 rounded w-full"
-              value={selectedEvent.key}
+              value={selectedEvent?.key || ""}
               onChange={(e) =>
                 setSelectedEvent(
-                  FIXED_EVENTS.find((f) => f.key === e.target.value)
+                  FIXED_EVENTS.find((f) => f.key === e.target.value) || null
                 )
               }
             >
@@ -171,8 +188,11 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-            登録する
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-60"
+            disabled={submitting}
+          >
+            {submitting ? "登録中..." : "登録する"}
           </button>
         </form>
 
