@@ -65,7 +65,7 @@ export default function AdminDashboard() {
     }
     try {
       const body = {
-        date: selectedDate.toISOString().split("T")[0],
+        date: toLocalYMD(selectedDate),
         label: selectedEvent.label,
         icon: selectedEvent.icon,
         start_time: start,

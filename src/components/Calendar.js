@@ -2,7 +2,12 @@
 import React from "react";
 
 const monthNames = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
-const toKey = (d) => d.toISOString().split("T")[0];
+const toKey = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 export default function Calendar({
   currentMonth,
