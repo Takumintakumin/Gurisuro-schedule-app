@@ -1,25 +1,24 @@
-node_modules/
-**/node_modules/
-build/
-dist/
-.vercel/
-.next/
-
-*.env
-.env*
-
+# OS / エディタ
 .DS_Store
 .vscode/
 .idea/
 
-*.log
+# Node
+node_modules/
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+yarn.lock
+pnpm-lock.yaml
 
-# DBなど重いもの
+# ビルド/出力
+build/
+dist/
+.vercel/
+
+# 環境ファイル
+.env
+.env.*
 *.sqlite
-*.sqlite-journal
 server/database.sqlite
-*.db
-server/database.sqlite
+
+# 作業用
+.git_backup/
