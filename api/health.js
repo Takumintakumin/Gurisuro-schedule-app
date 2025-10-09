@@ -1,12 +1,23 @@
 // /api/health.js
-import { pool } from "./db.js";
+import { Pool } from "pg";
+
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }, // Neon向け
+    })
+  : null;
 
 export default async function handler(req, res) {
   try {
-    const { rows } = await pool.query("SELECT 1 as ok");
-    return res.status(200).json({ ok: rows?.[0]?.ok === 1 });
+    let db = 0;
+    if (pool) {
+      const r = await pool.query("SELECT 1 AS x");
+      db = r?.rows?.[0]?.x ? 1 : 0;
+    }
+    res.status(200).json({ ok: true, db });
   } catch (e) {
-    console.error("[/api/health] DB ERROR:", e);
-    return res.status(500).json({ error: "DB接続に失敗しました" });
+    console.error("[/api/health] DB check failed:", e);
+    res.status(500).json({ ok: false, error: e.message });
   }
 }
