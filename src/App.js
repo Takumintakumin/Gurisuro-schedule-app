@@ -7,29 +7,25 @@ import AdminDashboard from "./pages/AdminDashboard.js";
 import AdminUsers from "./pages/AdminUsers.js";
 import MainApp from "./pages/MainApp.js";
 
-// 一般ユーザー用の保護ルート
 const ProtectedRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
   if (!role) return <Navigate to="/" replace />;
   return children;
 };
 
-// 管理者専用ルート
 const AdminOnlyRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
   if (role !== "admin") return <Navigate to="/admin" replace />;
   return children;
 };
 
-// 🚀 App本体（ここが default export！）
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 一般ユーザーログイン */}
         <Route path="/" element={<UserLogin />} />
+        <Route path="/admin" element={<AdminLogin />} />
 
-        {/* 一般ユーザー用ページ */}
         <Route
           path="/app"
           element={
@@ -39,10 +35,7 @@ export default function App() {
           }
         />
 
-        {/* 管理者ログイン */}
-        <Route path="/admin" element={<AdminLogin />} />
-
-        {/* 管理者ページ群 */}
+        {/* 管理者 */}
         <Route
           path="/admin/dashboard"
           element={
@@ -60,7 +53,6 @@ export default function App() {
           }
         />
 
-        {/* その他のルートはログイン画面へ */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
