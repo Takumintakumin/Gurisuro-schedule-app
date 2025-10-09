@@ -1,7 +1,7 @@
 // src/pages/AdminLogin.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/apiClient";
+import { apiFetch } from "../lib/apiClient.js";
 
 export default function AdminLogin() {
   const nav = useNavigate();
