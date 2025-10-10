@@ -29,8 +29,12 @@ export default function Calendar({
     const list = Array.isArray(events) ? events : [];
     for (const ev of list) {
       if (!ev?.date) continue;
-      if (!map[ev.date]) map[ev.date] = [];
-      map[ev.date].push(ev);
+     // ev.date が 'YYYY-MM-DD' 以外でもローカルのキーに正規化
+      const d = typeof ev.date === "string" ? new Date(ev.date) : ev.date;
+      if (!(d instanceof Date) || isNaN(d)) continue;
+      const key = toKey(d);
+      if (!map[key]) map[key] = [];
+      map[key].push(ev);
     }
     return map;
   }, [events]);
