@@ -1,5 +1,5 @@
 // /api/register.js
-import { query } from "../api-lib/_db.js";
+import { query } from "./_db.js";
 
 // 文字列でもオブジェクトでも安全に取り出す
 function safeBody(req) {

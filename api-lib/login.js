@@ -1,5 +1,5 @@
 // /api/login.js
-import { query } from "../api-lib/_db.js";
+import { query } from "./_db.js";
 
 function safeBody(req) {
   if (!req?.body) return {};
