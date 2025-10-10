@@ -1,97 +1,118 @@
 // /api/index.js
+// すべての API をこの 1 ファイルで処理します（Hobby プランの関数数制限回避）。
+// 依存: /api/api-lib/_db.js に Pool 接続を用意しておくこと。
 import { query, healthcheck } from "./api-lib/_db.js";
 
+// ---- 共通: CORS ----
 function withCORS(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+// ---- 共通: JSON ボディ取り出し（Vercelの場合でも安全）----
 async function parseJSONBody(req) {
   if (req.method === "GET" || req.method === "DELETE") return {};
   try {
-    if (typeof req.body === "object" && req.body !== null) return req.body;
+    // API Routes の場合は req.body がオブジェクトになっていることもある
+    if (req.body && typeof req.body === "object") return req.body;
+    // ストリームから読む（Edge/Middleware 経由のパスも吸収）
     const text = await new Promise((resolve) => {
       let s = "";
-      req.on("data", (c) => (s += c));
-      req.on("end", () => resolve(s || ""));
+      req.on?.("data", (c) => (s += c));
+      req.on?.("end", () => resolve(s || ""));
+      // req.on が無い環境（既に読み込まれている）向けフォールバック
+      if (!req.on) resolve("");
     });
-    return text ? JSON.parse(text) : {};
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   } catch {
     return {};
   }
 }
 
+// ---- メインハンドラ ----
 export default async function handler(req, res) {
   try {
     withCORS(res);
     if (req.method === "OPTIONS") return res.status(204).end();
 
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const path = url.pathname;
+    const path = url.pathname;               // 例: /api/index/login, /api/login
     const q = url.searchParams;
     const body = await parseJSONBody(req);
 
-    // ← ここがポイント：/api と /api/index の両方を剥がして相対パス化
+    // パス正規化: "/api/login" と "/api/index/login" の両方を "login" にする
     const rel = path
-      .replace(/^\/api(?:\/index)?\/?/, "")   // "/api/login" も "/api/index/login" も "login" に
-      .replace(/\/+$/, "");                   // 末尾スラッシュ除去
+      .replace(/^\/api(?:\/index)?\/?/, "")  // 先頭の /api or /api/index を剥がす
+      .replace(/\/+$/, "");                  // 末尾の / を除去
 
-    // /api/health
-    if (rel === "health") {
+    // ---- /api/health ----
+    if (rel === "" || rel === "health") {
+      // "/api" にアクセスされた場合もヘルスとして扱う
       const dbOK = await healthcheck().catch(() => 0);
       return res.status(200).json({ ok: true, db: dbOK ? 1 : 0 });
     }
 
-    // /api/login
+    // ---- /api/login ----
     if (rel === "login") {
-      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-      const { username, password } = body || {};
-      if (!username || !password) {
-        return res.status(400).json({ error: "username と password が必要です" });
-      }
-      const r = await query(
-        "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
-        [username]
-      );
-      const u = r.rows?.[0];
-      if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
-      if (u.password !== password) return res.status(401).json({ error: "パスワードが違います" });
-      return res.status(200).json({ message: "OK", role: u.role, username: u.username });
-    }
-
-    // /api/register
-    if (rel === "register") {
-      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-      const { username, password, role = "user" } = body || {};
-      if (!username || !password) {
-        return res.status(400).json({ error: "username と password が必要です" });
-      }
-      try {
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username, password, role,
-        ]);
-        return res.status(201).json({ ok: true });
-      } catch (e) {
-        if (String(e?.message || "").includes("duplicate key")) {
-          return res.status(409).json({ error: "このユーザー名は既に存在します" });
+      if (req.method === "POST") {
+        const { username, password } = body || {};
+        if (!username || !password) {
+          return res.status(400).json({ error: "username と password が必要です" });
         }
-        throw e;
+        const r = await query(
+          "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
+          [username]
+        );
+        const u = r.rows?.[0];
+        if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
+        if (u.password !== password) return res.status(401).json({ error: "パスワードが違います" });
+        return res.status(200).json({ message: "OK", role: u.role, username: u.username });
       }
+      // GET などが誤って来ても 405 にせず JSON を返してログを汚さない
+      return res.status(200).json({ ok: false, hint: "Use POST /api/login" });
     }
 
-    // /api/users
+    // ---- /api/register ----
+    if (rel === "register") {
+      if (req.method === "POST") {
+        const { username, password, role = "user" } = body || {};
+        if (!username || !password) {
+          return res.status(400).json({ error: "username と password が必要です" });
+        }
+        try {
+          await query(
+            "INSERT INTO users (username, password, role) VALUES ($1,$2,$3)",
+            [username, password, role]
+          );
+          return res.status(201).json({ ok: true });
+        } catch (e) {
+          if (String(e?.message || "").includes("duplicate key")) {
+            return res.status(409).json({ error: "このユーザー名は既に存在します" });
+          }
+          throw e;
+        }
+      }
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
+    // ---- /api/users ----（管理者用）
     if (rel === "users") {
       if (req.method === "GET") {
-        const r = await query("SELECT id, username, role, familiar FROM users ORDER BY id ASC");
+        const r = await query("SELECT id, username, role, baytown_familiar FROM users ORDER BY id ASC");
         return res.status(200).json(r.rows);
       }
       if (req.method === "POST") {
-        const { username, password, role = "user", familiar = null } = body || {};
+        const { username, password, role = "user", baytown_familiar = null } = body || {};
         if (!username || !password) return res.status(400).json({ error: "必須項目不足" });
         await query(
-          "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
-          [username, password, role, familiar]
+          "INSERT INTO users (username, password, role, baytown_familiar) VALUES ($1,$2,$3,$4)",
+          [username, password, role, baytown_familiar]
         );
         return res.status(201).json({ ok: true });
       }
@@ -104,11 +125,14 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // /api/events
+    // ---- /api/events ----
     if (rel === "events") {
       if (req.method === "GET") {
         const r = await query(
-          "SELECT id, date, label, icon, start_time, end_time, capacity_driver, capacity_attendant FROM events ORDER BY date ASC"
+          `SELECT id, date, label, icon, start_time, end_time,
+                  capacity_driver, capacity_attendant
+             FROM events
+            ORDER BY date ASC, start_time ASC NULLS LAST, id ASC`
         );
         return res.status(200).json(r.rows);
       }
@@ -134,7 +158,7 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // /api/applications
+    // ---- /api/applications（応募）----
     if (rel === "applications") {
       if (req.method === "GET") {
         const eventId = q.get("event_id");
@@ -177,11 +201,12 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // /api/fairness
+    // ---- /api/fairness（公平スコア順）----
     if (rel === "fairness") {
       if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
       const eventId = q.get("event_id");
       if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+
       const sql = `
         WITH appl AS (
           SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
@@ -189,20 +214,24 @@ export default async function handler(req, res) {
                  v.last_at
           FROM applications a
           LEFT JOIN v_participation v
-            ON v.username = a.username AND v.kind = a.kind
-          WHERE a.event_id = $1
+                 ON v.username = a.username AND v.kind = a.kind
+         WHERE a.event_id = $1
         ),
         ranked AS (
           SELECT *,
-            ROW_NUMBER() OVER (
-              PARTITION BY kind
-              ORDER BY times ASC, COALESCE(last_at, 'epoch') ASC, created_at ASC
-            ) AS rnk
-          FROM appl
+                 ROW_NUMBER() OVER (
+                   PARTITION BY kind
+                   ORDER BY
+                     times ASC,
+                     COALESCE(last_at, 'epoch') ASC,
+                     created_at ASC
+                 ) AS rnk
+            FROM appl
         )
         SELECT * FROM ranked ORDER BY kind, rnk;
       `;
       const r = await query(sql, [eventId]);
+
       const driver = [], attendant = [];
       for (const row of r.rows) {
         const item = {
@@ -213,11 +242,13 @@ export default async function handler(req, res) {
           applied_at: row.created_at,
           rank: Number(row.rnk),
         };
-        (row.kind === "driver" ? driver : attendant).push(item);
+        if (row.kind === "driver") driver.push(item);
+        else attendant.push(item);
       }
       return res.status(200).json({ event_id: Number(eventId), driver, attendant });
     }
 
+    // ---- どれにも一致しない ----
     return res.status(404).json({ error: "Not Found" });
   } catch (err) {
     console.error("[/api/index] Error:", err);
