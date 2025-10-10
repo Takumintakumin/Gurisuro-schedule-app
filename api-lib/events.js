@@ -1,5 +1,5 @@
-// /api/events.js
-import { query } from "../api-lib/_db.js";
+// /api-lib/events.js
+import { query } from "./_db.js";
 
 /** UTC -> JST の YYYY-MM-DD 文字列に正規化 */
 function toJSTYmd(anyDateLike) {

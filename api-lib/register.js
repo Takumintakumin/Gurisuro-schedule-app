@@ -1,4 +1,4 @@
-// /api/register.js
+// /api-lib/register.js
 import { query } from "./_db.js";
 
 // 文字列でもオブジェクトでも安全に取り出す

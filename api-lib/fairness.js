@@ -1,5 +1,5 @@
-// /api/fairness.js
-import { query } from "../api-lib/_db.js";
+// /api-lib/fairness.js
+import { query } from "./_db.js";
 
 export default async function handler(req, res) {
   try {
