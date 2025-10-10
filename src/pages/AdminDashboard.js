@@ -208,34 +208,58 @@ export default function AdminDashboard() {
         </form>
 
         {/* 登録済みイベント一覧 */}
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">登録済みイベント一覧</h3>
-          {events.length === 0 ? (
-            <p className="text-gray-500 text-sm">まだ登録はありません。</p>
-          ) : (
-            <ul className="text-sm space-y-1">
-              {events.map((ev) => (
-                <li
-                  key={ev.id}
-                  className="flex justify-between items-center border p-2 rounded hover:bg-gray-50"
-                >
-                  <div
-                    className="flex-1 cursor-pointer"
-                    onClick={() => openApplicants(ev)}
-                  >
-                    📅 {ev.date}：{ev.label}（{ev.start_time}〜{ev.end_time}）
-                  </div>
-                  <button
-                    className="text-red-600 text-sm px-2 py-1 border border-red-300 rounded hover:bg-red-50"
-                    onClick={() => handleDelete(ev.id)}
-                  >
-                    🗑 削除
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+<div className="mt-6">
+  <h3 className="font-semibold mb-3 text-lg">📋 登録済みイベント一覧</h3>
+  {events.length === 0 ? (
+    <p className="text-gray-500 text-sm">まだ登録はありません。</p>
+  ) : (
+    <div className="space-y-3">
+      {events.map((ev) => (
+        <div
+          key={ev.id}
+          className="border border-gray-200 bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-150"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            {/* 左側：情報 */}
+            <div className="flex items-center gap-3">
+              {ev.icon && (
+                <img
+                  src={ev.icon}
+                  alt={ev.label}
+                  className="w-10 h-10 rounded-md object-contain border border-gray-200 bg-white"
+                />
+              )}
+              <div>
+                <div className="text-base font-semibold text-gray-800">
+                  {ev.label}
+                </div>
+                <div className="text-sm text-gray-600">
+                  📅 {ev.date}　🕒 {ev.start_time}〜{ev.end_time}
+                </div>
+              </div>
+            </div>
+
+            {/* 右側：操作ボタン */}
+            <div className="flex gap-2 mt-2 sm:mt-0">
+              <button
+                onClick={() => openApplicants(ev)}
+                className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-emerald-700 flex items-center gap-1"
+              >
+                👁 応募者を見る
+              </button>
+              <button
+                onClick={() => handleDelete(ev.id)}
+                className="bg-red-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-red-700 flex items-center gap-1"
+              >
+                🗑 削除
+              </button>
+            </div>
+          </div>
         </div>
+      ))}
+    </div>
+  )}
+</div>
 
         {/* 応募者モーダル */}
         {showApplicants && (
