@@ -13,7 +13,6 @@ const FIXED_EVENTS = [
   { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
 ];
 
-// API共通fetch
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
@@ -57,7 +56,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 募集登録
+  // イベント登録
   const handleSubmit = async (e) => {
     e.preventDefault();
     const body = {
@@ -78,6 +77,21 @@ export default function AdminDashboard() {
       fetchEvents();
     } catch (err) {
       alert("登録に失敗しました: " + err.message);
+    }
+  };
+
+  // イベント削除
+  const handleDelete = async (id) => {
+    if (!window.confirm("このイベントを削除しますか？")) return;
+    try {
+      const res = await apiFetch(`/api/events?id=${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(res.data?.error || `HTTP ${res.status}`);
+      alert("イベントを削除しました。");
+      fetchEvents();
+    } catch (err) {
+      alert("削除に失敗しました: " + err.message);
     }
   };
 
@@ -203,10 +217,20 @@ export default function AdminDashboard() {
               {events.map((ev) => (
                 <li
                   key={ev.id}
-                  className="cursor-pointer hover:bg-gray-100 p-2 rounded"
-                  onClick={() => openApplicants(ev)}
+                  className="flex justify-between items-center border p-2 rounded hover:bg-gray-50"
                 >
-                  📅 {ev.date}：{ev.label}（{ev.start_time}〜{ev.end_time}）
+                  <div
+                    className="flex-1 cursor-pointer"
+                    onClick={() => openApplicants(ev)}
+                  >
+                    📅 {ev.date}：{ev.label}（{ev.start_time}〜{ev.end_time}）
+                  </div>
+                  <button
+                    className="text-red-600 text-sm px-2 py-1 border border-red-300 rounded hover:bg-red-50"
+                    onClick={() => handleDelete(ev.id)}
+                  >
+                    🗑 削除
+                  </button>
                 </li>
               ))}
             </ul>
@@ -236,7 +260,7 @@ export default function AdminDashboard() {
               )}
               <div className="mt-4 text-right">
                 <button
-                  onClick={closeApplicants}
+                  onClick={() => setShowApplicants(false)}
                   className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
                 >
                   閉じる
