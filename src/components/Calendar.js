@@ -76,7 +76,7 @@ export default function Calendar({
     if (isToday(date)) base += " outline outline-1 outline-blue-400";
 
     return (
-      <div key={`day-${i}`} className={base} onClick={() => onDateSelect?.(date)}>
+      <div key={`day-${i}`} className={base} onClick={() => onDateSelect?.(new Date(date.getFullYear(), date.getMonth(), date.getDate()))}>
         {/* 日付ラベル */}
         <div className="flex items-start justify-between">
           <span className="text-[12px] sm:text-sm font-semibold">{i}</span>
