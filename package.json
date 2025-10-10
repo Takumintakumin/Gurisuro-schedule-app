@@ -2,9 +2,7 @@
   "name": "my-schedule-app",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": "22.x"
-  },
+  "engines": { "node": "22.x" },
   "dependencies": {
     "pg": "^8.12.0",
     "react": "^18.2.0",
