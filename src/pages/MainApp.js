@@ -1,8 +1,6 @@
 // src/pages/MainApp.js
-import React, { useEffect, useMemo, useState } from "react";
-import Calendar from "../components/Calendar.js";
-import { toLocalYMD } from "../lib/date.js";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import Calendar from "../components/Calendar.js";
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
@@ -13,6 +11,8 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data, text };
 }
 
+const toYMD = (d) => d.toISOString().split("T")[0];
+
 export default function MainApp() {
   const userName = localStorage.getItem("userName") || "";
   const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
@@ -22,26 +22,29 @@ export default function MainApp() {
   const [applying, setApplying] = useState(false);
   const [myApps, setMyApps] = useState([]); // 自分の応募
 
-  // イベント一覧 + 自分の応募一覧取得
-const refresh = useCallback(async () => {
-  const ev = await apiFetch("/api/events");
-  setEvents(Array.isArray(ev.data) ? ev.data : []);
+  // イベント一覧 + 自分の応募一覧取得（メモ化）
+  const refresh = useCallback(async () => {
+    const ev = await apiFetch("/api/events");
+    setEvents(Array.isArray(ev.data) ? ev.data : []);
 
-  if (userName) {
-    const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
-    setMyApps(Array.isArray(me.data) ? me.data : []);
-  }
-}, [userName]);
+    if (userName) {
+      const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+      setMyApps(Array.isArray(me.data) ? me.data : []);
+    }
+  }, [userName]);
+
+  useEffect(() => { refresh(); }, [refresh]);
 
   const listOfSelected = useMemo(() => {
-    const ymd = toLocalYMD(selectedDate);
+    const ymd = toYMD(selectedDate);
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
+  // 残枠表示用にイベント別の応募数をGET
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
-      const ymd = toLocalYMD(selectedDate);
+      const ymd = toYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
       for (const ev of todays) {
@@ -100,7 +103,7 @@ const refresh = useCallback(async () => {
         />
 
         <div className="mt-4">
-          <h2 className="font-semibold mb-2">{toLocalYMD(selectedDate)} の募集</h2>
+          <h2 className="font-semibold mb-2">{toYMD(selectedDate)} の募集</h2>
           {listOfSelected.length === 0 ? (
             <p className="text-sm text-gray-500">この日には募集がありません。</p>
           ) : (
@@ -141,7 +144,7 @@ const refresh = useCallback(async () => {
                           運転手で応募
                         </button>
                       )}
-                      {["添乗員","両方"].includes(userRolePref) && (
+                      {["添乘員","両方"].includes(userRolePref) && (
                         <button
                           className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
                           disabled={applying || hasApplied(ev.id,"attendant") || remainAtt===0}
