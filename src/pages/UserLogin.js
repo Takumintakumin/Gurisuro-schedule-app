@@ -27,7 +27,7 @@ export default function UserLogin() {
   const [logLoading, setLogLoading] = useState(false);
 
   // 登録用
-  const [showRegister, setShowRegister] = useState(true);
+  const [showRegister, setShowRegister] = useState(false);
   const [regName, setRegName] = useState("");
   const [regPw, setRegPw] = useState("");
   const [regPw2, setRegPw2] = useState("");
@@ -212,7 +212,11 @@ export default function UserLogin() {
         <div style={{ ...divider, marginTop: 16 }} />
         <button
           type="button"
-          onClick={() => setShowRegister((v) => !v)}
+          onClick={() => {
+            setShowRegister((v) => !v);
+            setLoginMsg("");
+            setRegMsg("");
+          }}
           style={{
             ...btn,
             background: "transparent",
