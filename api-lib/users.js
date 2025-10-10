@@ -1,5 +1,5 @@
 // /api-lib/users.js
-import { query } from "./_db.js";
+import { query } from "../api-lid/_db.js";
 
 export default async function handler(req, res) {
   try {
