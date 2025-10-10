@@ -4,16 +4,22 @@ import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
 
-// === 汎用fetch ===
-async function apiFetch(url, options = {}) {
+// === JSON/HTMLどちらでも耐える fetch ===
+async function apiFetchSafe(url, options = {}) {
   const res = await fetch(url, options);
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch {}
-  return { ok: res.ok, status: res.status, data, text };
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return { ok: res.ok, status: res.status, data };
+  }
+  // 非JSON（500のHTML等）
+  let text = "";
+  try { text = await res.text(); } catch {}
+  return { ok: res.ok, status: res.status, data: { error: text?.slice(0, 200) || "非JSONレスポンス" } };
 }
 
-// 固定イベント画像一覧
+// 固定イベント画像一覧（UIは変更しない）
 const FIXED_EVENTS = [
   { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
   { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
@@ -29,7 +35,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 募集フォーム
+  // 募集フォーム（UIそのまま）
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
   const [customLabel, setCustomLabel] = useState("");
   const [start, setStart] = useState("10:00");
@@ -43,7 +49,7 @@ export default function AdminDashboard() {
   const [fairError, setFairError] = useState("");
   const [fairData, setFairData] = useState({ event_id: null, driver: [], attendant: [] });
 
-  // 管理者認証
+  // 認可
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
@@ -58,7 +64,7 @@ export default function AdminDashboard() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const r = await apiFetch("/api/events");
+      const r = await apiFetchSafe("/api/events");
       setEvents(Array.isArray(r.data) ? r.data : []);
     } catch (e) {
       console.error(e);
@@ -70,11 +76,15 @@ export default function AdminDashboard() {
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
 
-  // イベント登録
+  // イベント登録（機能のみ強化、UI不変）
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const label = customLabel.trim() || selectedEvent.label;
+    const label = (customLabel || "").trim() || (selectedEvent?.label || "");
     if (!label) return alert("イベント名を入力または画像を選択してください。");
+
+    const nCapD = Number(capD);
+    const nCapA = Number(capA);
+
     try {
       const body = {
         date: ymd,
@@ -82,10 +92,10 @@ export default function AdminDashboard() {
         icon: selectedEvent?.icon || "",
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),
-        capacity_attendant: Number(capA),
+        capacity_driver: Number.isFinite(nCapD) ? nCapD : null,
+        capacity_attendant: Number.isFinite(nCapA) ? nCapA : null,
       };
-      const r = await apiFetch("/api/events", {
+      const r = await apiFetchSafe("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -99,11 +109,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // イベント削除
+  // イベント削除（URLクエリDELETE方式）
   const handleDelete = async (id) => {
     if (!window.confirm("削除しますか？")) return;
     try {
-      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const r = await apiFetchSafe(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
       await refresh();
     } catch (err) {
@@ -111,13 +121,13 @@ export default function AdminDashboard() {
     }
   };
 
-  // 公平スコア順モーダルを開く
+  // 公平スコア順モーダル（機能追加、UIは既存のまま）
   const openFairness = async (eventId) => {
     setFairOpen(true);
     setFairLoading(true);
     setFairError("");
     try {
-      const { ok, status, data } = await apiFetch(`/api/fairness?event_id=${encodeURIComponent(eventId)}`);
+      const { ok, status, data } = await apiFetchSafe(`/api/fairness?event_id=${encodeURIComponent(eventId)}`);
       if (!ok) throw new Error(data?.error || `HTTP ${status}`);
       setFairData({ event_id: eventId, driver: data.driver || [], attendant: data.attendant || [] });
     } catch (e) {
@@ -132,18 +142,13 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        {/* ヘッダー */}
+        {/* ヘッダー（UIそのまま） */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
           <div className="flex gap-3">
-            <button onClick={() => nav("/")} className="text-gray-600 underline">
-              一般ログインへ
-            </button>
+            <button onClick={() => nav("/")} className="text-gray-600 underline">一般ログインへ</button>
             <button
-              onClick={() => {
-                localStorage.clear();
-                nav("/");
-              }}
+              onClick={() => { localStorage.clear(); nav("/"); }}
               className="text-gray-600 underline"
             >
               ログアウト
@@ -151,7 +156,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* カレンダー */}
+        {/* カレンダー（UI変更なし） */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
@@ -163,24 +168,34 @@ export default function AdminDashboard() {
           events={events}
         />
 
-        {/* 募集登録フォーム */}
+        {/* 募集登録フォーム（UIそのまま、機能だけ強化） */}
         <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
           <h2 className="font-semibold mb-3">{ymd} の募集を作成</h2>
 
+          {/* 画像ボタン：再タップで解除（トグル） */}
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
-            {FIXED_EVENTS.map((ev) => (
-              <button
-                key={ev.key}
-                type="button"
-                onClick={() => setSelectedEvent(ev)}
-                className={`flex flex-col items-center border rounded p-2 ${
-                  selectedEvent?.key === ev.key ? "ring-2 ring-blue-500" : ""
-                }`}
-              >
-                <img src={ev.icon} alt={ev.label} className="w-10 h-10" />
-                <span className="text-xs">{ev.label}</span>
-              </button>
-            ))}
+            {FIXED_EVENTS.map((ev) => {
+              const active = selectedEvent?.key === ev.key;
+              return (
+                <button
+                  key={ev.key}
+                  type="button"
+                  onClick={() => setSelectedEvent(active ? null : ev)}
+                  className={`flex flex-col items-center border rounded p-2 ${
+                    active ? "ring-2 ring-blue-500" : ""
+                  }`}
+                  aria-pressed={active}
+                >
+                  <img
+                    src={ev.icon}
+                    alt={ev.label}
+                    className="w-10 h-10"
+                    onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                  />
+                  <span className="text-xs">{ev.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <input
@@ -203,6 +218,7 @@ export default function AdminDashboard() {
               onChange={(e) => setCapD(e.target.value)}
               className="border rounded p-2"
               placeholder="運転手枠"
+              inputMode="numeric"
             />
             <input
               type="number"
@@ -210,13 +226,14 @@ export default function AdminDashboard() {
               onChange={(e) => setCapA(e.target.value)}
               className="border rounded p-2"
               placeholder="添乗員枠"
+              inputMode="numeric"
             />
           </div>
 
           <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">登録する</button>
         </form>
 
-        {/* 登録済みイベント一覧 */}
+        {/* 登録済みイベント一覧（UIは同じ、操作は追加） */}
         <div className="mt-6">
           <h3 className="font-semibold mb-2">{ymd} の登録済みイベント</h3>
           {todays.length === 0 ? (
@@ -254,15 +271,18 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* === 応募状況モーダル === */}
+        {/* === 応募状況モーダル（UIほぼ同じ、外側クリックで閉じる） === */}
         {fairOpen && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+          <div
+            className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setFairOpen(false);
+            }}
+          >
             <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold">公平スコア順（イベントID: {fairData.event_id}）</h3>
-                <button onClick={() => setFairOpen(false)} className="text-gray-500">
-                  ✕
-                </button>
+                <button onClick={() => setFairOpen(false)} className="text-gray-500">✕</button>
               </div>
 
               {fairLoading ? (

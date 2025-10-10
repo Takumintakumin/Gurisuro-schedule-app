@@ -1,37 +1,48 @@
-// /api-lib/login.js
+// /api/api-lib/login.js
 import { query } from "./_db.js";
 
-function safeBody(req) {
-  if (!req?.body) return {};
-  if (typeof req.body === "string") {
-    try { return JSON.parse(req.body); } catch { return {}; }
-  }
-  return req.body;
-}
-
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-
   try {
-    const { username, password } = safeBody(req);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.status(204).end();
+    if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+
+    // Vercel で body が文字列/undefined の両方に耐える
+    let body = req.body;
+    if (typeof body === "string") {
+      try { body = JSON.parse(body || "{}"); } catch { body = {}; }
+    }
+    if (!body || (!body.username && !body.password)) {
+      // まれに Readable の場合があるので読み切る
+      try {
+        const buffers = [];
+        for await (const chunk of req) buffers.push(chunk);
+        const raw = Buffer.concat(buffers).toString("utf8");
+        if (raw && !body) body = JSON.parse(raw);
+      } catch {}
+    }
+
+    const username = (body?.username || "").trim();
+    const password = (body?.password || "").trim();
     if (!username || !password) {
       return res.status(400).json({ error: "username と password は必須です" });
     }
 
-    const r = await query("SELECT id, username, password, role FROM users WHERE username = $1", [username]);
-    if (!r.rows.length) return res.status(404).json({ error: "ユーザーが見つかりません" });
+    const r = await query(
+      "SELECT id, username, role FROM users WHERE username=$1 AND password=$2 LIMIT 1",
+      [username, password]
+    );
 
-    const user = r.rows[0];
-    if (user.password !== password) {
-      return res.status(401).json({ error: "パスワードが違います" });
+    if (r.rows.length === 0) {
+      return res.status(401).json({ error: "ユーザーが見つかりません" });
     }
 
-    return res.status(200).json({ ok: true, role: user.role, id: user.id, username: user.username });
+    const user = r.rows[0];
+    return res.status(200).json({ ok: true, role: user.role, username: user.username });
   } catch (err) {
-    console.error("[/api/login] error:", err);
-    return res.status(500).json({ error: "サーバーエラー" });
+    console.error("[/api/login] Error:", err);
+    return res.status(500).json({ error: "Server Error: " + err.message });
   }
 }
