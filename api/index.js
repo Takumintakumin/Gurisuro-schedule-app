@@ -24,27 +24,39 @@ async function parseJSONBody(req) {
   }
 }
 
-// ---- 実リクエストの “仮想パス” を決定（rewrite 経由でも、ヘッダ経由でも拾う）----
+// ---- “仮想パス” を決定（rewrite / 直叩き / 追加ヘッダ すべてに対応）----
+function normalizeSub(raw = "") {
+  // 先頭スラ削除
+  let s = String(raw).replace(/^\/+/, ""); // "/api/login" -> "api/login"
+  // 先頭に "api/" が残っていれば除去
+  if (s.startsWith("api/")) s = s.slice(4); // "api/login" -> "login"
+  // 末尾 ".js" は無視（例: "index.js" → "index"）
+  if (s.endsWith(".js")) s = s.slice(0, -3);
+  return s;
+}
 function resolveRoute(req) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const q = url.searchParams;
-  // vercel.json の rewrite で ?path=... を付与している想定
-  let sub = (q.get("path") || "").replace(/^\/+/, ""); // 例: "login"
+
+  // vercel.json の rewrite で ?path=/api/xxx を付与している前提
+  let sub = normalizeSub(q.get("path") || "");
+
   if (!sub) {
-    // リライトが効いてない場合の保険：ヘッダや元のパスから推測
+    // ヘッダから推測（環境により値が入る場合がある）
     const h =
       req.headers["x-forwarded-uri"] ||
       req.headers["x-invoke-path"] ||
       req.headers["x-vercel-path"] ||
       "";
-    if (typeof h === "string" && h.startsWith("/api/")) {
-      sub = h.slice(5); // "/api/login" -> "login"
-    } else {
-      const p = url.pathname; // 例: "/api/index" or "/api/login"
-      sub = p.startsWith("/api/") ? p.slice(5) : p.replace(/^\/+/, "");
-    }
+    if (h && typeof h === "string") sub = normalizeSub(h);
   }
-  return { url, q, sub }; // sub 例: "login", "events", "applications", "fairness", "health"
+
+  if (!sub) {
+    // 最後の手段：実際の pathname から推測
+    sub = normalizeSub(url.pathname); // "/api/login" -> "login" / "/api/index.js" -> "index"
+  }
+
+  return { url, q, sub };
 }
 
 export default async function handler(req, res) {
@@ -52,7 +64,7 @@ export default async function handler(req, res) {
     withCORS(res);
     if (req.method === "OPTIONS") return res.status(204).end();
 
-    const { url, q, sub } = resolveRoute(req);
+    const { q, sub } = resolveRoute(req);
     const body = await parseJSONBody(req);
 
     // ---- /api/health ----
@@ -81,14 +93,14 @@ export default async function handler(req, res) {
     // ---- /api/register ----
     if (sub === "register") {
       if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-      const { username, password, role = "user" } = body || {};
+      const { username, password, role = "user", familiar = null } = body || {};
       if (!username || !password) {
         return res.status(400).json({ error: "username と password が必要です" });
       }
       try {
         await query(
-          "INSERT INTO users (username, password, role) VALUES ($1,$2,$3)",
-          [username, password, role]
+          "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
+          [username, password, role, familiar]
         );
         return res.status(201).json({ ok: true });
       } catch (e) {
