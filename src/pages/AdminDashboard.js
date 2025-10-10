@@ -1,42 +1,62 @@
 import React, { useEffect, useState } from "react";
+import Calendar from "../components/Calendar.js";
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
   let data = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {}
+  try { data = text ? JSON.parse(text) : {}; } catch {}
   return { ok: res.ok, status: res.status, data, text };
 }
 
 export default function AdminDashboard() {
   const [events, setEvents] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showModal, setShowModal] = useState(false);
   const [newEvent, setNewEvent] = useState({
     date: "",
     label: "",
-    icon: "",
     start_time: "",
     end_time: "",
     capacity_driver: 1,
     capacity_attendant: 1,
   });
-  const [openEventId, setOpenEventId] = useState(null);
-  const [applicants, setApplicants] = useState([]);
 
-  // イベント一覧を取得
   const loadEvents = async () => {
     const { data } = await apiFetch("/api/events");
     setEvents(Array.isArray(data) ? data : []);
   };
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  useEffect(() => { loadEvents(); }, []);
 
-  // イベント削除
+  // === 募集登録 ===
+  const handleAddEvent = async (e) => {
+    e.preventDefault();
+    try {
+      const { ok, status } = await apiFetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newEvent),
+      });
+      if (!ok) throw new Error(status);
+      alert("募集を追加しました");
+      setShowModal(false);
+      loadEvents();
+    } catch (err) {
+      alert("登録に失敗しました: " + err.message);
+    }
+  };
+
+  // === カレンダー日付クリック ===
+  const handleDateSelect = (date) => {
+    const ymd = date.toISOString().split("T")[0];
+    setNewEvent({ ...newEvent, date: ymd });
+    setShowModal(true);
+  };
+
+  // === 募集削除 ===
   const handleDelete = async (id) => {
-    if (!window.confirm("このイベントを削除しますか？")) return;
+    if (!window.confirm("この募集を削除しますか？")) return;
     try {
       const res = await fetch(`/api/events?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -47,199 +67,135 @@ export default function AdminDashboard() {
     }
   };
 
-  // 応募者一覧を読み込み
-  const loadApplicants = async (eventId) => {
-    if (openEventId === eventId) {
-      setOpenEventId(null);
-      setApplicants([]);
-      return;
-    }
-    try {
-      const res = await apiFetch(`/api/applications?event_id=${eventId}`);
-      setApplicants(Array.isArray(res.data) ? res.data : []);
-      setOpenEventId(eventId);
-    } catch (e) {
-      alert("応募者の取得に失敗しました");
-    }
-  };
-
-  // イベント登録
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const { ok, status } = await apiFetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newEvent),
-      });
-      if (!ok) throw new Error(status);
-      alert("イベントを登録しました");
-      setNewEvent({
-        date: "",
-        label: "",
-        icon: "",
-        start_time: "",
-        end_time: "",
-        capacity_driver: 1,
-        capacity_attendant: 1,
-      });
-      loadEvents();
-    } catch (err) {
-      alert("登録に失敗しました: " + err.message);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow p-6">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         <h1 className="text-xl font-bold mb-4">管理者ダッシュボード</h1>
 
-        {/* イベント登録フォーム */}
-        <form onSubmit={handleSubmit} className="grid gap-3 mb-8">
-          <div>
-            <label className="block text-sm font-medium mb-1">日付</label>
-            <input
-              type="date"
-              value={newEvent.date}
-              onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-              className="border rounded px-2 py-1 w-full"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">イベント名</label>
-            <input
-              value={newEvent.label}
-              onChange={(e) => setNewEvent({ ...newEvent, label: e.target.value })}
-              className="border rounded px-2 py-1 w-full"
-              placeholder="例：グランドゴルフ"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">開始時刻</label>
-              <input
-                type="time"
-                value={newEvent.start_time}
-                onChange={(e) => setNewEvent({ ...newEvent, start_time: e.target.value })}
-                className="border rounded px-2 py-1 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">終了時刻</label>
-              <input
-                type="time"
-                value={newEvent.end_time}
-                onChange={(e) => setNewEvent({ ...newEvent, end_time: e.target.value })}
-                className="border rounded px-2 py-1 w-full"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">運転手定員</label>
-              <input
-                type="number"
-                value={newEvent.capacity_driver}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, capacity_driver: parseInt(e.target.value) })
-                }
-                className="border rounded px-2 py-1 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">添乗員定員</label>
-              <input
-                type="number"
-                value={newEvent.capacity_attendant}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, capacity_attendant: parseInt(e.target.value) })
-                }
-                className="border rounded px-2 py-1 w-full"
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            イベントを登録
-          </button>
-        </form>
+        {/* === カレンダー表示 === */}
+        <Calendar
+          currentMonth={selectedDate.getMonth()}
+          currentYear={selectedDate.getFullYear()}
+          selectedDate={selectedDate}
+          onMonthChange={(d) => {
+            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1);
+            setSelectedDate(nd);
+          }}
+          onDateSelect={handleDateSelect}
+          events={events}
+        />
 
-        {/* イベント一覧 */}
-        <h2 className="text-lg font-semibold mb-3">登録済みイベント一覧</h2>
+        {/* === 登録済み一覧 === */}
+        <h2 className="text-lg font-semibold mt-6 mb-3">登録済み募集一覧</h2>
         {events.length === 0 ? (
-          <p className="text-gray-500 text-sm">イベントはまだありません。</p>
+          <p className="text-gray-500 text-sm">募集はまだありません。</p>
         ) : (
           <ul className="space-y-2 text-sm">
-            {events.map((ev) => {
-              const isOpen = openEventId === ev.id;
-              const drivers = applicants.filter((a) => a.kind === "driver");
-              const attendants = applicants.filter((a) => a.kind === "attendant");
-
-              return (
-                <li key={ev.id} className="border rounded p-3">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-medium">{ev.date}</span>：{ev.label}（
-                      {ev.start_time}〜{ev.end_time}）
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => loadApplicants(ev.id)}
-                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
-                      >
-                        応募状況を見る
-                      </button>
-                      <button
-                        onClick={() => handleDelete(ev.id)}
-                        className="px-2 py-1 bg-red-100 hover:bg-red-200 rounded text-xs"
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </div>
-
-                  {isOpen && (
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="border rounded p-2">
-                        <div className="font-semibold text-blue-700">
-                          運転手（{drivers.length}）
-                        </div>
-                        {drivers.length === 0 ? (
-                          <div className="text-gray-500 text-xs mt-1">応募なし</div>
-                        ) : (
-                          <ul className="mt-1 space-y-1 text-sm">
-                            {drivers.map((a) => (
-                              <li key={a.id}>・{a.username}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div className="border rounded p-2">
-                        <div className="font-semibold text-emerald-700">
-                          添乗員（{attendants.length}）
-                        </div>
-                        {attendants.length === 0 ? (
-                          <div className="text-gray-500 text-xs mt-1">応募なし</div>
-                        ) : (
-                          <ul className="mt-1 space-y-1 text-sm">
-                            {attendants.map((a) => (
-                              <li key={a.id}>・{a.username}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
+            {events.map((ev) => (
+              <li key={ev.id} className="border rounded p-3 flex justify-between items-center">
+                <div>
+                  <strong>{ev.date}</strong>：{ev.label}（{ev.start_time}〜{ev.end_time}）
+                </div>
+                <button
+                  onClick={() => handleDelete(ev.id)}
+                  className="px-2 py-1 bg-red-100 hover:bg-red-200 rounded text-xs"
+                >
+                  削除
+                </button>
+              </li>
+            ))}
           </ul>
         )}
       </div>
+
+      {/* === 募集追加モーダル === */}
+      {showModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+          <div className="bg-white rounded-lg p-5 w-[90%] max-w-md shadow-lg">
+            <h3 className="text-lg font-bold mb-4">新規募集 ({newEvent.date})</h3>
+            <form onSubmit={handleAddEvent} className="grid gap-3">
+              <label>
+                <div className="text-sm mb-1">タイトル</div>
+                <input
+                  value={newEvent.label}
+                  onChange={(e) => setNewEvent({ ...newEvent, label: e.target.value })}
+                  className="border rounded px-2 py-1 w-full"
+                  placeholder="例：グランドゴルフ"
+                  required
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label>
+                  <div className="text-sm mb-1">開始時刻</div>
+                  <input
+                    type="time"
+                    value={newEvent.start_time}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, start_time: e.target.value })
+                    }
+                    className="border rounded px-2 py-1 w-full"
+                  />
+                </label>
+                <label>
+                  <div className="text-sm mb-1">終了時刻</div>
+                  <input
+                    type="time"
+                    value={newEvent.end_time}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, end_time: e.target.value })
+                    }
+                    className="border rounded px-2 py-1 w-full"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label>
+                  <div className="text-sm mb-1">運転手定員</div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newEvent.capacity_driver}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, capacity_driver: parseInt(e.target.value) })
+                    }
+                    className="border rounded px-2 py-1 w-full"
+                  />
+                </label>
+                <label>
+                  <div className="text-sm mb-1">添乗員定員</div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newEvent.capacity_attendant}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, capacity_attendant: parseInt(e.target.value) })
+                    }
+                    className="border rounded px-2 py-1 w-full"
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                >
+                  登録
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
