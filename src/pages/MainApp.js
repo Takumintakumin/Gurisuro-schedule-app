@@ -1,5 +1,6 @@
 // src/pages/MainApp.js
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 
 // JSON/text どちらも耐える fetch
@@ -11,7 +12,7 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data, text };
 }
 
-// ✅ ローカルタイムで YYYY-MM-DD を作る（UTC禁止）
+// ✅ ローカルタイムで YYYY-MM-DD を作る
 const toLocalYMD = (d) => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -20,18 +21,27 @@ const toLocalYMD = (d) => {
 };
 
 export default function MainApp() {
+  const nav = useNavigate();
   const userName = localStorage.getItem("userName") || "";
   const userRolePref = localStorage.getItem("userRolePref") || "両方";
 
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(
-    // 念のためローカル0時で初期化
     new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
   );
   const [applying, setApplying] = useState(false);
-  const [myApps, setMyApps] = useState([]); // 自分の応募
+  const [myApps, setMyApps] = useState([]);
 
-  // イベント一覧 + 自分の応募一覧取得
+  // 🔹 ログアウト処理
+  const handleLogout = () => {
+    if (window.confirm("ログアウトしますか？")) {
+      localStorage.removeItem("userName");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userRolePref");
+      nav("/"); // ログインページへ戻る
+    }
+  };
+
   const refresh = async () => {
     const ev = await apiFetch("/api/events");
     setEvents(Array.isArray(ev.data) ? ev.data : []);
@@ -49,7 +59,6 @@ export default function MainApp() {
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
-  // 残枠表示用にイベント別の応募数をGET
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
@@ -96,22 +105,29 @@ export default function MainApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        <h1 className="text-xl font-bold mb-4">グリスロ予定調整アプリ</h1>
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6 relative">
+        {/* 🔹 ヘッダー部にログアウトボタン */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold">グリスロ予定調整アプリ</h1>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">こんにちは、{userName}さん</span>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+            >
+              ログアウト
+            </button>
+          </div>
+        </div>
 
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
           selectedDate={selectedDate}
           onMonthChange={(delta) => {
-            const nd = new Date(
-              selectedDate.getFullYear(),
-              selectedDate.getMonth() + delta,
-              1
-            );
+            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
             setSelectedDate(nd);
           }}
-          // ✅ クリック日のローカル0時に正規化して保存
           onDateSelect={(d) =>
             setSelectedDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()))
           }
@@ -155,7 +171,6 @@ export default function MainApp() {
                           className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
                           disabled={applying || hasApplied(ev.id,"driver") || remainDriver===0}
                           onClick={() => apply(ev, "driver")}
-                          title={hasApplied(ev.id,"driver") ? "既に応募済み" : ""}
                         >
                           運転手で応募
                         </button>
@@ -165,7 +180,6 @@ export default function MainApp() {
                           className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
                           disabled={applying || hasApplied(ev.id,"attendant") || remainAtt===0}
                           onClick={() => apply(ev, "attendant")}
-                          title={hasApplied(ev.id,"attendant") ? "既に応募済み" : ""}
                         >
                           添乗員で応募
                         </button>
