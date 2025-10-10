@@ -27,12 +27,16 @@ export default function UserLogin() {
   const [logLoading, setLogLoading] = useState(false);
 
   // 登録用
-  const [showRegister, setShowRegister] = useState(false);
+  const [showRegister, setShowRegister] = useState(true);
   const [regName, setRegName] = useState("");
   const [regPw, setRegPw] = useState("");
   const [regPw2, setRegPw2] = useState("");
   const [regMsg, setRegMsg] = useState("");
   const [regLoading, setRegLoading] = useState(false);
+
+  // ★ 幕張ベイタウンの熟知度
+  // 'familiar'（詳しい） or 'unfamiliar'（詳しくない）
+  const [familiarity, setFamiliarity] = useState("unfamiliar");
 
   // ---- ログイン ----
   const handleLogin = async (e) => {
@@ -98,7 +102,12 @@ export default function UserLogin() {
       const { ok, data, status } = await apiFetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password: regPw, role: "user" }),
+        body: JSON.stringify({
+          username,
+          password: regPw,
+          role: "user",
+          familiarity, // ← 追加送信
+        }),
       });
 
       if (!ok) {
@@ -139,7 +148,8 @@ export default function UserLogin() {
     borderRadius: 12,
     padding: 24,
     boxShadow: "0 6px 24px rgba(0,0,0,.06)",
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif",
+    fontFamily:
+      "system-ui, -apple-system, Segoe UI, Roboto, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif",
   };
   const input = {
     width: "100%",
@@ -147,6 +157,7 @@ export default function UserLogin() {
     borderRadius: 10,
     border: "1px solid #e5e7eb",
     outline: "none",
+    background: "#fff",
   };
   const btn = {
     width: "100%",
@@ -212,11 +223,7 @@ export default function UserLogin() {
         <div style={{ ...divider, marginTop: 16 }} />
         <button
           type="button"
-          onClick={() => {
-            setShowRegister((v) => !v);
-            setLoginMsg("");
-            setRegMsg("");
-          }}
+          onClick={() => setShowRegister((v) => !v)}
           style={{
             ...btn,
             background: "transparent",
@@ -265,6 +272,22 @@ export default function UserLogin() {
                 placeholder="********"
                 autoComplete="new-password"
               />
+            </label>
+
+            {/* ★ 幕張ベイタウンに詳しい/詳しくない */}
+            <label>
+              <div style={{ marginBottom: 6, fontSize: 14 }}>幕張ベイタウンの土地勘</div>
+              <select
+                value={familiarity}
+                onChange={(e) => setFamiliarity(e.target.value)}
+                style={{ ...input, background: "#fff" }}
+              >
+                <option value="familiar">詳しい</option>
+                <option value="unfamiliar">詳しくない</option>
+              </select>
+              <div style={{ ...small, marginTop: 6 }}>
+                ※将来のペア組み合わせ（例：詳しくない人同士を避ける 等）で活用します
+              </div>
             </label>
 
             <button type="submit" style={{ ...btn, background: "#2f855a" }} disabled={regLoading}>

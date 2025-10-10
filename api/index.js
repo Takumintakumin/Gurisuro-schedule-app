@@ -1,6 +1,6 @@
 // /api/index.js  ← これ1つに集約
 // 重要: api-lib/_db.js からインポートしてください
-import { query, healthcheck } from "../api-lib/_db.js";
+import { query, healthcheck } from "./api-lib/_db.js";
 
 // 共通ヘッダ（CORS）
 function withCORS(res) {
@@ -56,16 +56,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "OK", role: u.role, username: u.username });
     }
 
+    // /api/index.js （抜粋：register と users の部分をこの内容に）
     // ---- /api/register ----
     if (path.endsWith("/register") && req.method === "POST") {
-      const { username, password, role = "user" } = body;
+      const { username, password, role = "user", familiarity = "unknown" } = body;
       if (!username || !password) {
         return res.status(400).json({ error: "username と password が必要です" });
       }
+      if (!["familiar","unfamiliar","unknown"].includes(familiarity)) {
+        return res.status(400).json({ error: "familiarity の値が不正です" });
+      }
       try {
         await query(
-          "INSERT INTO users (username, password, role) VALUES ($1,$2,$3)",
-          [username, password, role]
+          "INSERT INTO users (username, password, role, familiarity) VALUES ($1,$2,$3,$4)",
+          [username, password, role, familiarity]
         );
         return res.status(201).json({ ok: true });
       } catch (e) {
@@ -79,17 +83,19 @@ export default async function handler(req, res) {
     // ---- /api/users（管理者用）----
     if (path.endsWith("/users")) {
       if (req.method === "GET") {
-        const r = await query("SELECT id, username, role FROM users ORDER BY id ASC");
+        const r = await query("SELECT id, username, role, COALESCE(familiarity,'unknown') AS familiarity FROM users ORDER BY id ASC");
         return res.status(200).json(r.rows);
       }
       if (req.method === "POST") {
-        const { username, password, role = "user" } = body;
+        const { username, password, role = "user", familiarity = "unknown" } = body;
         if (!username || !password) return res.status(400).json({ error: "必須項目不足" });
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username,
-          password,
-          role,
-        ]);
+        if (!["familiar","unfamiliar","unknown"].includes(familiarity)) {
+          return res.status(400).json({ error: "familiarity の値が不正です" });
+        }
+        await query(
+          "INSERT INTO users (username, password, role, familiarity) VALUES ($1,$2,$3,$4)",
+          [username, password, role, familiarity]
+        );
         return res.status(201).json({ ok: true });
       }
       if (req.method === "DELETE") {
