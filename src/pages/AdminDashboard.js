@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
 
-// 500エラー時のHTMLにも耐える軽量fetch
+// === 汎用fetch ===
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
@@ -13,33 +13,37 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data, text };
 }
 
-// 固定イベント（画像は public/icons 配下）
+// 固定イベント画像一覧
 const FIXED_EVENTS = [
   { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
-  { key: "senior",    label: "シニア体操",     icon: "/icons/senior.png" },
-  { key: "eat",       label: "食べようの会",   icon: "/icons/eat.png" },
-  { key: "mamatomo",  label: "ママ友の会",     icon: "/icons/mamatomo.png" },
-  { key: "cafe",      label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
-  { key: "chorus",    label: "コーラス",       icon: "/icons/chorus.png" },
+  { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
+  { key: "eat", label: "食べようの会", icon: "/icons/eat.png" },
+  { key: "mamatomo", label: "ママ友の会", icon: "/icons/mamatomo.png" },
+  { key: "cafe", label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
+  { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
 ];
 
 export default function AdminDashboard() {
   const nav = useNavigate();
-
-  // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [events, setEvents] = useState([]); // {id,date,label,icon,start_time,end_time,capacity_*}
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 募集作成フォーム
-  const [selectedEvent, setSelectedEvent] = useState(null); // ← 解除可能にするため null 初期化
-  const [customLabel, setCustomLabel] = useState("");       // 自由記入（優先）
+  // 募集フォーム
+  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
+  const [customLabel, setCustomLabel] = useState("");
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
   const [capD, setCapD] = useState(1);
   const [capA, setCapA] = useState(1);
 
-  // 認可 & 初期ロード
+  // 応募状況モーダル
+  const [fairOpen, setFairOpen] = useState(false);
+  const [fairLoading, setFairLoading] = useState(false);
+  const [fairError, setFairError] = useState("");
+  const [fairData, setFairData] = useState({ event_id: null, driver: [], attendant: [] });
+
+  // 管理者認証
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
@@ -50,78 +54,56 @@ export default function AdminDashboard() {
     refresh();
   }, [nav]);
 
-  // 一覧取得
+  // イベント取得
   const refresh = async () => {
     setLoading(true);
     try {
       const r = await apiFetch("/api/events");
       setEvents(Array.isArray(r.data) ? r.data : []);
     } catch (e) {
-      console.error("fetch events error:", e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  // 選択日（YYYY-MM-DD）
   const ymd = toLocalYMD(selectedDate);
+  const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
 
-  // 当日の登録済みイベント
-  const todays = useMemo(
-    () => events.filter((e) => e.date === ymd),
-    [events, ymd]
-  );
-
-  // 募集登録：画像は任意／自由記入を優先（両方空ならエラー）
+  // イベント登録
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const label = (customLabel || "").trim() || (selectedEvent?.label || "").trim();
-    if (!label) {
-      alert("イベント名を入力するか、画像からイベント種類を選択してください。");
-      return;
-    }
-    if (!start || !end) {
-      alert("開始/終了時間を入力してください。");
-      return;
-    }
-
+    const label = customLabel.trim() || selectedEvent.label;
+    if (!label) return alert("イベント名を入力または画像を選択してください。");
     try {
       const body = {
         date: ymd,
         label,
-        icon: selectedEvent?.icon || "", // 画像未選択でもOK
+        icon: selectedEvent?.icon || "",
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),       // ← 数値化
-        capacity_attendant: Number(capA),    // ← 数値化
+        capacity_driver: Number(capD),
+        capacity_attendant: Number(capA),
       };
-
       const r = await apiFetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-
-      alert("イベントを登録しました");
+      alert("登録しました");
       setCustomLabel("");
-      setSelectedEvent(null); // 画像選択もリセット
       await refresh();
     } catch (err) {
-      console.error("create event error:", err);
       alert(`登録に失敗しました: ${err.message}`);
     }
   };
 
   // イベント削除
   const handleDelete = async (id) => {
-    if (!window.confirm("このイベントを削除しますか？")) return;
+    if (!window.confirm("削除しますか？")) return;
     try {
-      // Vercel環境に合わせ、idクエリでDELETE
-      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
       await refresh();
     } catch (err) {
@@ -129,7 +111,23 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) return <div className="p-6">読み込み中…</div>;
+  // 公平スコア順モーダルを開く
+  const openFairness = async (eventId) => {
+    setFairOpen(true);
+    setFairLoading(true);
+    setFairError("");
+    try {
+      const { ok, status, data } = await apiFetch(`/api/fairness?event_id=${encodeURIComponent(eventId)}`);
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      setFairData({ event_id: eventId, driver: data.driver || [], attendant: data.attendant || [] });
+    } catch (e) {
+      setFairError(e.message || "取得失敗");
+    } finally {
+      setFairLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-6">読み込み中...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
@@ -138,11 +136,7 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
           <div className="flex gap-3">
-            <button
-              onClick={() => nav("/")}
-              className="text-gray-600 underline"
-              title="一般ログインへ"
-            >
+            <button onClick={() => nav("/")} className="text-gray-600 underline">
               一般ログインへ
             </button>
             <button
@@ -157,125 +151,72 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* カレンダー（UIは変更しない） */}
+        {/* カレンダー */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
           selectedDate={selectedDate}
-          onMonthChange={(delta) => {
-            const nd = new Date(
-              selectedDate.getFullYear(),
-              selectedDate.getMonth() + delta,
-              1
-            );
-            setSelectedDate(nd);
-          }}
-          onDateSelect={(d) => setSelectedDate(d)}
+          onMonthChange={(d) =>
+            setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1))
+          }
+          onDateSelect={setSelectedDate}
           events={events}
         />
 
-        {/* 募集作成フォーム（画像は任意＋自由記入欄） */}
+        {/* 募集登録フォーム */}
         <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
           <h2 className="font-semibold mb-3">{ymd} の募集を作成</h2>
 
-          {/* 画像選択（再タップで解除可能） */}
-          <div className="mb-3">
-            <div className="text-sm mb-2">イベント種類（画像から選択・任意）</div>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-              {FIXED_EVENTS.map((ev) => {
-                const active = selectedEvent?.key === ev.key;
-                return (
-                  <button
-                    key={ev.key}
-                    type="button"
-                    onClick={() => setSelectedEvent(active ? null : ev)} // ← 解除対応
-                    className={`flex flex-col items-center gap-1 border rounded-lg p-3 bg-white hover:bg-gray-50 active:scale-[0.99] ${
-                      active ? "ring-2 ring-blue-500" : ""
-                    }`}
-                    aria-pressed={active}
-                  >
-                    <img
-                      src={ev.icon}
-                      alt={ev.label}
-                      className="w-12 h-12 object-contain"
-                      onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-                    />
-                    <span className="text-[12px] text-gray-700">{ev.label}</span>
-                    {active && <span className="text-xs text-blue-600">選択中（再タップで解除）</span>}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+            {FIXED_EVENTS.map((ev) => (
+              <button
+                key={ev.key}
+                type="button"
+                onClick={() => setSelectedEvent(ev)}
+                className={`flex flex-col items-center border rounded p-2 ${
+                  selectedEvent?.key === ev.key ? "ring-2 ring-blue-500" : ""
+                }`}
+              >
+                <img src={ev.icon} alt={ev.label} className="w-10 h-10" />
+                <span className="text-xs">{ev.label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* 自由記入（こちらが優先） */}
-          <div className="mb-3">
-            <div className="text-sm mb-1">自由記入（イベント名・メモ等・任意）</div>
-            <input
-              type="text"
-              placeholder="例：地域清掃ボランティア／買い物サポート など"
-              value={customLabel}
-              onChange={(e) => setCustomLabel(e.target.value)}
-              className="w-full border rounded p-2"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              ※自由記入がある場合は、画像で選んだ種類よりこちらが優先されます
-            </p>
-          </div>
+          <input
+            type="text"
+            placeholder="自由記入（任意）"
+            value={customLabel}
+            onChange={(e) => setCustomLabel(e.target.value)}
+            className="w-full border rounded p-2 mb-3"
+          />
 
-          {/* 時間・枠数 */}
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <label className="text-sm">
-              開始
-              <input
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-            <label className="text-sm">
-              終了
-              <input
-                type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
+            <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="border rounded p-2" />
+            <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="border rounded p-2" />
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <label className="text-sm">
-              運転手の枠
-              <input
-                type="number"
-                min={0}
-                value={capD}
-                onChange={(e) => setCapD(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-                inputMode="numeric"
-              />
-            </label>
-            <label className="text-sm">
-              添乗員の枠
-              <input
-                type="number"
-                min={0}
-                value={capA}
-                onChange={(e) => setCapA(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-                inputMode="numeric"
-              />
-            </label>
+            <input
+              type="number"
+              value={capD}
+              onChange={(e) => setCapD(e.target.value)}
+              className="border rounded p-2"
+              placeholder="運転手枠"
+            />
+            <input
+              type="number"
+              value={capA}
+              onChange={(e) => setCapA(e.target.value)}
+              className="border rounded p-2"
+              placeholder="添乗員枠"
+            />
           </div>
 
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            登録する
-          </button>
+          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">登録する</button>
         </form>
 
-        {/* 当日の登録済みイベント一覧（削除可） */}
+        {/* 登録済みイベント一覧 */}
         <div className="mt-6">
           <h3 className="font-semibold mb-2">{ymd} の登録済みイベント</h3>
           {todays.length === 0 ? (
@@ -283,27 +224,25 @@ export default function AdminDashboard() {
           ) : (
             <ul className="space-y-2">
               {todays.map((ev) => (
-                <li
-                  key={ev.id}
-                  className="border rounded p-3 flex items-center justify-between bg-white"
-                >
+                <li key={ev.id} className="border rounded p-3 flex items-center justify-between bg-white">
                   <div className="flex items-center gap-3">
-                    {ev.icon ? <img src={ev.icon} alt="" className="w-6 h-6" /> : null}
+                    {ev.icon && <img src={ev.icon} alt="" className="w-6 h-6" />}
                     <div>
                       <div className="font-medium">{ev.label}</div>
                       <div className="text-xs text-gray-500">
                         {ev.start_time}〜{ev.end_time}
                       </div>
-                      {(ev.capacity_driver != null || ev.capacity_attendant != null) && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          運転手枠: {ev.capacity_driver ?? "-"}　添乗員枠: {ev.capacity_attendant ?? "-"}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
-                      className="px-3 py-1 rounded bg-red-600 text-white text-sm"
+                      className="px-3 py-1 bg-indigo-600 text-white text-sm rounded"
+                      onClick={() => openFairness(ev.id)}
+                    >
+                      応募状況
+                    </button>
+                    <button
+                      className="px-3 py-1 bg-red-600 text-white text-sm rounded"
                       onClick={() => handleDelete(ev.id)}
                     >
                       削除
@@ -314,6 +253,70 @@ export default function AdminDashboard() {
             </ul>
           )}
         </div>
+
+        {/* === 応募状況モーダル === */}
+        {fairOpen && (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold">公平スコア順（イベントID: {fairData.event_id}）</h3>
+                <button onClick={() => setFairOpen(false)} className="text-gray-500">
+                  ✕
+                </button>
+              </div>
+
+              {fairLoading ? (
+                <p className="text-sm text-gray-500">読み込み中...</p>
+              ) : fairError ? (
+                <p className="text-sm text-red-600">エラー: {fairError}</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-semibold mb-1">運転手</h4>
+                    {fairData.driver.length === 0 ? (
+                      <p className="text-xs text-gray-500">応募なし</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {fairData.driver.map((u) => (
+                          <li key={`d-${u.username}`} className="border rounded p-2 text-sm">
+                            <div className="flex justify-between">
+                              <span>#{u.rank} {u.username}</span>
+                              <span className="text-xs text-gray-500">{u.times}回</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold mb-1">添乗員</h4>
+                    {fairData.attendant.length === 0 ? (
+                      <p className="text-xs text-gray-500">応募なし</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {fairData.attendant.map((u) => (
+                          <li key={`a-${u.username}`} className="border rounded p-2 text-sm">
+                            <div className="flex justify-between">
+                              <span>#{u.rank} {u.username}</span>
+                              <span className="text-xs text-gray-500">{u.times}回</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
