@@ -1,9 +1,9 @@
 // src/pages/AdminDashboard.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
-import { toLocalYMD } from "../lib/date.js";
 
+// 固定イベント（作成フォームで使用）
 const FIXED_EVENTS = [
   { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
   { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
@@ -13,6 +13,16 @@ const FIXED_EVENTS = [
   { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
 ];
 
+// ローカル日付の YYYY-MM-DD
+const toLocalYMD = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+// JSON/テキストどちらでも耐えるfetch
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
@@ -28,45 +38,78 @@ export default function AdminDashboard() {
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
+  const [capD, setCapD] = useState(1);
+  const [capA, setCapA] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  // 応募者モーダル
-  const [showApplicants, setShowApplicants] = useState(false);
-  const [applicants, setApplicants] = useState([]);
-  const [modalEvent, setModalEvent] = useState(null);
+  // 応募者数（event_id => 合計人数）
+  const [appCounts, setAppCounts] = useState({}); // { [id]: number }
 
-  // イベント一覧取得
-  const fetchEvents = async () => {
+  // ===== 権限チェック & イベント取得 =====
+  useEffect(() => {
+    const role = localStorage.getItem("userRole");
+    if (role !== "admin") {
+      alert("管理者のみアクセス可能です。");
+      nav("/");
+      return;
+    }
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refresh = async () => {
     setLoading(true);
     try {
       const r = await apiFetch("/api/events");
-      setEvents(Array.isArray(r.data) ? r.data : []);
+      const arr = Array.isArray(r.data) ? r.data : [];
+      setEvents(arr);
     } finally {
       setLoading(false);
     }
   };
 
-  // 応募者取得
-  const fetchApplicants = async (eventId) => {
-    const r = await apiFetch(`/api/applications?event_id=${eventId}`);
-    if (Array.isArray(r.data)) {
-      setApplicants(r.data);
-    } else {
-      setApplicants([]);
-    }
-  };
+  // ===== 今日以降のみ抽出（YYYY-MM-DD の文字列比較OK）=====
+  const todayYMD = toLocalYMD(new Date());
+  const upcoming = useMemo(() => {
+    return (events || [])
+      .filter((e) => e.date >= todayYMD)
+      .sort((a, b) => (a.date === b.date ? (a.start_time || "").localeCompare(b.start_time || "") : a.date.localeCompare(b.date)));
+  }, [events, todayYMD]);
 
-  // イベント登録
+  // ===== 表示中（今日以降）のイベントの応募者数をまとめて取得 =====
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // N本叩く（APIに集計がない前提）。重い場合はサーバ側に /api/applications/counts を作るのがベター。
+      const pairs = await Promise.all(
+        upcoming.map(async (ev) => {
+          const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
+          const arr = Array.isArray(r.data) ? r.data : [];
+          return [ev.id, arr.length];
+        })
+      );
+      if (!cancelled) {
+        const map = {};
+        for (const [id, count] of pairs) map[id] = count;
+        setAppCounts(map);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [upcoming]);
+
+  // ===== イベント登録 =====
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const body = {
-      date: toLocalYMD(selectedDate),
-      label: selectedEvent.label,
-      icon: selectedEvent.icon,
-      start_time: start,
-      end_time: end,
-    };
     try {
+      const body = {
+        date: toLocalYMD(selectedDate),
+        label: selectedEvent.label,
+        icon: selectedEvent.icon,
+        start_time: start,
+        end_time: end,
+        capacity_driver: Number(capD),
+        capacity_attendant: Number(capA),
+      };
       const r = await apiFetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,74 +117,65 @@ export default function AdminDashboard() {
       });
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
       alert("イベントを登録しました");
-      fetchEvents();
+      await refresh();
     } catch (err) {
-      alert("登録に失敗しました: " + err.message);
+      alert(`登録に失敗しました: ${err.message}`);
     }
   };
 
-  // イベント削除
+  // ===== 応募者一覧（簡易表示）=====
+  const openApplicants = async (ev) => {
+    const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
+    const arr = Array.isArray(r.data) ? r.data : [];
+    if (arr.length === 0) {
+      alert(`${ev.date}「${ev.label}」の応募者はまだいません。`);
+      return;
+    }
+    const lines = arr.map(a => `・${a.username}（${a.kind === "driver" ? "運転手" : "添乗員"}）`);
+    alert(`${ev.date}「${ev.label}」応募者：\n${lines.join("\n")}`);
+  };
+
+  // ===== イベント削除 =====
   const handleDelete = async (id) => {
     if (!window.confirm("このイベントを削除しますか？")) return;
     try {
-      const res = await apiFetch(`/api/events?id=${id}`, {
+      // Vercel構成のDELETEは /api/events?id=xxx を推奨（/api/events/[id] がある場合はそちらでも可）
+      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(res.data?.error || `HTTP ${res.status}`);
-      alert("イベントを削除しました。");
-      fetchEvents();
+      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+      await refresh();
+      alert("削除しました");
     } catch (err) {
-      alert("削除に失敗しました: " + err.message);
+      alert(`削除に失敗しました: ${err.message}`);
     }
   };
 
-  // 応募者モーダル開閉
-  const openApplicants = async (ev) => {
-    await fetchApplicants(ev.id);
-    setModalEvent(ev);
-    setShowApplicants(true);
-  };
-  const closeApplicants = () => {
-    setShowApplicants(false);
-    setApplicants([]);
-    setModalEvent(null);
-  };
-
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です");
-      nav("/");
-      return;
-    }
-    fetchEvents();
-  }, [nav]);
-
-  if (loading) return <div className="p-6">読み込み中...</div>;
+  if (loading) return <div className="p-6">読み込み中…</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6 relative">
+      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         {/* ヘッダー */}
-        <div className="flex justify-between mb-4 items-center">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => nav("/admin/users")}
-              className="px-3 py-1 rounded border border-gray-300 hover:bg-gray-50 text-sm"
+              className="px-3 py-2 rounded-lg text-sm bg-gray-200 hover:bg-gray-300"
             >
-              ユーザー管理へ
+              一般ユーザー管理
             </button>
             <button
               onClick={() => { localStorage.clear(); nav("/"); }}
-              className="text-gray-500 underline text-sm"
+              className="text-gray-500 underline"
             >
               ログアウト
             </button>
           </div>
         </div>
 
-        {/* カレンダー */}
+        {/* カレンダー（既存UIそのまま） */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
@@ -158,141 +192,152 @@ export default function AdminDashboard() {
           events={events}
         />
 
-        {/* 募集登録フォーム */}
-        <form onSubmit={handleSubmit} className="mt-6 bg-gray-50 p-4 rounded border">
-          <h2 className="font-semibold mb-2">
-            {toLocalYMD(selectedDate)} に募集を追加
+        {/* 募集作成フォーム（画像選択式） */}
+        <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
+          <h2 className="font-semibold mb-3">
+            {toLocalYMD(selectedDate)} の募集を作成
           </h2>
 
+          {/* アイコン選択（画像グリッド） */}
           <div className="mb-3">
-            <label className="block mb-1 text-sm">イベント種類</label>
-            <select
-              className="border p-2 rounded w-full"
-              value={selectedEvent.key}
-              onChange={(e) =>
-                setSelectedEvent(FIXED_EVENTS.find((f) => f.key === e.target.value))
-              }
-            >
-              {FIXED_EVENTS.map((e) => (
-                <option key={e.key} value={e.key}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
+            <div className="text-sm mb-2">イベント種類（画像から選択）</div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {FIXED_EVENTS.map((ev) => {
+                const active = selectedEvent.key === ev.key;
+                return (
+                  <button
+                    key={ev.key}
+                    type="button"
+                    onClick={() => setSelectedEvent(ev)}
+                    className={`flex flex-col items-center gap-1 border rounded-lg p-2 bg-white hover:bg-gray-50 ${
+                      active ? "ring-2 ring-blue-500" : ""
+                    }`}
+                  >
+                    <img
+                      src={ev.icon}
+                      alt={ev.label}
+                      className="w-10 h-10 object-contain"
+                      onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                    />
+                    <span className="text-[11px] text-gray-700">{ev.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex gap-3 mb-3">
-            <div className="flex-1">
-              <label className="block mb-1 text-sm">開始時間</label>
+          {/* 時間・枠数 */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <label className="text-sm">
+              開始
               <input
                 type="time"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="border p-2 rounded w-full"
+                className="mt-1 w-full border rounded p-2"
               />
-            </div>
-            <div className="flex-1">
-              <label className="block mb-1 text-sm">終了時間</label>
+            </label>
+            <label className="text-sm">
+              終了
               <input
                 type="time"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                className="border p-2 rounded w-full"
+                className="mt-1 w-full border rounded p-2"
               />
-            </div>
+            </label>
           </div>
 
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <label className="text-sm">
+              運転手の枠
+              <input
+                type="number"
+                min={0}
+                value={capD}
+                onChange={(e) => setCapD(e.target.value)}
+                className="mt-1 w-full border rounded p-2"
+              />
+            </label>
+            <label className="text-sm">
+              添乗員の枠
+              <input
+                type="number"
+                min={0}
+                value={capA}
+                onChange={(e) => setCapA(e.target.value)}
+                className="mt-1 w-full border rounded p-2"
+              />
+            </label>
+          </div>
+
+          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
             登録する
           </button>
         </form>
 
-        {/* 登録済みイベント一覧 */}
-<div className="mt-6">
-  <h3 className="font-semibold mb-3 text-lg">📋 登録済みイベント一覧</h3>
-  {events.length === 0 ? (
-    <p className="text-gray-500 text-sm">まだ登録はありません。</p>
-  ) : (
-    <div className="space-y-3">
-      {events.map((ev) => (
-        <div
-          key={ev.id}
-          className="border border-gray-200 bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-150"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            {/* 左側：情報 */}
-            <div className="flex items-center gap-3">
-              {ev.icon && (
-                <img
-                  src={ev.icon}
-                  alt={ev.label}
-                  className="w-10 h-10 rounded-md object-contain border border-gray-200 bg-white"
-                />
-              )}
-              <div>
-                <div className="text-base font-semibold text-gray-800">
-                  {ev.label}
-                </div>
-                <div className="text-sm text-gray-600">
-                  📅 {ev.date}　🕒 {ev.start_time}〜{ev.end_time}
-                </div>
-              </div>
-            </div>
-
-            {/* 右側：操作ボタン */}
-            <div className="flex gap-2 mt-2 sm:mt-0">
-              <button
-                onClick={() => openApplicants(ev)}
-                className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-emerald-700 flex items-center gap-1"
-              >
-                👁 応募者を見る
-              </button>
-              <button
-                onClick={() => handleDelete(ev.id)}
-                className="bg-red-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-red-700 flex items-center gap-1"
-              >
-                🗑 削除
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
-</div>
-
-        {/* 応募者モーダル */}
-        {showApplicants && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl w-11/12 max-w-md p-6">
-              <h2 className="text-lg font-bold mb-3">
-                {modalEvent?.label} の応募者一覧
-              </h2>
-              {applicants.length === 0 ? (
-                <p className="text-sm text-gray-500">応募者はいません。</p>
-              ) : (
-                <ul className="divide-y">
-                  {applicants.map((a, i) => (
-                    <li key={i} className="py-2 text-sm flex justify-between">
-                      <span>{a.username}</span>
-                      <span className="text-gray-600">
-                        {a.kind === "driver" ? "🚗 運転手" : "🧍 添乗員"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-4 text-right">
-                <button
-                  onClick={() => setShowApplicants(false)}
-                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+        {/* 今日以降のイベント一覧（👥バッジ付き・コンパクト行） */}
+        <div className="mt-6">
+          <h3 className="font-semibold mb-3 text-lg">📋 今日以降のイベント</h3>
+          {upcoming.length === 0 ? (
+            <p className="text-gray-500 text-sm">登録済みの今後のイベントはありません。</p>
+          ) : (
+            <div className="divide-y border rounded-lg overflow-hidden">
+              {upcoming.map((ev) => (
+                <div
+                  key={ev.id}
+                  className="flex items-center gap-3 px-3 py-2 bg-white"
                 >
-                  閉じる
-                </button>
-              </div>
+                  {/* 左：アイコン */}
+                  {ev.icon ? (
+                    <img
+                      src={ev.icon}
+                      alt={ev.label}
+                      className="w-8 h-8 object-contain rounded bg-gray-50 border"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded bg-gray-100 border flex items-center justify-center text-xs text-gray-500">
+                      無
+                    </div>
+                  )}
+
+                  {/* 中央：日付・時間・名称（コンパクト） */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{ev.date}</span>
+                      <span className="text-xs text-gray-500">
+                        {ev.start_time}〜{ev.end_time}
+                      </span>
+                      {/* 応募者バッジ */}
+                      <span className="ml-1 inline-flex items-center text-[11px] px-2 py-[3px] rounded-full bg-emerald-100 text-emerald-700">
+                        👥 {appCounts[ev.id] ?? 0}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-700 truncate">{ev.label}</div>
+                  </div>
+
+                  {/* 右：操作（横並び・小さめ） */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => openApplicants(ev)}
+                      className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                      title="応募者を見る"
+                    >
+                      応募者
+                    </button>
+                    <button
+                      onClick={() => handleDelete(ev.id)}
+                      className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700"
+                      title="削除"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
