@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
@@ -21,19 +22,16 @@ export default function MainApp() {
   const [applying, setApplying] = useState(false);
   const [myApps, setMyApps] = useState([]); // 自分の応募
 
-  const refresh = async () => {
-    const ev = await apiFetch("/api/events");
-    setEvents(Array.isArray(ev.data) ? ev.data : []);
+  // イベント一覧 + 自分の応募一覧取得
+const refresh = useCallback(async () => {
+  const ev = await apiFetch("/api/events");
+  setEvents(Array.isArray(ev.data) ? ev.data : []);
 
-    if (userName) {
-      const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
-      setMyApps(Array.isArray(me.data) ? me.data : []);
-    }
-  };
-
-  useEffect(() => {
-  refresh();
-}, [refresh]);
+  if (userName) {
+    const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+    setMyApps(Array.isArray(me.data) ? me.data : []);
+  }
+}, [userName]);
 
   const listOfSelected = useMemo(() => {
     const ymd = toLocalYMD(selectedDate);
