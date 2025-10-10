@@ -32,8 +32,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   // 募集作成フォーム
-  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]); // 任意選択
-  const [customLabel, setCustomLabel] = useState("");                  // 自由記入（優先）
+  const [selectedEvent, setSelectedEvent] = useState(null); // ← 解除可能にするため null 初期化
+  const [customLabel, setCustomLabel] = useState("");       // 自由記入（優先）
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
   const [capD, setCapD] = useState(1);
@@ -93,8 +93,8 @@ export default function AdminDashboard() {
         icon: selectedEvent?.icon || "", // 画像未選択でもOK
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),
-        capacity_attendant: Number(capA),
+        capacity_driver: Number(capD),       // ← 数値化
+        capacity_attendant: Number(capA),    // ← 数値化
       };
 
       const r = await apiFetch("/api/events", {
@@ -106,6 +106,7 @@ export default function AdminDashboard() {
 
       alert("イベントを登録しました");
       setCustomLabel("");
+      setSelectedEvent(null); // 画像選択もリセット
       await refresh();
     } catch (err) {
       console.error("create event error:", err);
@@ -177,28 +178,30 @@ export default function AdminDashboard() {
         <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
           <h2 className="font-semibold mb-3">{ymd} の募集を作成</h2>
 
-          {/* 画像選択グリッド（任意） */}
+          {/* 画像選択（再タップで解除可能） */}
           <div className="mb-3">
             <div className="text-sm mb-2">イベント種類（画像から選択・任意）</div>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
               {FIXED_EVENTS.map((ev) => {
                 const active = selectedEvent?.key === ev.key;
                 return (
                   <button
                     key={ev.key}
                     type="button"
-                    onClick={() => setSelectedEvent(ev)}
-                    className={`flex flex-col items-center gap-1 border rounded-lg p-2 bg-white hover:bg-gray-50 ${
+                    onClick={() => setSelectedEvent(active ? null : ev)} // ← 解除対応
+                    className={`flex flex-col items-center gap-1 border rounded-lg p-3 bg-white hover:bg-gray-50 active:scale-[0.99] ${
                       active ? "ring-2 ring-blue-500" : ""
                     }`}
+                    aria-pressed={active}
                   >
                     <img
                       src={ev.icon}
                       alt={ev.label}
-                      className="w-10 h-10 object-contain"
+                      className="w-12 h-12 object-contain"
                       onError={(e) => (e.currentTarget.style.visibility = "hidden")}
                     />
-                    <span className="text-[11px] text-gray-700">{ev.label}</span>
+                    <span className="text-[12px] text-gray-700">{ev.label}</span>
+                    {active && <span className="text-xs text-blue-600">選択中（再タップで解除）</span>}
                   </button>
                 );
               })}
@@ -251,6 +254,7 @@ export default function AdminDashboard() {
                 value={capD}
                 onChange={(e) => setCapD(e.target.value)}
                 className="mt-1 w-full border rounded p-2"
+                inputMode="numeric"
               />
             </label>
             <label className="text-sm">
@@ -261,6 +265,7 @@ export default function AdminDashboard() {
                 value={capA}
                 onChange={(e) => setCapA(e.target.value)}
                 className="mt-1 w-full border rounded p-2"
+                inputMode="numeric"
               />
             </label>
           </div>
