@@ -13,6 +13,7 @@ const FIXED_EVENTS = [
   { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
 ];
 
+// API共通fetch
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
@@ -30,6 +31,12 @@ export default function AdminDashboard() {
   const [end, setEnd] = useState("12:00");
   const [loading, setLoading] = useState(true);
 
+  // 応募者モーダル
+  const [showApplicants, setShowApplicants] = useState(false);
+  const [applicants, setApplicants] = useState([]);
+  const [modalEvent, setModalEvent] = useState(null);
+
+  // イベント一覧取得
   const fetchEvents = async () => {
     setLoading(true);
     try {
@@ -40,10 +47,21 @@ export default function AdminDashboard() {
     }
   };
 
+  // 応募者取得
+  const fetchApplicants = async (eventId) => {
+    const r = await apiFetch(`/api/applications?event_id=${eventId}`);
+    if (Array.isArray(r.data)) {
+      setApplicants(r.data);
+    } else {
+      setApplicants([]);
+    }
+  };
+
+  // 募集登録
   const handleSubmit = async (e) => {
     e.preventDefault();
     const body = {
-      date: toLocalYMD(selectedDate),        // ← ここが超重要（ISO禁止）
+      date: toLocalYMD(selectedDate),
       label: selectedEvent.label,
       icon: selectedEvent.icon,
       start_time: start,
@@ -63,6 +81,18 @@ export default function AdminDashboard() {
     }
   };
 
+  // 応募者モーダル開閉
+  const openApplicants = async (ev) => {
+    await fetchApplicants(ev.id);
+    setModalEvent(ev);
+    setShowApplicants(true);
+  };
+  const closeApplicants = () => {
+    setShowApplicants(false);
+    setApplicants([]);
+    setModalEvent(null);
+  };
+
   useEffect(() => {
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
@@ -77,7 +107,8 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6 relative">
+        {/* ヘッダー */}
         <div className="flex justify-between mb-4 items-center">
           <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
           <div className="flex items-center gap-3">
@@ -96,6 +127,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* カレンダー */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
@@ -112,6 +144,7 @@ export default function AdminDashboard() {
           events={events}
         />
 
+        {/* 募集登録フォーム */}
         <form onSubmit={handleSubmit} className="mt-6 bg-gray-50 p-4 rounded border">
           <h2 className="font-semibold mb-2">
             {toLocalYMD(selectedDate)} に募集を追加
@@ -123,9 +156,7 @@ export default function AdminDashboard() {
               className="border p-2 rounded w-full"
               value={selectedEvent.key}
               onChange={(e) =>
-                setSelectedEvent(
-                  FIXED_EVENTS.find((f) => f.key === e.target.value)
-                )
+                setSelectedEvent(FIXED_EVENTS.find((f) => f.key === e.target.value))
               }
             >
               {FIXED_EVENTS.map((e) => (
@@ -162,6 +193,7 @@ export default function AdminDashboard() {
           </button>
         </form>
 
+        {/* 登録済みイベント一覧 */}
         <div className="mt-6">
           <h3 className="font-semibold mb-2">登録済みイベント一覧</h3>
           {events.length === 0 ? (
@@ -169,13 +201,50 @@ export default function AdminDashboard() {
           ) : (
             <ul className="text-sm space-y-1">
               {events.map((ev) => (
-                <li key={ev.id}>
+                <li
+                  key={ev.id}
+                  className="cursor-pointer hover:bg-gray-100 p-2 rounded"
+                  onClick={() => openApplicants(ev)}
+                >
                   📅 {ev.date}：{ev.label}（{ev.start_time}〜{ev.end_time}）
                 </li>
               ))}
             </ul>
           )}
         </div>
+
+        {/* 応募者モーダル */}
+        {showApplicants && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl w-11/12 max-w-md p-6">
+              <h2 className="text-lg font-bold mb-3">
+                {modalEvent?.label} の応募者一覧
+              </h2>
+              {applicants.length === 0 ? (
+                <p className="text-sm text-gray-500">応募者はいません。</p>
+              ) : (
+                <ul className="divide-y">
+                  {applicants.map((a, i) => (
+                    <li key={i} className="py-2 text-sm flex justify-between">
+                      <span>{a.username}</span>
+                      <span className="text-gray-600">
+                        {a.kind === "driver" ? "🚗 運転手" : "🧍 添乗員"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 text-right">
+                <button
+                  onClick={closeApplicants}
+                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
