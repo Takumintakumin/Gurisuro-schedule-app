@@ -1,36 +1,34 @@
 // /api/index.js
-import events from "../api-lib/events.js";
-import applications from "../api-lib/applications.js";
-import login from "../api-lib/login.js";
-import register from "../api-lib/register.js";
-import users from "../api-lib/users.js";
-import fairness from "../api-lib/fairness.js";
-import { healthcheck } from "../api-lib/_db.js";
+import eventsHandler from "../api-lib/events.js";
+import applicationsHandler from "../api-lib/applications.js";
+import usersHandler from "../api-lib/users.js";
+import loginHandler from "../api-lib/login.js";
+import registerHandler from "../api-lib/register.js";
+import fairnessHandler from "../api-lib/fairness.js";
+import healthHandler from "../api-lib/health.js";
 
 export default async function handler(req, res) {
-  // 共通CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(204).end();
+  try {
+    // CORS（必要に応じて絞る）
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") return res.status(204).end();
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname.replace(/^\/api\/?/, "/");
+    const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host}`);
 
-  // ヘルス
-  if (path === "/health") {
-    const db = await healthcheck();
-    return res.status(200).json({ ok: true, db });
+    // サブルーター
+    if (pathname === "/api/health")      return healthHandler(req, res);
+    if (pathname === "/api/login")       return loginHandler(req, res);
+    if (pathname === "/api/register")    return registerHandler(req, res);
+    if (pathname.startsWith("/api/events"))        return eventsHandler(req, res);
+    if (pathname.startsWith("/api/applications"))  return applicationsHandler(req, res);
+    if (pathname.startsWith("/api/users"))         return usersHandler(req, res);
+    if (pathname.startsWith("/api/fairness"))      return fairnessHandler(req, res);
+
+    return res.status(404).json({ error: "Not Found", path: pathname });
+  } catch (err) {
+    console.error("[/api/index] Error:", err);
+    return res.status(500).json({ error: "Server Error: " + err.message });
   }
-
-  // ルーティング分岐
-  if (path === "/login") return login(req, res);
-  if (path === "/register") return register(req, res);
-  if (path === "/users" || path.startsWith("/users")) return users(req, res);
-
-  if (path === "/events" || path.startsWith("/events")) return events(req, res);
-  if (path === "/applications" || path.startsWith("/applications")) return applications(req, res);
-  if (path === "/fairness") return fairness(req, res);
-
-  return res.status(404).json({ error: "Not Found", path });
 }

@@ -1,23 +1,19 @@
 {
-  "version": 2,
-  "public": true,
   "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "build" }
-    }
+    { "src": "api/index.js", "use": "@vercel/node" },
+    { "src": "build/**/*",   "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/static/(.*)", "dest": "/static/$1", "headers": { "cache-control": "public, max-age=31536000, immutable" } },
-    { "src": "/favicon.ico", "dest": "/favicon.ico" },
-    { "src": "/manifest.json", "dest": "/manifest.json" },
-    { "src": "/logo(.*)", "dest": "/logo$1" },
+    { "src": "^/api/.*", "dest": "/api/index.js" },
 
-    { "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|webp|ico))", "dest": "/$1" },
+    { "src": "/(static/.*)", "dest": "/build/$1" },
+    { "src": "/favicon.ico", "dest": "/build/favicon.ico" },
+    { "src": "/asset-manifest.json", "dest": "/build/asset-manifest.json" },
+    { "src": "/manifest.json", "dest": "/build/manifest.json" },
+    { "src": "/logo192.png", "dest": "/build/logo192.png" },
+    { "src": "/logo512.png", "dest": "/build/logo512.png" },
 
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "^/(.*)$", "dest": "/build/$1" },
+    { "src": ".*", "dest": "/build/index.html" }
   ]
 }
