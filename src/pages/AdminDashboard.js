@@ -1,28 +1,9 @@
 // src/pages/AdminDashboard.js
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
+import { toLocalYMD } from "../lib/date.js";
 
-// 固定イベント（作成フォームで使用）
-const FIXED_EVENTS = [
-  { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
-  { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
-  { key: "eat", label: "食べようの会", icon: "/icons/eat.png" },
-  { key: "mamatomo", label: "ママ友の会", icon: "/icons/mamatomo.png" },
-  { key: "cafe", label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
-  { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
-];
-
-// ローカル日付の YYYY-MM-DD
-const toLocalYMD = (date) => {
-  const d = date instanceof Date ? date : new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-// JSON/テキストどちらでも耐えるfetch
+// JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text();
@@ -32,313 +13,437 @@ async function apiFetch(url, options = {}) {
 }
 
 export default function AdminDashboard() {
-  const nav = useNavigate();
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
+
+  // 応募者モーダル用
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [modalApplicants, setModalApplicants] = useState([]); // [{id, username, kind, created_at}, ...]
+  const [modalEvent, setModalEvent] = useState(null); // {id, label, icon, ...}
+
+  // 作成フォーム（既存のまま）
+  const FIXED_EVENTS = [
+    { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
+    { key: "senior", label: "シニア体操", icon: "/icons/senior.png" },
+    { key: "eat", label: "食べようの会", icon: "/icons/eat.png" },
+    { key: "mamatomo", label: "ママ友の会", icon: "/icons/mamatomo.png" },
+    { key: "cafe", label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
+    { key: "chorus", label: "コーラス", icon: "/icons/chorus.png" },
+  ];
+  const [selectedEventType, setSelectedEventType] = useState(FIXED_EVENTS[0]);
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
-  const [capD, setCapD] = useState(1);
-  const [capA, setCapA] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [capDriver, setCapDriver] = useState(1);
+  const [capAttendant, setCapAttendant] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
 
-  // 応募者数（event_id => 合計人数）
-  const [appCounts, setAppCounts] = useState({}); // { [id]: number }
-
-  // ===== 権限チェック & イベント取得 =====
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です。");
-      nav("/");
-      return;
-    }
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const refresh = async () => {
-    setLoading(true);
-    try {
-      const r = await apiFetch("/api/events");
-      const arr = Array.isArray(r.data) ? r.data : [];
-      setEvents(arr);
-    } finally {
-      setLoading(false);
-    }
+  // イベント取得
+  const fetchEvents = async () => {
+    const { ok, data } = await apiFetch("/api/events");
+    if (ok && Array.isArray(data)) setEvents(data);
   };
 
-  // ===== 今日以降のみ抽出（YYYY-MM-DD の文字列比較OK）=====
-  const todayYMD = toLocalYMD(new Date());
-  const upcoming = useMemo(() => {
-    return (events || [])
-      .filter((e) => e.date >= todayYMD)
-      .sort((a, b) => (a.date === b.date ? (a.start_time || "").localeCompare(b.start_time || "") : a.date.localeCompare(b.date)));
-  }, [events, todayYMD]);
+  useEffect(() => { fetchEvents(); }, []);
 
-  // ===== 表示中（今日以降）のイベントの応募者数をまとめて取得 =====
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      // N本叩く（APIに集計がない前提）。重い場合はサーバ側に /api/applications/counts を作るのがベター。
-      const pairs = await Promise.all(
-        upcoming.map(async (ev) => {
-          const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
-          const arr = Array.isArray(r.data) ? r.data : [];
-          return [ev.id, arr.length];
-        })
-      );
-      if (!cancelled) {
-        const map = {};
-        for (const [id, count] of pairs) map[id] = count;
-        setAppCounts(map);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [upcoming]);
+  // 選択日のイベント一覧
+  const listOfSelected = useMemo(() => {
+    const ymd = toLocalYMD(selectedDate);
+    return events.filter((e) => e.date === ymd);
+  }, [events, selectedDate]);
 
-  // ===== イベント登録 =====
-  const handleSubmit = async (e) => {
+  // ====== イベント登録 ======
+  const handleCreate = async (e) => {
     e.preventDefault();
+    if (!selectedEventType) return alert("イベント種類を選択してください。");
+    setSubmitting(true);
     try {
       const body = {
         date: toLocalYMD(selectedDate),
-        label: selectedEvent.label,
-        icon: selectedEvent.icon,
+        label: selectedEventType.label,
+        icon: selectedEventType.icon,
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),
-        capacity_attendant: Number(capA),
+        capacity_driver: Number(capDriver),
+        capacity_attendant: Number(capAttendant),
       };
-      const r = await apiFetch("/api/events", {
+      const { ok, status, data } = await apiFetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-      alert("イベントを登録しました");
-      await refresh();
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      await fetchEvents();
+      alert("募集を登録しました！");
     } catch (err) {
       alert(`登録に失敗しました: ${err.message}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // ===== 応募者一覧（簡易表示）=====
-  const openApplicants = async (ev) => {
-    const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
-    const arr = Array.isArray(r.data) ? r.data : [];
-    if (arr.length === 0) {
-      alert(`${ev.date}「${ev.label}」の応募者はまだいません。`);
-      return;
+  // ====== 応募者モーダル（開く） ======
+  const openApplicantsModal = async (ev) => {
+    setModalEvent(ev);
+    setModalApplicants([]);
+    setModalError("");
+    setModalLoading(true);
+    setModalOpen(true);
+
+    try {
+      const { ok, status, data } = await apiFetch(`/api/applications?event_id=${ev.id}`);
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      // 期待形：[{ id, event_id, username, kind, created_at }, ...]
+      setModalApplicants(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setModalError(err.message || "取得に失敗しました");
+    } finally {
+      setModalLoading(false);
     }
-    const lines = arr.map(a => `・${a.username}（${a.kind === "driver" ? "運転手" : "添乗員"}）`);
-    alert(`${ev.date}「${ev.label}」応募者：\n${lines.join("\n")}`);
   };
 
-  // ===== イベント削除 =====
+  // ====== 応募者モーダル（閉じる） ======
+  const closeApplicantsModal = () => {
+    setModalOpen(false);
+    setModalEvent(null);
+    setModalApplicants([]);
+    setModalError("");
+  };
+
+  // ====== イベント削除 ======
+  // ※ Vercel 構成では /api/events DELETE に id はクエリで渡すと安全（405回避）
   const handleDelete = async (id) => {
     if (!window.confirm("このイベントを削除しますか？")) return;
     try {
-      // Vercel構成のDELETEは /api/events?id=xxx を推奨（/api/events/[id] がある場合はそちらでも可）
-      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, {
+      const { ok, status, data } = await apiFetch(`/api/events?id=${id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
       });
-      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-      await refresh();
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      await fetchEvents();
+      if (modalOpen && modalEvent?.id === id) closeApplicantsModal();
       alert("削除しました");
     } catch (err) {
       alert(`削除に失敗しました: ${err.message}`);
     }
   };
 
-  if (loading) return <div className="p-6">読み込み中…</div>;
+  // 応募者を kind でグルーピング
+  const grouped = useMemo(() => {
+    const g = { driver: [], attendant: [], other: [] };
+    for (const a of modalApplicants) {
+      if (a.kind === "driver") g.driver.push(a);
+      else if (a.kind === "attendant") g.attendant.push(a);
+      else g.other.push(a);
+    }
+    return g;
+  }, [modalApplicants]);
+
+  // 残数を表示するための集計（簡易）
+  const [counts, setCounts] = useState({});
+  useEffect(() => {
+    (async () => {
+      const ymd = toLocalYMD(selectedDate);
+      const todays = events.filter((e) => e.date === ymd);
+      const out = {};
+      for (const ev of todays) {
+        const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
+        const arr = Array.isArray(r.data) ? r.data : [];
+        out[ev.id] = {
+          driver: arr.filter(a => a.kind === "driver").length,
+          attendant: arr.filter(a => a.kind === "attendant").length,
+        };
+      }
+      setCounts(out);
+    })();
+  }, [events, selectedDate]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        {/* ヘッダー */}
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => nav("/admin/users")}
-              className="px-3 py-2 rounded-lg text-sm bg-gray-200 hover:bg-gray-300"
-            >
-              一般ユーザー管理
-            </button>
-            <button
-              onClick={() => { localStorage.clear(); nav("/"); }}
-              className="text-gray-500 underline"
-            >
-              ログアウト
-            </button>
-          </div>
+          <h1 className="text-xl font-bold">管理者ダッシュボード</h1>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.href = "/";
+            }}
+            className="text-sm text-blue-600 underline"
+          >
+            一般ログインへ / ログアウト
+          </button>
         </div>
 
-        {/* カレンダー（既存UIそのまま） */}
+        {/* —— カレンダー（既存UIそのまま） —— */}
         <Calendar
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
           selectedDate={selectedDate}
-          onMonthChange={(delta) => {
-            const newDate = new Date(
-              selectedDate.getFullYear(),
-              selectedDate.getMonth() + delta,
-              1
-            );
-            setSelectedDate(newDate);
+          onMonthChange={(d) => {
+            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1);
+            setSelectedDate(nd);
           }}
           onDateSelect={setSelectedDate}
           events={events}
         />
 
-        {/* 募集作成フォーム（画像選択式） */}
-        <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
-          <h2 className="font-semibold mb-3">
-            {toLocalYMD(selectedDate)} の募集を作成
-          </h2>
-
-          {/* アイコン選択（画像グリッド） */}
-          <div className="mb-3">
-            <div className="text-sm mb-2">イベント種類（画像から選択）</div>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {FIXED_EVENTS.map((ev) => {
-                const active = selectedEvent.key === ev.key;
-                return (
-                  <button
-                    key={ev.key}
-                    type="button"
-                    onClick={() => setSelectedEvent(ev)}
-                    className={`flex flex-col items-center gap-1 border rounded-lg p-2 bg-white hover:bg-gray-50 ${
-                      active ? "ring-2 ring-blue-500" : ""
-                    }`}
-                  >
-                    <img
-                      src={ev.icon}
-                      alt={ev.label}
-                      className="w-10 h-10 object-contain"
-                      onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-                    />
-                    <span className="text-[11px] text-gray-700">{ev.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* —— 募集登録フォーム（既存の簡易版） —— */}
+        <form onSubmit={handleCreate} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2 font-semibold">
+            {toLocalYMD(selectedDate)} に募集を追加
           </div>
 
-          {/* 時間・枠数 */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <label className="text-sm">
-              開始
-              <input
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-            <label className="text-sm">
-              終了
-              <input
-                type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-          </div>
+          <label className="block">
+            <div className="text-sm mb-1">イベント種類</div>
+            <select
+              className="border rounded px-2 py-2 w-full"
+              value={selectedEventType.key}
+              onChange={(e) =>
+                setSelectedEventType(
+                  FIXED_EVENTS.find((f) => f.key === e.target.value) || FIXED_EVENTS[0]
+                )
+              }
+            >
+              {FIXED_EVENTS.map((e) => (
+                <option key={e.key} value={e.key}>
+                  {e.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <label className="text-sm">
-              運転手の枠
-              <input
-                type="number"
-                min={0}
-                value={capD}
-                onChange={(e) => setCapD(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-            <label className="text-sm">
-              添乗員の枠
-              <input
-                type="number"
-                min={0}
-                value={capA}
-                onChange={(e) => setCapA(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-          </div>
+          <label className="block">
+            <div className="text-sm mb-1">開始</div>
+            <input
+              type="time"
+              className="border rounded px-2 py-2 w-full"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+            />
+          </label>
 
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            登録する
-          </button>
+          <label className="block">
+            <div className="text-sm mb-1">終了</div>
+            <input
+              type="time"
+              className="border rounded px-2 py-2 w-full"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-sm mb-1">運転手 募集枠</div>
+            <input
+              type="number"
+              min={0}
+              className="border rounded px-2 py-2 w-full"
+              value={capDriver}
+              onChange={(e) => setCapDriver(e.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-sm mb-1">添乗員 募集枠</div>
+            <input
+              type="number"
+              min={0}
+              className="border rounded px-2 py-2 w-full"
+              value={capAttendant}
+              onChange={(e) => setCapAttendant(e.target.value)}
+            />
+          </label>
+
+          <div className="sm:col-span-2">
+            <button
+              className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
+              disabled={submitting}
+            >
+              {submitting ? "登録中…" : "この内容で募集を登録"}
+            </button>
+          </div>
         </form>
 
-        {/* 今日以降のイベント一覧（👥バッジ付き・コンパクト行） */}
+        {/* —— 選択日の募集一覧 —— */}
         <div className="mt-6">
-          <h3 className="font-semibold mb-3 text-lg">📋 今日以降のイベント</h3>
-          {upcoming.length === 0 ? (
-            <p className="text-gray-500 text-sm">登録済みの今後のイベントはありません。</p>
+          <h2 className="font-semibold mb-2">{toLocalYMD(selectedDate)} の募集一覧</h2>
+          {listOfSelected.length === 0 ? (
+            <p className="text-sm text-gray-500">この日には募集がありません。</p>
           ) : (
-            <div className="divide-y border rounded-lg overflow-hidden">
-              {upcoming.map((ev) => (
-                <div
-                  key={ev.id}
-                  className="flex items-center gap-3 px-3 py-2 bg-white"
-                >
-                  {/* 左：アイコン */}
-                  {ev.icon ? (
-                    <img
-                      src={ev.icon}
-                      alt={ev.label}
-                      className="w-8 h-8 object-contain rounded bg-gray-50 border"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded bg-gray-100 border flex items-center justify-center text-xs text-gray-500">
-                      無
+            <ul className="space-y-2">
+              {listOfSelected.map((ev) => {
+                const c = counts[ev.id] || { driver: 0, attendant: 0 };
+                return (
+                  <li
+                    key={ev.id}
+                    className="border rounded p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {ev.icon ? <img src={ev.icon} alt="" className="w-7 h-7 flex-none" /> : null}
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{ev.label}</div>
+                        <div className="text-xs text-gray-500">
+                          {ev.start_time}〜{ev.end_time}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1 flex gap-3">
+                          <span>運転手: {c.driver}{ev.capacity_driver!=null?` / ${ev.capacity_driver}`:""}</span>
+                          <span>添乗員: {c.attendant}{ev.capacity_attendant!=null?` / ${ev.capacity_attendant}`:""}</span>
+                        </div>
+                      </div>
                     </div>
-                  )}
 
-                  {/* 中央：日付・時間・名称（コンパクト） */}
-                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">{ev.date}</span>
-                      <span className="text-xs text-gray-500">
-                        {ev.start_time}〜{ev.end_time}
-                      </span>
-                      {/* 応募者バッジ */}
-                      <span className="ml-1 inline-flex items-center text-[11px] px-2 py-[3px] rounded-full bg-emerald-100 text-emerald-700">
-                        👥 {appCounts[ev.id] ?? 0}
-                      </span>
+                      <button
+                        className="px-3 py-1 rounded bg-emerald-600 text-white text-sm"
+                        onClick={() => openApplicantsModal(ev)}
+                      >
+                        応募者を見る
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded bg-red-600 text-white text-sm"
+                        onClick={() => handleDelete(ev.id)}
+                      >
+                        削除
+                      </button>
                     </div>
-                    <div className="text-sm text-gray-700 truncate">{ev.label}</div>
-                  </div>
-
-                  {/* 右：操作（横並び・小さめ） */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => openApplicants(ev)}
-                      className="px-2 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
-                      title="応募者を見る"
-                    >
-                      応募者
-                    </button>
-                    <button
-                      onClick={() => handleDelete(ev.id)}
-                      className="px-2 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700"
-                      title="削除"
-                    >
-                      削除
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </div>
+
+      {/* ===== 応募者モーダル ===== */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50">
+          {/* 背景 */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={closeApplicantsModal}
+          />
+          {/* 本体 */}
+          <div className="absolute inset-x-3 bottom-3 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-lg bg-white rounded-2xl shadow-xl p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                {modalEvent?.icon && (
+                  <img src={modalEvent.icon} className="w-7 h-7" alt="" />
+                )}
+                <div>
+                  <div className="font-semibold">
+                    {toLocalYMD(selectedDate)} の応募者
+                  </div>
+                  {modalEvent && (
+                    <div className="text-xs text-gray-500">
+                      {modalEvent.label}（{modalEvent.start_time}〜{modalEvent.end_time}）
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                className="p-2 rounded hover:bg-gray-100"
+                onClick={closeApplicantsModal}
+                aria-label="閉じる"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-3">
+              {modalLoading ? (
+                <div className="text-sm text-gray-500">読み込み中…</div>
+              ) : modalError ? (
+                <div className="text-sm text-red-600">エラー: {modalError}</div>
+              ) : modalApplicants.length === 0 ? (
+                <div className="text-sm text-gray-500">応募者はいません。</div>
+              ) : (
+                <div className="space-y-3">
+                  {/* 運転手 */}
+                  <section>
+                    <div className="text-sm font-semibold mb-1">運転手</div>
+                    {grouped.driver.length === 0 ? (
+                      <div className="text-xs text-gray-500">— なし —</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {grouped.driver.map((a) => (
+                          <li
+                            key={a.id}
+                            className="text-sm flex items-center justify-between border rounded px-2 py-1"
+                          >
+                            <span className="truncate">{a.username}</span>
+                            <span className="text-xs text-gray-500">
+                              {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  {/* 添乗員 */}
+                  <section>
+                    <div className="text-sm font-semibold mb-1">添乗員</div>
+                    {grouped.attendant.length === 0 ? (
+                      <div className="text-xs text-gray-500">— なし —</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {grouped.attendant.map((a) => (
+                          <li
+                            key={a.id}
+                            className="text-sm flex items-center justify-between border rounded px-2 py-1"
+                          >
+                            <span className="truncate">{a.username}</span>
+                            <span className="text-xs text-gray-500">
+                              {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  {/* その他（予防） */}
+                  {grouped.other.length > 0 && (
+                    <section>
+                      <div className="text-sm font-semibold mb-1">その他</div>
+                      <ul className="space-y-1">
+                        {grouped.other.map((a) => (
+                          <li
+                            key={a.id}
+                            className="text-sm flex items-center justify-between border rounded px-2 py-1"
+                          >
+                            <span className="truncate">{a.username}</span>
+                            <span className="text-xs text-gray-500">{a.kind}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 下部アクション（任意で強化用） */}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="px-3 py-1 rounded bg-gray-100"
+                onClick={closeApplicantsModal}
+              >
+                閉じる
+              </button>
+              {modalEvent && (
+                <button
+                  className="px-3 py-1 rounded bg-red-600 text-white"
+                  onClick={() => handleDelete(modalEvent.id)}
+                >
+                  この募集を削除
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
