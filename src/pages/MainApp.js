@@ -1,113 +1,167 @@
 // src/pages/MainApp.js
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
 import Calendar from "../components/Calendar.js";
 
+// JSON/text どちらも耐える fetch
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch {}
+  return { ok: res.ok, status: res.status, data, text };
+}
+
+const toYMD = (d) => d.toISOString().split("T")[0];
+
 export default function MainApp() {
-  const nav = useNavigate();
+  const userName = localStorage.getItem("userName") || "";
+  const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
 
-  // カレンダーの状態
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [selectedDate, setSelectedDate] = useState(new Date());
-
-  // サーバから取得するイベント
   const [events, setEvents] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [applying, setApplying] = useState(false);
+  const [myApps, setMyApps] = useState([]); // 自分の応募
 
-  // ログインチェック
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (!role) nav("/");
-  }, [nav]);
+  // イベント一覧 + 自分の応募一覧取得
+  const refresh = async () => {
+    const ev = await apiFetch("/api/events");
+    setEvents(Array.isArray(ev.data) ? ev.data : []);
 
-  // イベント取得
-  const fetchEvents = async () => {
-    try {
-      const res = await fetch("/api/events");
-      const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("イベント取得失敗:", e);
-      setEvents([]);
+    if (userName) {
+      const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+      setMyApps(Array.isArray(me.data) ? me.data : []);
     }
   };
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
+  useEffect(() => { refresh(); }, []);
 
-  const onMonthChange = (delta) => {
-    let m = currentMonth + delta;
-    let y = currentYear;
-    if (m > 11) { m = 0; y += 1; }
-    else if (m < 0) { m = 11; y -= 1; }
-    setCurrentMonth(m);
-    setCurrentYear(y);
-    // 月が変わったら再取得（必要に応じて最適化）
-    fetchEvents();
+  const listOfSelected = useMemo(() => {
+    const ymd = toYMD(selectedDate);
+    return events.filter((e) => e.date === ymd);
+  }, [events, selectedDate]);
+
+  // 残枠表示用にイベント別の応募数をGET（簡易版：/api/applications?event_id=）
+  const [counts, setCounts] = useState({});
+  useEffect(() => {
+    (async () => {
+      const ymd = toYMD(selectedDate);
+      const todays = events.filter((e) => e.date === ymd);
+      const out = {};
+      for (const ev of todays) {
+        const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
+        const arr = Array.isArray(r.data) ? r.data : [];
+        out[ev.id] = {
+          driver: arr.filter(a => a.kind === "driver").length,
+          attendant: arr.filter(a => a.kind === "attendant").length,
+          raw: arr,
+        };
+      }
+      setCounts(out);
+    })();
+  }, [events, selectedDate]);
+
+  const hasApplied = (eventId, kind) =>
+    myApps.some((a) => a.event_id === eventId && a.kind === kind);
+
+  const apply = async (ev, kind) => {
+    if (!userName) {
+      alert("先にログインしてください。");
+      return;
+    }
+    setApplying(true);
+    try {
+      const { ok, status, data } = await apiFetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: ev.id, username: userName, kind }),
+      });
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      await refresh();
+      alert("応募しました！");
+    } catch (e) {
+      alert(`応募に失敗しました: ${e.message}`);
+    } finally {
+      setApplying(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
-      <div className="max-w-3xl mx-auto">
-        <header className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-800">グリスロ予定調整アプリ</h1>
-          <button
-            className="text-sm text-gray-600 underline"
-            onClick={() => {
-              localStorage.clear();
-              nav("/");
-            }}
-          >
-            ログアウト
-          </button>
-        </header>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
+        <h1 className="text-xl font-bold mb-4">グリスロ予定調整アプリ</h1>
 
         <Calendar
-          currentMonth={currentMonth}
-          currentYear={currentYear}
+          currentMonth={selectedDate.getMonth()}
+          currentYear={selectedDate.getFullYear()}
           selectedDate={selectedDate}
-          onMonthChange={onMonthChange}
+          onMonthChange={(d) => {
+            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1);
+            setSelectedDate(nd);
+          }}
           onDateSelect={setSelectedDate}
           events={events}
         />
 
-        {/* 選択日のイベント一覧（任意） */}
-        <SelectedDayEvents date={selectedDate} events={events} />
+        <div className="mt-4">
+          <h2 className="font-semibold mb-2">{toYMD(selectedDate)} の募集</h2>
+          {listOfSelected.length === 0 ? (
+            <p className="text-sm text-gray-500">この日には募集がありません。</p>
+          ) : (
+            <ul className="space-y-2">
+              {listOfSelected.map((ev) => {
+                const c = counts[ev.id] || { driver: 0, attendant: 0 };
+                const remainDriver =
+                  ev.capacity_driver != null ? Math.max(0, ev.capacity_driver - c.driver) : null;
+                const remainAtt =
+                  ev.capacity_attendant != null ? Math.max(0, ev.capacity_attendant - c.attendant) : null;
+
+                return (
+                  <li key={ev.id} className="border rounded p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {ev.icon ? <img src={ev.icon} alt="" className="w-6 h-6" /> : null}
+                      <div>
+                        <div className="font-medium">{ev.label}</div>
+                        <div className="text-xs text-gray-500">
+                          {ev.start_time}〜{ev.end_time}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          運転手: {c.driver}{ev.capacity_driver!=null?` / ${ev.capacity_driver}`:""}
+                          {remainDriver!=null?`（残り ${remainDriver}）`:""}　
+                          添乗員: {c.attendant}{ev.capacity_attendant!=null?` / ${ev.capacity_attendant}`:""}
+                          {remainAtt!=null?`（残り ${remainAtt}）`:""}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      {["運転手","両方"].includes(userRolePref) && (
+                        <button
+                          className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
+                          disabled={applying || hasApplied(ev.id,"driver") || remainDriver===0}
+                          onClick={() => apply(ev, "driver")}
+                          title={hasApplied(ev.id,"driver") ? "既に応募済み" : ""}
+                        >
+                          運転手で応募
+                        </button>
+                      )}
+                      {["添乘員","両方"].includes(userRolePref) && (
+                        <button
+                          className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
+                          disabled={applying || hasApplied(ev.id,"attendant") || remainAtt===0}
+                          onClick={() => apply(ev, "attendant")}
+                          title={hasApplied(ev.id,"attendant") ? "既に応募済み" : ""}
+                        >
+                          添乗員で応募
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
-
-const toDateKey = (d) => d.toISOString().split("T")[0];
-
-function SelectedDayEvents({ date, events }) {
-  const dateKey = toDateKey(date || new Date());
-  const list = (Array.isArray(events) ? events : []).filter((e) => e.date === dateKey);
-
-  if (list.length === 0) return null;
-
-  return (
-    <div className="mt-4 bg-white rounded-xl shadow p-4">
-      <h3 className="font-semibold mb-2">{dateKey} のイベント</h3>
-      <ul className="space-y-2">
-        {list.map((e) => (
-          <li key={e.id} className="flex items-center gap-2">
-            <img
-              src={e.icon}
-              alt={e.label}
-              className="w-5 h-5 object-contain"
-              onError={(ev) => (ev.currentTarget.style.display = "none")}
-            />
-            <span>{e.label}</span>
-            {e.start_time && (
-              <span className="text-sm text-gray-600">
-                {e.start_time}〜{e.end_time}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
