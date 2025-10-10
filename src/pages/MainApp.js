@@ -11,14 +11,23 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data, text };
 }
 
-const toYMD = (d) => d.toISOString().split("T")[0];
+// ✅ ローカルタイムで YYYY-MM-DD を作る（UTC禁止）
+const toLocalYMD = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 export default function MainApp() {
   const userName = localStorage.getItem("userName") || "";
-  const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
+  const userRolePref = localStorage.getItem("userRolePref") || "両方";
 
   const [events, setEvents] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(
+    // 念のためローカル0時で初期化
+    new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+  );
   const [applying, setApplying] = useState(false);
   const [myApps, setMyApps] = useState([]); // 自分の応募
 
@@ -36,15 +45,15 @@ export default function MainApp() {
   useEffect(() => { refresh(); }, []);
 
   const listOfSelected = useMemo(() => {
-    const ymd = toYMD(selectedDate);
+    const ymd = toLocalYMD(selectedDate);
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
-  // 残枠表示用にイベント別の応募数をGET（簡易版：/api/applications?event_id=）
+  // 残枠表示用にイベント別の応募数をGET
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
-      const ymd = toYMD(selectedDate);
+      const ymd = toLocalYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
       for (const ev of todays) {
@@ -94,16 +103,23 @@ export default function MainApp() {
           currentMonth={selectedDate.getMonth()}
           currentYear={selectedDate.getFullYear()}
           selectedDate={selectedDate}
-          onMonthChange={(d) => {
-            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1);
+          onMonthChange={(delta) => {
+            const nd = new Date(
+              selectedDate.getFullYear(),
+              selectedDate.getMonth() + delta,
+              1
+            );
             setSelectedDate(nd);
           }}
-          onDateSelect={setSelectedDate}
+          // ✅ クリック日のローカル0時に正規化して保存
+          onDateSelect={(d) =>
+            setSelectedDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()))
+          }
           events={events}
         />
 
         <div className="mt-4">
-          <h2 className="font-semibold mb-2">{toYMD(selectedDate)} の募集</h2>
+          <h2 className="font-semibold mb-2">{toLocalYMD(selectedDate)} の募集</h2>
           {listOfSelected.length === 0 ? (
             <p className="text-sm text-gray-500">この日には募集がありません。</p>
           ) : (
