@@ -1,252 +1,244 @@
-// src/pages/AdminDashboard.js
-import React, { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import Calendar from "../components/Calendar.js";
-import { toLocalYMD } from "../lib/date.js";
+import React, { useEffect, useState } from "react";
 
-// 固定イベントアイコンとラベル
-const FIXED_EVENTS = [
-  { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
-  { key: "senior",   label: "シニア体操",     icon: "/icons/senior.png" },
-  { key: "eat",      label: "食べようの会",   icon: "/icons/eat.png" },
-  { key: "mamatomo", label: "ママ友の会",     icon: "/icons/mamatomo.png" },
-  { key: "cafe",     label: "ベイタウンカフェ", icon: "/icons/cafe.png" },
-  { key: "chorus",   label: "コーラス",       icon: "/icons/chorus.png" },
-];
-
-// テキスト→JSON安全パース
-const parseJSON = async (res) => {
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
   const text = await res.text();
-  try { return text ? JSON.parse(text) : {}; } catch { return {}; }
-};
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {}
+  return { ok: res.ok, status: res.status, data, text };
+}
 
 export default function AdminDashboard() {
-  const nav = useNavigate();
-
   const [events, setEvents] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
-  const [start, setStart] = useState("10:00");
-  const [end, setEnd] = useState("12:00");
-  const [loading, setLoading] = useState(true);
+  const [newEvent, setNewEvent] = useState({
+    date: "",
+    label: "",
+    icon: "",
+    start_time: "",
+    end_time: "",
+    capacity_driver: 1,
+    capacity_attendant: 1,
+  });
+  const [openEventId, setOpenEventId] = useState(null);
+  const [applicants, setApplicants] = useState([]);
 
-  // === 管理者チェック & 初回ロード ===
+  // イベント一覧を取得
+  const loadEvents = async () => {
+    const { data } = await apiFetch("/api/events");
+    setEvents(Array.isArray(data) ? data : []);
+  };
+
   useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です。");
-      nav("/admin");
-      return;
-    }
-    fetchEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadEvents();
   }, []);
 
-  // === イベント取得 ===
-  const fetchEvents = async () => {
-    setLoading(true);
+  // イベント削除
+  const handleDelete = async (id) => {
+    if (!window.confirm("このイベントを削除しますか？")) return;
     try {
-      const res = await fetch("/api/events");
-      const data = await parseJSON(res);
-      setEvents(Array.isArray(data) ? data : []);
+      const res = await fetch(`/api/events?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      alert("削除しました");
+      loadEvents();
     } catch (e) {
-      console.error("GET /api/events failed:", e);
-      alert("イベント取得に失敗しました");
-    } finally {
-      setLoading(false);
+      alert("削除に失敗しました: " + e.message);
     }
   };
 
-  // === イベント登録 ===
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedDate || !selectedEvent) {
-      alert("日付とイベントを選択してください");
+  // 応募者一覧を読み込み
+  const loadApplicants = async (eventId) => {
+    if (openEventId === eventId) {
+      setOpenEventId(null);
+      setApplicants([]);
       return;
     }
     try {
-      const body = {
-        date: toLocalYMD(selectedDate),
-        label: selectedEvent.label,
-        icon: selectedEvent.icon,
-        start_time: start,
-        end_time: end,
-      };
-      const res = await fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await parseJSON(res);
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      await fetchEvents();
-      alert("イベントを登録しました");
-    } catch (err) {
-      console.error("POST /api/events failed:", err);
-      alert(`登録に失敗しました: ${err.message}`);
+      const res = await apiFetch(`/api/applications?event_id=${eventId}`);
+      setApplicants(Array.isArray(res.data) ? res.data : []);
+      setOpenEventId(eventId);
+    } catch (e) {
+      alert("応募者の取得に失敗しました");
     }
   };
 
-// === イベント削除 ===
-const handleDelete = async (id) => {
-  const eventId = Number(id);
-  if (!eventId) return alert("不正なIDです");
-  if (!window.confirm("このイベントを削除しますか？")) return;
-
-  const urlPath = `/api/events/${eventId}`;     // ← ここが重要。:id ではなく実ID
-  try {
-    // まず /api/events/{id} に DELETE
-    const res = await fetch(urlPath, { method: "DELETE" });
-
-    // Vercel 側に [id].js が未配置などで 405 の場合は ?id= にフォールバック
-    if (res.status === 405) {
-      const res2 = await fetch(`/api/events?id=${eventId}`, { method: "DELETE" });
-      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
-    } else if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+  // イベント登録
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const { ok, status } = await apiFetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newEvent),
+      });
+      if (!ok) throw new Error(status);
+      alert("イベントを登録しました");
+      setNewEvent({
+        date: "",
+        label: "",
+        icon: "",
+        start_time: "",
+        end_time: "",
+        capacity_driver: 1,
+        capacity_attendant: 1,
+      });
+      loadEvents();
+    } catch (err) {
+      alert("登録に失敗しました: " + err.message);
     }
-
-    // フロント側の一覧も即時反映
-    setEvents((prev) => prev.filter((e) => Number(e.id) !== eventId));
-  } catch (err) {
-    console.error("DELETE failed:", err);
-    alert("削除に失敗しました");
-  }
-};
-
-  if (loading) return <div className="p-6">読み込み中...</div>;
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        {/* ヘッダー */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h1 className="text-xl sm:text-2xl font-bold">🗓 管理者カレンダー</h1>
-          <div className="flex gap-3">
-            <Link to="/admin/users" className="text-blue-600 underline">
-              一般ユーザー管理へ
-            </Link>
-            <Link to="/" className="text-gray-600 underline">
-              一般ログイン画面へ
-            </Link>
-            <button
-              onClick={() => {
-                localStorage.clear();
-                nav("/admin");
-              }}
-              className="text-gray-500 underline"
-            >
-              ログアウト
-            </button>
-          </div>
-        </div>
-
-        {/* カレンダー */}
-        <Calendar
-          currentMonth={selectedDate.getMonth()}
-          currentYear={selectedDate.getFullYear()}
-          selectedDate={selectedDate}
-          onMonthChange={(delta) => {
-            const newDate = new Date(
-              selectedDate.getFullYear(),
-              selectedDate.getMonth() + delta,
-              1
-            );
-            setSelectedDate(newDate);
-          }}
-          onDateSelect={setSelectedDate}
-          events={events}
-        />
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow p-6">
+        <h1 className="text-xl font-bold mb-4">管理者ダッシュボード</h1>
 
         {/* イベント登録フォーム */}
-        <form onSubmit={handleSubmit} className="mt-6 bg-gray-50 border rounded p-4">
-          <h2 className="font-semibold mb-3 text-lg">
-            {selectedDate.toISOString().split("T")[0]} の募集を追加
-          </h2>
-
-          <div className="mb-3">
-            <label className="block mb-1 text-sm">イベント種類</label>
-            <select
-              className="border p-2 rounded w-full"
-              value={selectedEvent.key}
-              onChange={(e) =>
-                setSelectedEvent(
-                  FIXED_EVENTS.find((f) => f.key === e.target.value) || FIXED_EVENTS[0]
-                )
-              }
-            >
-              {FIXED_EVENTS.map((ev) => (
-                <option key={ev.key} value={ev.key}>
-                  {ev.label}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={handleSubmit} className="grid gap-3 mb-8">
+          <div>
+            <label className="block text-sm font-medium mb-1">日付</label>
+            <input
+              type="date"
+              value={newEvent.date}
+              onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+              className="border rounded px-2 py-1 w-full"
+              required
+            />
           </div>
-
-          <div className="flex gap-3 mb-3">
-            <div className="flex-1">
-              <label className="block mb-1 text-sm">開始時間</label>
+          <div>
+            <label className="block text-sm font-medium mb-1">イベント名</label>
+            <input
+              value={newEvent.label}
+              onChange={(e) => setNewEvent({ ...newEvent, label: e.target.value })}
+              className="border rounded px-2 py-1 w-full"
+              placeholder="例：グランドゴルフ"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">開始時刻</label>
               <input
                 type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                className="border p-2 rounded w-full"
+                value={newEvent.start_time}
+                onChange={(e) => setNewEvent({ ...newEvent, start_time: e.target.value })}
+                className="border rounded px-2 py-1 w-full"
               />
             </div>
-            <div className="flex-1">
-              <label className="block mb-1 text-sm">終了時間</label>
+            <div>
+              <label className="block text-sm font-medium mb-1">終了時刻</label>
               <input
                 type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                className="border p-2 rounded w-full"
+                value={newEvent.end_time}
+                onChange={(e) => setNewEvent({ ...newEvent, end_time: e.target.value })}
+                className="border rounded px-2 py-1 w-full"
               />
             </div>
           </div>
-
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-            登録する
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">運転手定員</label>
+              <input
+                type="number"
+                value={newEvent.capacity_driver}
+                onChange={(e) =>
+                  setNewEvent({ ...newEvent, capacity_driver: parseInt(e.target.value) })
+                }
+                className="border rounded px-2 py-1 w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">添乗員定員</label>
+              <input
+                type="number"
+                value={newEvent.capacity_attendant}
+                onChange={(e) =>
+                  setNewEvent({ ...newEvent, capacity_attendant: parseInt(e.target.value) })
+                }
+                className="border rounded px-2 py-1 w-full"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          >
+            イベントを登録
           </button>
         </form>
 
-        {/* イベント一覧 + 削除 */}
-        <div className="mt-6">
-          <h3 className="font-semibold mb-2">登録済みイベント一覧</h3>
-          {events.length === 0 ? (
-            <p className="text-gray-500 text-sm">まだ登録はありません。</p>
-          ) : (
-            <ul className="divide-y">
-              {events.map((ev) => (
-                <li key={ev.id} className="py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium">
-                      📅 {ev.date} — {ev.label}
+        {/* イベント一覧 */}
+        <h2 className="text-lg font-semibold mb-3">登録済みイベント一覧</h2>
+        {events.length === 0 ? (
+          <p className="text-gray-500 text-sm">イベントはまだありません。</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {events.map((ev) => {
+              const isOpen = openEventId === ev.id;
+              const drivers = applicants.filter((a) => a.kind === "driver");
+              const attendants = applicants.filter((a) => a.kind === "attendant");
+
+              return (
+                <li key={ev.id} className="border rounded p-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium">{ev.date}</span>：{ev.label}（
+                      {ev.start_time}〜{ev.end_time}）
                     </div>
-                    <div className="text-sm text-gray-600">
-                      {ev.start_time || "--:--"}〜{ev.end_time || "--:--"}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => loadApplicants(ev.id)}
+                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                      >
+                        応募状況を見る
+                      </button>
+                      <button
+                        onClick={() => handleDelete(ev.id)}
+                        className="px-2 py-1 bg-red-100 hover:bg-red-200 rounded text-xs"
+                      >
+                        削除
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {ev.icon ? (
-                      <img
-                        src={ev.icon}
-                        alt={ev.label || "icon"}
-                        className="w-6 h-6 object-contain"
-                        loading="lazy"
-                      />
-                    ) : null}
-                    <button
-                      onClick={() => handleDelete(ev.id)}
-                      className="px-3 py-1.5 rounded bg-red-500 text-white text-sm hover:bg-red-600"
-                    >
-                      削除
-                    </button>
-                  </div>
+
+                  {isOpen && (
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="border rounded p-2">
+                        <div className="font-semibold text-blue-700">
+                          運転手（{drivers.length}）
+                        </div>
+                        {drivers.length === 0 ? (
+                          <div className="text-gray-500 text-xs mt-1">応募なし</div>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-sm">
+                            {drivers.map((a) => (
+                              <li key={a.id}>・{a.username}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div className="border rounded p-2">
+                        <div className="font-semibold text-emerald-700">
+                          添乗員（{attendants.length}）
+                        </div>
+                        {attendants.length === 0 ? (
+                          <div className="text-gray-500 text-xs mt-1">応募なし</div>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-sm">
+                            {attendants.map((a) => (
+                              <li key={a.id}>・{a.username}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );

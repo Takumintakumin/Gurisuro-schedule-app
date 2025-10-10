@@ -1,101 +1,100 @@
 // /api/applications.js
 import { query } from "./_db.js";
 
-// 残枠チェック用：イベント1件 + 現在応募数
-async function fetchEventWithCounts(eventId) {
-  const sql = `
-    SELECT
-      e.*,
-      COALESCE(SUM(CASE WHEN a.kind='driver' THEN 1 ELSE 0 END),0) AS applied_driver,
-      COALESCE(SUM(CASE WHEN a.kind='attendant' THEN 1 ELSE 0 END),0) AS applied_attendant
-    FROM events e
-    LEFT JOIN applications a ON a.event_id = e.id
-    WHERE e.id = $1
-    GROUP BY e.id
-  `;
-  const r = await query(sql, [eventId]);
-  return r.rows?.[0];
-}
-
 export default async function handler(req, res) {
-  // 応募作成
-  if (req.method === "POST") {
-    try {
-      const { event_id, username, kind } = req.body || {};
+  try {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.status(204).end();
+
+    if (req.method === "GET") {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const eventId = url.searchParams.get("event_id");
+      const date = url.searchParams.get("date");
+
+      if (eventId) {
+        const r = await query(
+          `SELECT a.id, a.username, a.kind, a.created_at
+           FROM applications a
+           WHERE a.event_id = $1
+           ORDER BY a.created_at ASC`,
+          [eventId]
+        );
+        return res.status(200).json(r.rows);
+      }
+
+      if (date) {
+        const r = await query(
+          `SELECT e.id AS event_id, e.label, e.start_time, e.end_time,
+                  a.id, a.username, a.kind, a.created_at
+             FROM events e
+             LEFT JOIN applications a ON a.event_id = e.id
+            WHERE e.date = $1
+            ORDER BY e.id, a.created_at`,
+          [date]
+        );
+        // イベントごとにまとめる
+        const map = {};
+        for (const row of r.rows) {
+          if (!map[row.event_id]) {
+            map[row.event_id] = {
+              event_id: row.event_id,
+              label: row.label,
+              start_time: row.start_time,
+              end_time: row.end_time,
+              applicants: [],
+            };
+          }
+          if (row.id) {
+            map[row.event_id].applicants.push({
+              id: row.id,
+              username: row.username,
+              kind: row.kind,
+              created_at: row.created_at,
+            });
+          }
+        }
+        return res.status(200).json(Object.values(map));
+      }
+
+      // パラメータ無しなら直近の応募（必要なら）
+      const r = await query(
+        `SELECT a.*, e.date, e.label FROM applications a
+          JOIN events e ON e.id = a.event_id
+         ORDER BY a.created_at DESC
+         LIMIT 200`
+      );
+      return res.status(200).json(r.rows);
+    }
+
+    if (req.method === "POST") {
+      let body = req.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+      const { event_id, username, kind } = body || {};
       if (!event_id || !username || !kind) {
-        return res.status(400).json({ error: "event_id, username, kind が必要です" });
+        return res.status(400).json({ error: "event_id, username, kind は必須です" });
       }
-      if (!["driver", "attendant"].includes(kind)) {
-        return res.status(400).json({ error: "kind は driver/attendant です" });
-      }
-
-      const ev = await fetchEventWithCounts(event_id);
-      if (!ev) return res.status(404).json({ error: "イベントが見つかりません" });
-
-      // 枠があればOK
-      if (kind === "driver" && ev.capacity_driver != null) {
-        if (Number(ev.applied_driver) >= Number(ev.capacity_driver)) {
-          return res.status(409).json({ error: "運転手枠が満席です" });
-        }
-      }
-      if (kind === "attendant" && ev.capacity_attendant != null) {
-        if (Number(ev.applied_attendant) >= Number(ev.capacity_attendant)) {
-          return res.status(409).json({ error: "添乗員枠が満席です" });
-        }
-      }
-
-      // 応募（同一ユーザー/同一イベント/同一種別の重複はUNIQUEで防止）
       await query(
-        `INSERT INTO applications (event_id, username, kind) VALUES ($1,$2,$3)
+        `INSERT INTO applications (event_id, username, kind)
+         VALUES ($1,$2,$3)
          ON CONFLICT (event_id, username, kind) DO NOTHING`,
         [event_id, username, kind]
       );
-
-      return res.json({ ok: true });
-    } catch (e) {
-      console.error("POST /api/applications error", e);
-      return res.status(500).json({ error: "応募に失敗しました" });
+      return res.status(201).json({ ok: true });
     }
-  }
 
-  // 自分の応募一覧（?username=）
-  if (req.method === "GET") {
-    try {
-      const { username, event_id } = req.query || {};
-      if (event_id) {
-        // 指定イベントの応募一覧（ユーザー画面で重複制御する場合にも利用可）
-        const r = await query(
-          "SELECT * FROM applications WHERE event_id = $1 ORDER BY created_at ASC",
-          [event_id]
-        );
-        return res.json(r.rows || []);
-      }
-      if (!username) return res.status(400).json({ error: "username または event_id を指定してください" });
-      const r = await query(
-        `SELECT * FROM applications WHERE username = $1 ORDER BY created_at DESC`,
-        [username]
-      );
-      return res.json(r.rows || []);
-    } catch (e) {
-      console.error("GET /api/applications error", e);
-      return res.status(500).json({ error: "取得に失敗しました" });
-    }
-  }
-
-  // 応募取消（id指定）
-  if (req.method === "DELETE") {
-    try {
-      const { id } = req.query || {};
+    if (req.method === "DELETE") {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const id = url.searchParams.get("id");
       if (!id) return res.status(400).json({ error: "id が必要です" });
-
-      const r = await query("DELETE FROM applications WHERE id = $1", [id]);
-      if (!r.rowCount) return res.status(404).json({ error: "対象がありません" });
-      return res.json({ ok: true });
-    } catch (e) {
-      console.error("DELETE /api/applications error", e);
-      return res.status(500).json({ error: "取消に失敗しました" });
+      await query(`DELETE FROM applications WHERE id = $1`, [id]);
+      return res.status(200).json({ ok: true });
     }
-  }
 
-  return res.status(405).end();
+    return res.status(405).json({ error: "Method Not Allowed" });
+  } catch (e) {
+    console.error("[/api/applications] error:", e);
+    return res.status(500).json({ error: "Server Error: " + e.message });
+  }
 }
