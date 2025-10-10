@@ -2,6 +2,21 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+// ✅ JSONでもHTMLでも落ちない安全fetch
+async function apiFetchSafe(url, options = {}) {
+  const res = await fetch(url, options);
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return { ok: res.ok, status: res.status, data };
+  }
+  // 500のHTMLなど非JSONも安全に
+  let text = "";
+  try { text = await res.text(); } catch {}
+  return { ok: res.ok, status: res.status, data: { error: text?.slice(0, 200) || "非JSONレスポンス" } };
+}
+
 export default function AdminLogin() {
   const nav = useNavigate();
   const [name, setName] = useState("");
@@ -16,18 +31,19 @@ export default function AdminLogin() {
     e.preventDefault();
     setMsg("送信中…");
     try {
-      const res = await fetch("/api/login", {
+      const { ok, status, data } = await apiFetchSafe("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: name, password: pw }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg(data.error || "ユーザーが見つかりません");
+
+      if (!ok) {
+        setMsg(data?.error || `ユーザーが見つかりません（${status}）`);
         return;
       }
+
       localStorage.setItem("userRole", data.role || "admin");
-      localStorage.setItem("userName", data.username);
+      localStorage.setItem("userName", data.username || name);
       setMsg("ログイン成功。ダッシュボードへ移動します");
       nav("/admin/dashboard");
     } catch (err) {
@@ -101,7 +117,7 @@ export default function AdminLogin() {
         <p style={{ marginTop: 12, color: msg.includes("成功") ? "green" : "red" }}>{msg}</p>
       )}
 
-      {/* ✅ 一般ユーザーログインへのリンク追加 */}
+      {/* ✅ 一般ユーザーログインへのリンク */}
       <p style={{ marginTop: 20, fontSize: 14 }}>
         一般ユーザーログインは{" "}
         <span
