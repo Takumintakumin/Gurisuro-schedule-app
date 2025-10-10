@@ -31,7 +31,9 @@ export default function MainApp() {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+  refresh();
+}, [refresh]);
 
   const listOfSelected = useMemo(() => {
     const ymd = toLocalYMD(selectedDate);
