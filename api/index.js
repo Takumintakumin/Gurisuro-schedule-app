@@ -1,19 +1,18 @@
-// /api/index.js  ← これ1つに集約（Vercel Hobby の関数数制限対策）
-// 重要: DB は api-lib/_db.js から
+// /api/index.js
 import { query, healthcheck } from "./api-lib/_db.js";
 
-// CORS 共通ヘッダ
+// ---- CORS 共通ヘッダ ----
 function withCORS(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-// JSON ボディ安全パース（500時のHTML等にも耐える）
+// ---- JSON body を安全に読む（HTMLでも落ちない）----
 async function parseJSONBody(req) {
   if (req.method === "GET" || req.method === "DELETE") return {};
   try {
-    if (typeof req.body === "object" && req.body !== null) return req.body;
+    if (typeof req.body === "object") return req.body || {};
     const text = await new Promise((resolve) => {
       let s = "";
       req.on("data", (c) => (s += c));
@@ -25,34 +24,46 @@ async function parseJSONBody(req) {
   }
 }
 
+// ---- 実リクエストの “仮想パス” を決定（rewrite 経由でも、ヘッダ経由でも拾う）----
+function resolveRoute(req) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const q = url.searchParams;
+  // vercel.json の rewrite で ?path=... を付与している想定
+  let sub = (q.get("path") || "").replace(/^\/+/, ""); // 例: "login"
+  if (!sub) {
+    // リライトが効いてない場合の保険：ヘッダや元のパスから推測
+    const h =
+      req.headers["x-forwarded-uri"] ||
+      req.headers["x-invoke-path"] ||
+      req.headers["x-vercel-path"] ||
+      "";
+    if (typeof h === "string" && h.startsWith("/api/")) {
+      sub = h.slice(5); // "/api/login" -> "login"
+    } else {
+      const p = url.pathname; // 例: "/api/index" or "/api/login"
+      sub = p.startsWith("/api/") ? p.slice(5) : p.replace(/^\/+/, "");
+    }
+  }
+  return { url, q, sub }; // sub 例: "login", "events", "applications", "fairness", "health"
+}
+
 export default async function handler(req, res) {
   try {
     withCORS(res);
     if (req.method === "OPTIONS") return res.status(204).end();
 
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const path = url.pathname;                // 例: /api, /api/index, /api/login
-    const rel  = path.replace(/^\/api\/?/, ""); // 例: "", "index", "login", "events"
-    const q = url.searchParams;
+    const { url, q, sub } = resolveRoute(req);
     const body = await parseJSONBody(req);
 
-    // ---- /api or /api/index → 簡易案内 ----
-    if (rel === "" || rel === "index") {
-      return res.status(200).json({ ok: true, routes: ["/api/health","/api/login","/api/register","/api/users","/api/events","/api/applications","/api/fairness"] });
-    }
-
     // ---- /api/health ----
-    if (rel === "health") {
+    if (sub === "health") {
       const dbOK = await healthcheck().catch(() => 0);
       return res.status(200).json({ ok: true, db: dbOK ? 1 : 0 });
     }
 
     // ---- /api/login ----
-    if (rel === "login") {
-      // ✅ Safari/拡張の誤アクセスで GET が来ても 200 を返す（405 を出さない）
-      if (req.method !== "POST") {
-        return res.status(200).json({ ok: false, hint: "Use POST /api/login" });
-      }
+    if (sub === "login") {
+      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
       const { username, password } = body || {};
       if (!username || !password) {
         return res.status(400).json({ error: "username と password が必要です" });
@@ -68,16 +79,17 @@ export default async function handler(req, res) {
     }
 
     // ---- /api/register ----
-    if (rel === "register") {
+    if (sub === "register") {
       if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
       const { username, password, role = "user" } = body || {};
       if (!username || !password) {
         return res.status(400).json({ error: "username と password が必要です" });
       }
       try {
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username, password, role,
-        ]);
+        await query(
+          "INSERT INTO users (username, password, role) VALUES ($1,$2,$3)",
+          [username, password, role]
+        );
         return res.status(201).json({ ok: true });
       } catch (e) {
         if (String(e?.message || "").includes("duplicate key")) {
@@ -87,18 +99,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // ---- /api/users（管理用）----
-    if (rel === "users") {
+    // ---- /api/users ----
+    if (sub === "users") {
       if (req.method === "GET") {
-        const r = await query("SELECT id, username, role FROM users ORDER BY id ASC");
+        const r = await query("SELECT id, username, role, familiar FROM users ORDER BY id ASC");
         return res.status(200).json(r.rows);
       }
       if (req.method === "POST") {
-        const { username, password, role = "user" } = body || {};
+        const { username, password, role = "user", familiar = null } = body || {};
         if (!username || !password) return res.status(400).json({ error: "必須項目不足" });
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username, password, role,
-        ]);
+        await query(
+          "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
+          [username, password, role, familiar]
+        );
         return res.status(201).json({ ok: true });
       }
       if (req.method === "DELETE") {
@@ -111,7 +124,7 @@ export default async function handler(req, res) {
     }
 
     // ---- /api/events ----
-    if (rel === "events") {
+    if (sub === "events") {
       if (req.method === "GET") {
         const r = await query(
           "SELECT id, date, label, icon, start_time, end_time, capacity_driver, capacity_attendant FROM events ORDER BY date ASC"
@@ -140,8 +153,8 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // ---- /api/applications（応募）----
-    if (rel === "applications") {
+    // ---- /api/applications ----
+    if (sub === "applications") {
       if (req.method === "GET") {
         const eventId = q.get("event_id");
         const username = q.get("username");
@@ -183,8 +196,8 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // ---- /api/fairness（公平スコア順）----
-    if (rel === "fairness") {
+    // ---- /api/fairness ----
+    if (sub === "fairness") {
       if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
       const eventId = q.get("event_id");
       if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
@@ -203,10 +216,9 @@ export default async function handler(req, res) {
           SELECT *,
                  ROW_NUMBER() OVER (
                    PARTITION BY kind
-                   ORDER BY
-                     times ASC,
-                     COALESCE(last_at, 'epoch') ASC,
-                     created_at ASC
+                   ORDER BY times ASC,
+                            COALESCE(last_at, 'epoch') ASC,
+                            created_at ASC
                  ) AS rnk
           FROM appl
         )
@@ -224,12 +236,12 @@ export default async function handler(req, res) {
           applied_at: row.created_at,
           rank: Number(row.rnk),
         };
-        if (row.kind === "driver") driver.push(item); else attendant.push(item);
+        (row.kind === "driver" ? driver : attendant).push(item);
       }
       return res.status(200).json({ event_id: Number(eventId), driver, attendant });
     }
 
-    // ---- それ以外は 404 ----
+    // どれにも当たらない
     return res.status(404).json({ error: "Not Found" });
   } catch (err) {
     console.error("[/api/index] Error:", err);
