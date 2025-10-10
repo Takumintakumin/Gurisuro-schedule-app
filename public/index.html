@@ -1,50 +1,14 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    <meta charset="UTF-8" />
-    <title>Gurisuro App</title>
-
-    <!-- ✅ スマホ最適化 -->
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#ffffff" />
+    <title>Gurisuro App</title>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="description" content="グリスロ予定調整アプリ" />
-
-    <!-- CRA 用（public パス解決用）。favicon や manifest を置いていれば自動参照されます -->
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-
-    <!-- 🔎 JSが読み込まれていない/実行前に落ちた時だけ残るデバッグ枠 -->
-    <style>
-      #__boot_debug {
-        position: fixed; inset: 12px; padding: 10px;
-        background: #fee2e2; color: #991b1b; border: 1px solid #ef4444;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
-        z-index: 99999; border-radius: 8px;
-      }
-    </style>
-    <script>
-      // 500 の HTML やランタイム例外で真っ白の時にヒントを出す
-      window.addEventListener('error', function (e) {
-        var box = document.getElementById('__boot_debug');
-        if (box) box.textContent = 'JS Runtime Error: ' + (e.message || e.filename || 'unknown');
-      });
-    </script>
   </head>
-
-  <body
-    class="bg-gray-100"
-    style="padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);"
-  >
-    <noscript>このアプリを利用するには JavaScript を有効にしてください。</noscript>
-
-    <!-- ✅ React がマウントする領域 -->
+  <body style="padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
+    <noscript>このアプリを使うには JavaScript を有効にしてください。</noscript>
     <div id="root"></div>
-
-    <!-- 🔎 JS 実行前にだけ見える（React 起動後は src/index.js 側で自動 remove されます） -->
-    <div id="__boot_debug">SPA Booting…（JS未実行/取得失敗ならこの表示が残ります）</div>
   </body>
 </html>
