@@ -4,12 +4,8 @@
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } },
     { "src": "api/api-lib/index.js", "use": "@vercel/node" }
   ],
-  "routes": [
-    { "src": "^/api/(.*)$", "dest": "api/api-lib/index.js?path=$1" },
-
-    { "src": "^/static/(.*)$", "dest": "build/static/$1" },
-    { "src": "^/(favicon\\.ico|manifest\\.json|robots\\.txt)$", "dest": "build/$1" },
-
-    { "src": "^(?!/api/).*", "dest": "build/index.html" }
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/api-lib/index.js?path=:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
