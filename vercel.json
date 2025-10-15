@@ -1,15 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } },
-    { "src": "api/index.js", "use": "@vercel/node" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/api-lib/index?path=$1" }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.js?path=$1" },
-    { "src": "/static/(.*)", "dest": "/build/static/$1" },
-    { "src": "/favicon.ico", "dest": "/build/favicon.ico" },
-    { "src": "/manifest.json", "dest": "/build/manifest.json" },
-    { "src": "/robots.txt", "dest": "/build/robots.txt" },
-    { "src": "/(.*)", "dest": "/build/index.html" }
+  "redirects": [
+    { "source": "/admin", "destination": "/admin/dashboard", "permanent": false }
+  ],
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
   ]
 }
