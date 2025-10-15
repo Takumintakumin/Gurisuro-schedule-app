@@ -31,7 +31,8 @@ export default function AdminLogin() {
     e.preventDefault();
     setMsg("送信中…");
     try {
-      const { ok, status, data } = await apiFetchSafe("/api/login", {
+      // 🔁 ここだけ変更: /api/login -> /api?path=login
+      const { ok, status, data } = await apiFetchSafe("/api?path=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: name, password: pw }),

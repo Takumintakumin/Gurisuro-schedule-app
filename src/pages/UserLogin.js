@@ -11,9 +11,7 @@ async function apiFetch(url, options = {}) {
   let data = {};
   try {
     data = text ? JSON.parse(text) : {};
-  } catch (_) {
-    // 非JSON（エラーページなど）の場合は無視
-  }
+  } catch (_) {}
   return { ok: res.ok, status: res.status, data, text };
 }
 
@@ -35,7 +33,6 @@ export default function UserLogin() {
   const [regLoading, setRegLoading] = useState(false);
 
   // ★ 幕張ベイタウンの熟知度
-  // 'familiar'（詳しい） or 'unfamiliar'（詳しくない）
   const [familiarity, setFamiliarity] = useState("unfamiliar");
 
   // ---- ログイン ----
@@ -49,7 +46,8 @@ export default function UserLogin() {
     }
     setLogLoading(true);
     try {
-      const { ok, data, status } = await apiFetch("/api/login", {
+      // 🔁 /api/login → /api?path=login
+      const { ok, data, status } = await apiFetch("/api?path=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password: pw }),
@@ -60,7 +58,6 @@ export default function UserLogin() {
         return;
       }
 
-      // ログイン成功
       localStorage.setItem("userRole", data.role || "user");
       localStorage.setItem("userName", username);
       setLoginMsg("ログイン成功！");
@@ -79,7 +76,6 @@ export default function UserLogin() {
     setRegMsg("");
     const username = regName.trim();
 
-    // クライアント側バリデーション
     if (!username || !regPw || !regPw2) {
       setRegMsg("お名前・パスワードをすべて入力してください。");
       return;
@@ -99,7 +95,8 @@ export default function UserLogin() {
 
     setRegLoading(true);
     try {
-      const { ok, data, status } = await apiFetch("/api/register", {
+      // 🔁 /api/register → /api?path=register
+      const { ok, data, status } = await apiFetch("/api?path=register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,9 +112,9 @@ export default function UserLogin() {
         return;
       }
 
-      // 登録成功 → そのままログイン処理
+      // 登録成功 → ログイン
       setRegMsg("登録が完了しました。ログインしています…");
-      const login = await apiFetch("/api/login", {
+      const login = await apiFetch("/api?path=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password: regPw }),
@@ -139,7 +136,7 @@ export default function UserLogin() {
     }
   };
 
-  // 共通スタイル（依存を増やさないためinlineで）
+  // --- 以降はUI（変更なし） ---
   const card = {
     width: "100%",
     maxWidth: 420,
@@ -226,7 +223,7 @@ export default function UserLogin() {
           onClick={() => setShowRegister((v) => !v)}
           style={{
             ...btn,
-            background: "transparent",
+            background: "透明",
             color: "#2563eb",
             border: "1px solid #bfdbfe",
           }}
