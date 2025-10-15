@@ -67,27 +67,35 @@ export default async function handler(req, res) {
     }
 
     // ---- /api/login ----
-    if (sub === "login") {
-      if (req.method !== "POST")
-        return res.status(405).json({ error: "Method Not Allowed" });
+if (sub === "login") {
+  // ★ GET でも POST でも受ける（405 を出さない）
+  if (req.method !== "POST" && req.method !== "GET") {
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
 
-      const { username, password } = body || {};
-      if (!username || !password)
-        return res.status(400).json({ error: "username と password が必要です" });
+  // GET のときはクエリから、POST のときは body から受け取る
+  const username =
+    (req.method === "GET" ? q.get("username") : (body || {}).username) || "";
+  const password =
+    (req.method === "GET" ? q.get("password") : (body || {}).password) || "";
 
-      const r = await query(
-        "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
-        [username]
-      );
-      const u = r.rows?.[0];
-      if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
-      if (u.password !== password)
-        return res.status(401).json({ error: "パスワードが違います" });
+  if (!username || !password) {
+    return res.status(400).json({ error: "username と password が必要です" });
+  }
 
-      return res
-        .status(200)
-        .json({ message: "OK", role: u.role, username: u.username });
-    }
+  const r = await query(
+    "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
+    [username]
+  );
+  const u = r.rows?.[0];
+  if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
+  if (u.password !== password)
+    return res.status(401).json({ error: "パスワードが違います" });
+
+  return res
+    .status(200)
+    .json({ message: "OK", role: u.role, username: u.username });
+}
 
     // ---- /api/register ----
     if (sub === "register") {
