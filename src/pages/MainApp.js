@@ -15,14 +15,13 @@ const toYMD = (d) => d.toISOString().split("T")[0];
 
 export default function MainApp() {
   const userName = localStorage.getItem("userName") || "";
-  const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
+  const userRolePref = localStorage.getItem("userRolePref") || "両方";
 
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [applying, setApplying] = useState(false);
   const [myApps, setMyApps] = useState([]); // 自分の応募
 
-  // イベント一覧 + 自分の応募一覧取得（メモ化）
   const refresh = useCallback(async () => {
     const ev = await apiFetch("/api/events");
     setEvents(Array.isArray(ev.data) ? ev.data : []);
@@ -30,6 +29,8 @@ export default function MainApp() {
     if (userName) {
       const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
       setMyApps(Array.isArray(me.data) ? me.data : []);
+    } else {
+      setMyApps([]);
     }
   }, [userName]);
 
@@ -40,7 +41,7 @@ export default function MainApp() {
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
-  // 残枠表示用にイベント別の応募数をGET
+  // 残枠表示用の応募数
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
@@ -64,10 +65,7 @@ export default function MainApp() {
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
 
   const apply = async (ev, kind) => {
-    if (!userName) {
-      alert("先にログインしてください。");
-      return;
-    }
+    if (!userName) return alert("先にログインしてください。");
     setApplying(true);
     try {
       const { ok, status, data } = await apiFetch("/api/applications", {
@@ -80,6 +78,23 @@ export default function MainApp() {
       alert("応募しました！");
     } catch (e) {
       alert(`応募に失敗しました: ${e.message}`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const cancel = async (ev, kind) => {
+    if (!userName) return;
+    if (!window.confirm("応募を取り消しますか？")) return;
+    setApplying(true);
+    try {
+      const url = `/api/applications?event_id=${encodeURIComponent(ev.id)}&username=${encodeURIComponent(userName)}&kind=${encodeURIComponent(kind)}`;
+      const { ok, status, data } = await apiFetch(url, { method: "DELETE" });
+      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
+      await refresh();
+      alert("応募を取り消しました。");
+    } catch (e) {
+      alert(`取り消しに失敗しました: ${e.message}`);
     } finally {
       setApplying(false);
     }
@@ -115,6 +130,9 @@ export default function MainApp() {
                 const remainAtt =
                   ev.capacity_attendant != null ? Math.max(0, ev.capacity_attendant - c.attendant) : null;
 
+                const appliedDriver = hasApplied(ev.id, "driver");
+                const appliedAtt    = hasApplied(ev.id, "attendant");
+
                 return (
                   <li key={ev.id} className="border rounded p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -135,24 +153,42 @@ export default function MainApp() {
 
                     <div className="flex gap-2">
                       {["運転手","両方"].includes(userRolePref) && (
-                        <button
-                          className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-                          disabled={applying || hasApplied(ev.id,"driver") || remainDriver===0}
-                          onClick={() => apply(ev, "driver")}
-                          title={hasApplied(ev.id,"driver") ? "既に応募済み" : ""}
-                        >
-                          運転手で応募
-                        </button>
+                        appliedDriver ? (
+                          <button
+                            className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
+                            disabled={applying}
+                            onClick={() => cancel(ev, "driver")}
+                          >
+                            応募取消（運転手）
+                          </button>
+                        ) : (
+                          <button
+                            className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
+                            disabled={applying || remainDriver===0}
+                            onClick={() => apply(ev, "driver")}
+                          >
+                            運転手で応募
+                          </button>
+                        )
                       )}
                       {["添乘員","両方"].includes(userRolePref) && (
-                        <button
-                          className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
-                          disabled={applying || hasApplied(ev.id,"attendant") || remainAtt===0}
-                          onClick={() => apply(ev, "attendant")}
-                          title={hasApplied(ev.id,"attendant") ? "既に応募済み" : ""}
-                        >
-                          添乗員で応募
-                        </button>
+                        appliedAtt ? (
+                          <button
+                            className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
+                            disabled={applying}
+                            onClick={() => cancel(ev, "attendant")}
+                          >
+                            応募取消（添乗員）
+                          </button>
+                        ) : (
+                          <button
+                            className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
+                            disabled={applying || remainAtt===0}
+                            onClick={() => apply(ev, "attendant")}
+                          >
+                            添乗員で応募
+                          </button>
+                        )
                       )}
                     </div>
                   </li>

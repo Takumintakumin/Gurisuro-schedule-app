@@ -24,39 +24,16 @@ async function parseJSONBody(req) {
   }
 }
 
-// ---- “仮想パス” を決定（rewrite / 直叩き / 追加ヘッダ すべてに対応）----
-function normalizeSub(raw = "") {
-  // 先頭スラ削除
-  let s = String(raw).replace(/^\/+/, ""); // "/api/login" -> "api/login"
-  // 先頭に "api/" が残っていれば除去
-  if (s.startsWith("api/")) s = s.slice(4); // "api/login" -> "login"
-  // 末尾 ".js" は無視（例: "index.js" → "index"）
-  if (s.endsWith(".js")) s = s.slice(0, -3);
-  return s;
-}
+// ---- 仮想パスの決定（/api/index に集約しても個別パス風に動かす）----
 function resolveRoute(req) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const q = url.searchParams;
-
-  // vercel.json の rewrite で ?path=/api/xxx を付与している前提
-  let sub = normalizeSub(q.get("path") || "");
-
+  let sub = (q.get("path") || "").replace(/^\/+/, ""); // rewrite から渡された path を優先
   if (!sub) {
-    // ヘッダから推測（環境により値が入る場合がある）
-    const h =
-      req.headers["x-forwarded-uri"] ||
-      req.headers["x-invoke-path"] ||
-      req.headers["x-vercel-path"] ||
-      "";
-    if (h && typeof h === "string") sub = normalizeSub(h);
+    const p = url.pathname;                 // 例: /api/index or /api/login
+    sub = p.startsWith("/api/") ? p.slice(5) : p.replace(/^\/+/, "");
   }
-
-  if (!sub) {
-    // 最後の手段：実際の pathname から推測
-    sub = normalizeSub(url.pathname); // "/api/login" -> "login" / "/api/index.js" -> "index"
-  }
-
-  return { url, q, sub };
+  return { url, q, sub }; // sub は "login" / "register" / "users" / "events" / "applications" / "fairness" / "health"
 }
 
 export default async function handler(req, res) {
@@ -186,6 +163,7 @@ export default async function handler(req, res) {
         }
         return res.status(400).json({ error: "event_id または username を指定してください" });
       }
+
       if (req.method === "POST") {
         const { event_id, username, kind } = body || {};
         if (!event_id || !username || !kind) {
@@ -199,12 +177,28 @@ export default async function handler(req, res) {
         );
         return res.status(201).json({ ok: true });
       }
+
       if (req.method === "DELETE") {
+        // 1) id 指定
         const id = q.get("id");
-        if (!id) return res.status(400).json({ error: "id が必要です" });
-        await query("DELETE FROM applications WHERE id = $1", [id]);
-        return res.status(200).json({ ok: true });
+        if (id) {
+          await query("DELETE FROM applications WHERE id = $1", [id]);
+          return res.status(200).json({ ok: true });
+        }
+        // 2) 複合キー指定（event_id + username + kind）
+        const eventId = q.get("event_id");
+        const username = q.get("username");
+        const kind = q.get("kind");
+        if (eventId && username && kind) {
+          const r = await query(
+            "DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = $3",
+            [eventId, username, kind]
+          );
+          return res.status(200).json({ ok: true, deleted: r.rowCount || 0 });
+        }
+        return res.status(400).json({ error: "id または (event_id, username, kind) が必要です" });
       }
+
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
