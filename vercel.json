@@ -1,18 +1,17 @@
 {
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/api-lib/index?path=$1" }
+  "version": 2,
+  "builds": [
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } },
+    { "src": "api/api-lib/index.js", "use": "@vercel/node" }
   ],
-  "redirects": [
-    { "source": "/admin", "destination": "/admin/dashboard", "permanent": false }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,DELETE,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
-      ]
-    }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/api-lib/index.js?path=$1" },
+
+    { "src": "/static/(.*)", "dest": "/build/static/$1" },
+    { "src": "/favicon.ico", "dest": "/build/favicon.ico" },
+    { "src": "/manifest.json", "dest": "/build/manifest.json" },
+    { "src": "/robots.txt", "dest": "/build/robots.txt" },
+
+    { "src": "/(.*)", "dest": "/build/index.html" }
   ]
 }
