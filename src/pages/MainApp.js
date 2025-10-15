@@ -191,7 +191,7 @@ export default function MainApp() {
                             disabled={applying || remainAtt===0}
                             onClick={() => apply(ev, "attendant")}
                           >
-                            添乗員で応募
+                            添乗員で応募う
                           </button>
                         )
                       )}
