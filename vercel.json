@@ -1,16 +1,13 @@
 {
   "version": 2,
-
   "builds": [
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } }
   ],
-
   "functions": {
     "api/api-lib/index.js": {
       "runtime": "nodejs22.x"
     }
   },
-
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/api-lib/index.js?path=$1" },
     { "source": "/static/(.*)", "destination": "/build/static/$1" },
