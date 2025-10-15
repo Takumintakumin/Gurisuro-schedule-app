@@ -88,7 +88,12 @@ export default function MainApp() {
     if (!window.confirm("応募を取り消しますか？")) return;
     setApplying(true);
     try {
-      const url = `/api/applications?event_id=${encodeURIComponent(ev.id)}&username=${encodeURIComponent(userName)}&kind=${encodeURIComponent(kind)}`;
+      // ✅ idが分からなくても取り消せるように、複合キーでDELETE
+      const url =
+        `/api/applications?event_id=${encodeURIComponent(ev.id)}` +
+        `&username=${encodeURIComponent(userName)}` +
+        `&kind=${encodeURIComponent(kind)}`;
+
       const { ok, status, data } = await apiFetch(url, { method: "DELETE" });
       if (!ok) throw new Error(data?.error || `HTTP ${status}`);
       await refresh();
