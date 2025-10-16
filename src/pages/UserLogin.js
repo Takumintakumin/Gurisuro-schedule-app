@@ -50,7 +50,7 @@ export default function UserLogin() {
       const { ok, data, status } = await apiFetch("/api?path=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password: pw }),
+        body: JSON.stringify({ username: name, password: pw }),
       });
 
       if (!ok) {
