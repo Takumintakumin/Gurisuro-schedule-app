@@ -1,7 +1,8 @@
 // src/pages/MainApp.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
-import { toLocalYMD } from "../lib/date.js"; // ★ 追加：ローカル日付で統一
+import { toLocalYMD } from "../lib/date.js";
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
@@ -13,14 +14,26 @@ async function apiFetch(url, options = {}) {
 }
 
 export default function MainApp() {
+  const nav = useNavigate();
+
   const userName = localStorage.getItem("userName") || "";
-  const userRolePref = localStorage.getItem("userRolePref") || "両方";
+  const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
 
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [applying, setApplying] = useState(false);
   const [myApps, setMyApps] = useState([]); // 自分の応募
 
+  // ---- ログアウト ----
+  const handleLogout = () => {
+    if (!window.confirm("ログアウトしますか？")) return;
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("userRolePref");
+    nav("/"); // 一般ログインへ戻る
+  };
+
+  // ---- イベント一覧 + 自分の応募一覧取得 ----
   const refresh = useCallback(async () => {
     const ev = await apiFetch("/api/events");
     setEvents(Array.isArray(ev.data) ? ev.data : []);
@@ -35,17 +48,16 @@ export default function MainApp() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ★ ここを UTC ではなくローカル日付で比較
   const listOfSelected = useMemo(() => {
     const ymd = toLocalYMD(selectedDate);
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
-  // 残枠表示用の応募数
+  // 残枠表示用にイベント別の応募数をGET（簡易版：/api/applications?event_id=）
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
-      const ymd = toLocalYMD(selectedDate); // ★ ローカル日付で統一
+      const ymd = toLocalYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
       for (const ev of todays) {
@@ -65,7 +77,10 @@ export default function MainApp() {
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
 
   const apply = async (ev, kind) => {
-    if (!userName) return alert("先にログインしてください。");
+    if (!userName) {
+      alert("先にログインしてください。");
+      return;
+    }
     setApplying(true);
     try {
       const { ok, status, data } = await apiFetch("/api/applications", {
@@ -103,7 +118,19 @@ export default function MainApp() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        <h1 className="text-xl font-bold mb-4">グリスロ予定調整アプリ</h1>
+        {/* ヘッダー（ログアウト追加） */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold">グリスロ予定調整アプリ</h1>
+          <div className="flex items-center gap-3">
+            {userName && <span className="text-sm text-gray-600">ログイン中：{userName}</span>}
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600"
+            >
+              ログアウト
+            </button>
+          </div>
+        </div>
 
         <Calendar
           currentMonth={selectedDate.getMonth()}
