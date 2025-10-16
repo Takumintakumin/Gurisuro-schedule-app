@@ -103,7 +103,8 @@ export default function UserLogin() {
           username,
           password: regPw,
           role: "user",
-          familiarity, // ← 追加送信
+          familiarity,
+          familiar: familiarity, // ← 同じ値を保険で重複送信
         }),
       });
 

@@ -4,7 +4,7 @@ import { query, healthcheck } from "./_db.js";
 /** ---- CORS ---- */
 function withCORS(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -30,10 +30,8 @@ function resolveRoute(req) {
   const q = url.searchParams;
   const trim = (s) => (s || "").replace(/^\/+|\/+$/g, "");
 
-  // vercel.json の rewrite で付与した ?path= が最優先
   let sub = trim(q.get("path"));
 
-  // フォールバック（ヘッダ or 実パス）
   if (!sub) {
     const forwarded =
       req.headers["x-forwarded-uri"] ||
@@ -42,14 +40,14 @@ function resolveRoute(req) {
       "";
     if (typeof forwarded === "string" && forwarded) {
       const p = trim(forwarded);
-      sub = p.startsWith("api/") ? trim(p.slice(4)) : p; // "api/login" -> "login"
-    } else {
-      const p = trim(url.pathname); // 例: "api/api-lib/index.js"
       sub = p.startsWith("api/") ? trim(p.slice(4)) : p;
-      if (sub.includes("index.js")) sub = trim(q.get("path")); // 最後の保険
+    } else {
+      const p = trim(url.pathname);
+      sub = p.startsWith("api/") ? trim(p.slice(4)) : p;
+      if (sub.includes("index.js")) sub = trim(q.get("path"));
     }
   }
-  return { url, q, sub }; // 例: sub === "login"
+  return { url, q, sub };
 }
 
 export default async function handler(req, res) {
@@ -70,9 +68,9 @@ export default async function handler(req, res) {
     if (sub === "login") {
       if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
       const { username, password } = body || {};
-      if (!username || !password) {
+      if (!username || !password)
         return res.status(400).json({ error: "username と password が必要です" });
-      }
+
       const r = await query(
         "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
         [username]
@@ -83,51 +81,96 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "OK", role: u.role, username: u.username });
     }
 
-    // ---- /api/register ----
-if (sub === "register") {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-  const { username, password, role = "user", familiarity = "unfamiliar" } = body || {};
-  if (!username || !password) {
-    return res.status(400).json({ error: "username と password が必要です" });
-  }
-  try {
-    await query(
-      "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
-      [username, password, role, familiarity]
-    );
-    return res.status(201).json({ ok: true });
-  } catch (e) {
-    if (String(e?.message || "").includes("duplicate key")) {
-      return res.status(409).json({ error: "このユーザー名は既に存在します" });
+    /* ------------------------- /api/register ----------------------- */
+    if (sub === "register") {
+      if (req.method !== "POST")
+        return res.status(405).json({ error: "Method Not Allowed" });
+
+      const { username, password, role = "user", familiarity, familiar } = body || {};
+      if (!username || !password)
+        return res.status(400).json({ error: "username と password が必要です" });
+
+      // 双方どちらでも受け取れるようにする
+      const raw = String(familiar ?? familiarity ?? "unfamiliar").toLowerCase();
+      const fam =
+        raw === "familiar"
+          ? "familiar"
+          : raw === "unfamiliar"
+          ? "unfamiliar"
+          : null;
+
+      try {
+        await query(
+          "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
+          [username, password, role, fam]
+        );
+        return res.status(201).json({ ok: true });
+      } catch (e) {
+        if (String(e?.message || "").includes("duplicate key"))
+          return res.status(409).json({ error: "このユーザー名は既に存在します" });
+        throw e;
+      }
     }
-    throw e;
-  }
-}
 
     /* -------------------------- /api/users ------------------------- */
     if (sub === "users") {
+      // GET
       if (req.method === "GET") {
-        const r = await query("SELECT id, username, role FROM users ORDER BY id ASC");
+        const r = await query(
+          "SELECT id, username, role, familiar FROM users ORDER BY id ASC"
+        );
         return res.status(200).json(r.rows);
       }
+
+      // POST（管理者追加）
       if (req.method === "POST") {
-        const { username, password, role = "user" } = body || {};
-        if (!username || !password) return res.status(400).json({ error: "必須項目不足" });
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username,
-          password,
-          role,
-        ]);
+        const { username, password, role = "user", familiarity, familiar } = body || {};
+        if (!username || !password)
+          return res.status(400).json({ error: "必須項目不足" });
+
+        const raw = String(familiar ?? familiarity ?? "unfamiliar").toLowerCase();
+        const fam =
+          raw === "familiar"
+            ? "familiar"
+            : raw === "unfamiliar"
+            ? "unfamiliar"
+            : null;
+
+        await query(
+          "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
+          [username, password, role, fam]
+        );
         return res.status(201).json({ ok: true });
       }
+
+      // PATCH（既存ユーザーのfamiliar更新）
+      if (req.method === "PATCH") {
+        const { username, familiarity, familiar } = body || {};
+        if (!username) return res.status(400).json({ error: "username が必要です" });
+
+        const raw = String(familiar ?? familiarity ?? "").toLowerCase();
+        const fam =
+          raw === "familiar"
+            ? "familiar"
+            : raw === "unfamiliar"
+            ? "unfamiliar"
+            : null;
+
+        await query("UPDATE users SET familiar = $2 WHERE username = $1", [
+          username,
+          fam,
+        ]);
+        return res.status(200).json({ ok: true });
+      }
+
+      // DELETE
       if (req.method === "DELETE") {
         const id = q.get("id");
         if (!id) return res.status(400).json({ error: "id が必要です" });
         await query("DELETE FROM users WHERE id = $1", [id]);
         return res.status(200).json({ ok: true });
       }
+
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
@@ -139,6 +182,7 @@ if (sub === "register") {
         );
         return res.status(200).json(r.rows);
       }
+
       if (req.method === "POST") {
         const {
           date,
@@ -149,7 +193,8 @@ if (sub === "register") {
           capacity_driver = null,
           capacity_attendant = null,
         } = body || {};
-        if (!date || !label) return res.status(400).json({ error: "date と label は必須です" });
+        if (!date || !label)
+          return res.status(400).json({ error: "date と label は必須です" });
         await query(
           `INSERT INTO events (date, label, icon, start_time, end_time, capacity_driver, capacity_attendant)
            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
@@ -157,12 +202,14 @@ if (sub === "register") {
         );
         return res.status(201).json({ ok: true });
       }
+
       if (req.method === "DELETE") {
         const id = q.get("id");
         if (!id) return res.status(400).json({ error: "id が必要です" });
         await query("DELETE FROM events WHERE id = $1", [id]);
         return res.status(200).json({ ok: true });
       }
+
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
@@ -187,11 +234,12 @@ if (sub === "register") {
         }
         return res.status(400).json({ error: "event_id または username を指定してください" });
       }
+
       if (req.method === "POST") {
         const { event_id, username, kind } = body || {};
-        if (!event_id || !username || !kind) {
+        if (!event_id || !username || !kind)
           return res.status(400).json({ error: "event_id, username, kind が必要です" });
-        }
+
         await query(
           `INSERT INTO applications (event_id, username, kind)
            VALUES ($1,$2,$3)
@@ -200,15 +248,18 @@ if (sub === "register") {
         );
         return res.status(201).json({ ok: true });
       }
+
       if (req.method === "DELETE") {
         const id = q.get("id");
         const eventId = q.get("event_id");
         const username = q.get("username");
         const kind = q.get("kind");
+
         if (id) {
           await query("DELETE FROM applications WHERE id = $1", [id]);
           return res.status(200).json({ ok: true });
         }
+
         if (eventId && username && kind) {
           await query(
             "DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = $3",
@@ -216,56 +267,13 @@ if (sub === "register") {
           );
           return res.status(200).json({ ok: true });
         }
-        return res
-          .status(400)
-          .json({ error: "id または (event_id, username, kind) を指定してください" });
+
+        return res.status(400).json({
+          error: "id または (event_id, username, kind) を指定してください",
+        });
       }
+
       return res.status(405).json({ error: "Method Not Allowed" });
-    }
-
-    /* ------------------------- /api/fairness ----------------------- */
-    if (sub === "fairness") {
-      if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
-      const eventId = q.get("event_id");
-      if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
-
-      const sql = `
-        WITH appl AS (
-          SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
-                 COALESCE(v.times, 0) AS times,
-                 v.last_at
-          FROM applications a
-          LEFT JOIN v_participation v
-            ON v.username = a.username AND v.kind = a.kind
-          WHERE a.event_id = $1
-        ),
-        ranked AS (
-          SELECT *,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY kind
-                   ORDER BY times ASC,
-                            COALESCE(last_at, 'epoch') ASC,
-                            created_at ASC
-                 ) AS rnk
-          FROM appl
-        )
-        SELECT * FROM ranked ORDER BY kind, rnk;
-      `;
-      const r = await query(sql, [eventId]);
-
-      const driver = [], attendant = [];
-      for (const row of r.rows) {
-        const item = {
-          username: row.username,
-          kind: row.kind,
-          times: Number(row.times) || 0,
-          last_at: row.last_at,
-          applied_at: row.created_at,
-          rank: Number(row.rnk),
-        };
-        (row.kind === "driver" ? driver : attendant).push(item);
-      }
-      return res.status(200).json({ event_id: Number(eventId), driver, attendant });
     }
 
     /* ----------------------------- 404 ----------------------------- */
