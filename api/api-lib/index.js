@@ -83,27 +83,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "OK", role: u.role, username: u.username });
     }
 
-    /* ------------------------ /api/register ------------------------ */
-    if (sub === "register") {
-      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-      const { username, password, role = "user" } = body || {};
-      if (!username || !password) {
-        return res.status(400).json({ error: "username と password が必要です" });
-      }
-      try {
-        await query("INSERT INTO users (username, password, role) VALUES ($1,$2,$3)", [
-          username,
-          password,
-          role,
-        ]);
-        return res.status(201).json({ ok: true });
-      } catch (e) {
-        if (String(e?.message || "").includes("duplicate key")) {
-          return res.status(409).json({ error: "このユーザー名は既に存在します" });
-        }
-        throw e;
-      }
+    // ---- /api/register ----
+if (sub === "register") {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
+  const { username, password, role = "user", familiarity = "unfamiliar" } = body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: "username と password が必要です" });
+  }
+  try {
+    await query(
+      "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
+      [username, password, role, familiarity]
+    );
+    return res.status(201).json({ ok: true });
+  } catch (e) {
+    if (String(e?.message || "").includes("duplicate key")) {
+      return res.status(409).json({ error: "このユーザー名は既に存在します" });
     }
+    throw e;
+  }
+}
 
     /* -------------------------- /api/users ------------------------- */
     if (sub === "users") {
