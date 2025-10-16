@@ -1,6 +1,7 @@
 // src/pages/MainApp.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Calendar from "../components/Calendar.js";
+import { toLocalYMD } from "../lib/date.js"; // ★ 追加：ローカル日付で統一
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
@@ -10,8 +11,6 @@ async function apiFetch(url, options = {}) {
   try { data = text ? JSON.parse(text) : {}; } catch {}
   return { ok: res.ok, status: res.status, data, text };
 }
-
-const toYMD = (d) => d.toISOString().split("T")[0];
 
 export default function MainApp() {
   const userName = localStorage.getItem("userName") || "";
@@ -36,8 +35,9 @@ export default function MainApp() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // ★ ここを UTC ではなくローカル日付で比較
   const listOfSelected = useMemo(() => {
-    const ymd = toYMD(selectedDate);
+    const ymd = toLocalYMD(selectedDate);
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
@@ -45,7 +45,7 @@ export default function MainApp() {
   const [counts, setCounts] = useState({});
   useEffect(() => {
     (async () => {
-      const ymd = toYMD(selectedDate);
+      const ymd = toLocalYMD(selectedDate); // ★ ローカル日付で統一
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
       for (const ev of todays) {
@@ -88,12 +88,7 @@ export default function MainApp() {
     if (!window.confirm("応募を取り消しますか？")) return;
     setApplying(true);
     try {
-      // ✅ idが分からなくても取り消せるように、複合キーでDELETE
-      const url =
-        `/api/applications?event_id=${encodeURIComponent(ev.id)}` +
-        `&username=${encodeURIComponent(userName)}` +
-        `&kind=${encodeURIComponent(kind)}`;
-
+      const url = `/api/applications?event_id=${encodeURIComponent(ev.id)}&username=${encodeURIComponent(userName)}&kind=${encodeURIComponent(kind)}`;
       const { ok, status, data } = await apiFetch(url, { method: "DELETE" });
       if (!ok) throw new Error(data?.error || `HTTP ${status}`);
       await refresh();
@@ -123,7 +118,7 @@ export default function MainApp() {
         />
 
         <div className="mt-4">
-          <h2 className="font-semibold mb-2">{toYMD(selectedDate)} の募集</h2>
+          <h2 className="font-semibold mb-2">{toLocalYMD(selectedDate)} の募集</h2>
           {listOfSelected.length === 0 ? (
             <p className="text-sm text-gray-500">この日には募集がありません。</p>
           ) : (
@@ -191,7 +186,7 @@ export default function MainApp() {
                             disabled={applying || remainAtt===0}
                             onClick={() => apply(ev, "attendant")}
                           >
-                            添乗員で応募う
+                            添乗員で応募
                           </button>
                         )
                       )}
