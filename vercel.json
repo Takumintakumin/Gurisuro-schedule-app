@@ -7,21 +7,16 @@
       "config": { "distDir": "build" }
     },
     {
-      "src": "api/api-lib/index.js",
+      "src": "api/api-lib/*.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
-
     { "src": "^/api$", "dest": "/api/api-lib/index.js" },
-
     { "src": "^/api/(.*)$", "dest": "/api/api-lib/index.js?path=$1" },
-
 
     { "src": "^/static/(.*)$", "dest": "/build/static/$1" },
     { "src": "^/(favicon\\.ico|manifest\\.json|robots\\.txt)$", "dest": "/build/$1" },
-
-
     { "src": "/(.*)$", "dest": "/build/index.html" }
   ]
 }
