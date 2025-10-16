@@ -1,8 +1,17 @@
 // src/components/Calendar.js
 import React from "react";
-import { toLocalYMD } from "../lib/date.js";
 
-const monthNames = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+const monthNames = [
+  "1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"
+];
+
+// YYYY-MM-DD
+const toKey = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 export default function Calendar({
   currentMonth,
@@ -10,28 +19,25 @@ export default function Calendar({
   selectedDate,
   onMonthChange,
   onDateSelect,
-  // 管理者側は events（[{date,label,icon,start_time,end_time}...]）
   events = [],
   availability = {},
   assignedSchedule = {},
   unfilledDates = new Set(),
   eventTagsByDate = {},
 }) {
-  // 日付キーは必ずローカルYYYY-MM-DDで統一
+  // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
     const map = {};
     const list = Array.isArray(events) ? events : [];
     for (const ev of list) {
-      const key = ev?.date; // ここは API から入る 'YYYY-MM-DD' を信用
-      if (!key) continue;
-      if (!map[key]) map[key] = [];
-      map[key].push(ev);
+      if (!ev?.date) continue;
+      (map[ev.date] ||= []).push(ev);
     }
     return map;
   }, [events]);
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0:日〜6:土
 
   const isToday = (date) => {
     const t = new Date();
@@ -42,10 +48,69 @@ export default function Calendar({
     );
   };
 
+  const renderBadges = (dayEvents, tags) => {
+    const maxBadges = 4;
+
+    const eventBadges = (dayEvents || []).map((ev) =>
+      ev && ev.icon
+        ? { type: "icon", icon: ev.icon, label: ev.label, start: ev.start_time }
+        : { type: "text", label: ev?.label || "" }
+    );
+
+    const tagBadges = (tags || []).map((t) => ({
+      type: "text",
+      label: t?.label || t?.key || "",
+    }));
+
+    const allBadges = [...eventBadges, ...tagBadges];
+    const visible = allBadges.slice(0, maxBadges);
+    const overflow = Math.max(allBadges.length - maxBadges, 0);
+
+    return (
+      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+        {visible.map((b, idx) => {
+          if (b.type === "icon" && b.icon) {
+            return (
+              <img
+                key={`b-${idx}`}
+                src={b.icon}
+                alt={b.label || "event"}
+                title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
+                className="h-5 w-5 object-contain"
+                loading="lazy"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            );
+          }
+          return (
+            <span
+              key={`b-${idx}`}
+              className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+              title={b.label}
+            >
+              {b.label.slice(0, 6)}
+            </span>
+          );
+        })}
+        {overflow > 0 && (
+          <span
+            className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+            title={`他 ${overflow} 件`}
+          >
+            +{overflow}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderDayCell = (i) => {
-    const date = new Date(currentYear, currentMonth, i); // ローカル
-    const key = toLocalYMD(date);
-    const isSel = selectedDate && selectedDate.toDateString() === date.toDateString();
+    const date = new Date(currentYear, currentMonth, i);
+    const key = toKey(date);
+    const isSel =
+      selectedDate && selectedDate.toDateString() === date.toDateString();
 
     const userAvail = availability[key];
     const assigned = assignedSchedule?.[key]?.length > 0;
@@ -54,89 +119,65 @@ export default function Calendar({
     const hasTags = tags.length > 0;
     const dayEvents = eventsByDate[key] || [];
 
+    // 背景色（優先度：イベント>運休>割当>可用）
     let base =
-      "relative p-1 xs:p-1.5 sm:p-2 border border-gray-200 cursor-pointer transition-colors duration-150 text-gray-800 min-h-[48px] sm:min-h-[64px] overflow-hidden";
-    if (dayEvents.length > 0 || hasTags) base += " bg-orange-100 hover:bg-orange-200";
-    else if (unfilled) base += " bg-red-100 hover:bg-red-200";
-    else if (assigned) base += " bg-blue-100 hover:bg-blue-200";
-    else if (userAvail) base += " bg-green-100 hover:bg-green-200";
+      "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
+    if (dayEvents.length > 0 || hasTags)
+      base += " bg-orange-50 hover:bg-orange-100";
+    else if (unfilled) base += " bg-red-50 hover:bg-red-100";
+    else if (assigned) base += " bg-blue-50 hover:bg-blue-100";
+    else if (userAvail) base += " bg-green-50 hover:bg-green-100";
     else base += " hover:bg-gray-50";
 
+    // 選択中はリング・今日アウトライン
     if (isSel) base += " ring-2 ring-blue-500 ring-offset-1";
     if (isToday(date)) base += " outline outline-1 outline-blue-400";
+
+    // 土日色
+    const wd = date.getDay();
+    const dayColor =
+      wd === 0 ? "text-red-600" : wd === 6 ? "text-blue-600" : "text-gray-800";
 
     return (
       <div
         key={`day-${i}`}
-        className={base}
-        onClick={() => onDateSelect?.(new Date(currentYear, currentMonth, i))}
+        role="button"
+        tabIndex={0}
+        aria-label={`${currentYear}年${currentMonth + 1}月${i}日`}
+        aria-pressed={isSel ? "true" : "false"}
+        className={base + " rounded-md active:scale-[0.99]"}
+        onClick={() => onDateSelect?.(date)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onDateSelect?.(date);
+        }}
       >
-        {/* 日付ラベル */}
+        {/* 上段：日付＋今日タグ */}
         <div className="flex items-start justify-between">
-          <span className="text-[12px] sm:text-sm font-semibold">{i}</span>
+          <span className={`text-[14px] sm:text-[15px] font-bold ${dayColor}`}>
+            {i}
+          </span>
           {isToday(date) && (
-            <span className="text-[10px] sm:text-xs text-blue-600 font-medium">今日</span>
+            <span className="text-[10px] sm:text-[11px] text-blue-600 font-semibold">
+              今日
+            </span>
           )}
         </div>
 
-        {/* イベントアイコン/タグ（最大4） */}
-        {(dayEvents.length > 0 || hasTags) && (() => {
-          const maxBadges = 4;
-          const eventBadges = dayEvents.map((ev) =>
-            ev?.icon
-              ? { type: "icon", icon: ev.icon, label: ev.label, start: ev.start_time }
-              : { type: "text", label: ev?.label || "" }
-          );
-          const tagBadges = tags.map((t) => ({ type: "text", label: t?.label || t?.key || "" }));
-          const allBadges = [...eventBadges, ...tagBadges];
-          const visible = allBadges.slice(0, maxBadges);
-          const overflow = Math.max(allBadges.length - maxBadges, 0);
-
-          return (
-            <div className="mt-1 flex flex-wrap gap-1 items-center">
-              {visible.map((b, idx) => {
-                if (b.type === "icon" && b.icon) {
-                  return (
-                    <img
-                      key={`b-${idx}`}
-                      src={b.icon}
-                      alt={b.label || "event"}
-                      title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
-                      className="h-5 w-5 object-contain"
-                      loading="lazy"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    />
-                  );
-                }
-                return (
-                  <span
-                    key={`b-${idx}`}
-                    className="px-1 rounded bg-white/80 text-[10px] border border-gray-300"
-                    title={b.label}
-                  >
-                    {b.label.slice(0, 4)}
-                  </span>
-                );
-              })}
-              {overflow > 0 && (
-                <span
-                  className="px-1 rounded bg-white/80 text-[10px] border border-gray-300"
-                  title={`他 ${overflow} 件`}
-                >
-                  +{overflow}
-                </span>
-              )}
-            </div>
-          );
-        })()}
+        {/* バッジ（イベントアイコン/タグ） */}
+        {(dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)}
       </div>
     );
   };
 
+  // 空白 + 当月日セル
   const cells = [];
   for (let i = 0; i < firstDayOfMonth; i++) {
     cells.push(
-      <div key={`empty-${i}`} className="border border-gray-200 min-h-[48px] sm:min-h-[64px]" />
+      <div
+        key={`empty-${i}`}
+        className="border border-gray-200 bg-white/50 min-h-[64px] sm:min-h-[74px]"
+        aria-hidden="true"
+      />
     );
   }
   for (let i = 1; i <= daysInMonth; i++) {
@@ -144,34 +185,51 @@ export default function Calendar({
   }
 
   return (
-    <div className="mb-3 sm:mb-4 rounded-lg border border-gray-200 overflow-hidden bg-white">
-      <div className="flex items-center justify-between p-2 sm:p-3 border-b bg-white sticky top-0 z-10">
+    <div className="mb-3 sm:mb-4 rounded-xl border border-gray-200 overflow-hidden bg-white">
+      {/* ヘッダー（デカめ・押しやすい） */}
+      <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 border-b bg-white sticky top-0 z-10">
         <button
-          className="p-2 rounded hover:bg-gray-100 active:scale-[0.98]"
+          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 active:scale-[0.98]"
           onClick={() => onMonthChange?.(-1)}
           aria-label="前の月へ"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+          <svg className="w-6 h-6 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
         </button>
-        <h2 className="text-base sm:text-lg font-semibold">
+
+        <h2 className="text-lg sm:text-xl font-extrabold tracking-wide">
           {currentYear}年 {monthNames[currentMonth]}
         </h2>
+
         <button
-          className="p-2 rounded hover:bg-gray-100 active:scale-[0.98]"
+          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 active:scale-[0.98]"
           onClick={() => onMonthChange?.(1)}
           aria-label="次の月へ"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+          <svg className="w-6 h-6 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+          </svg>
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-center text-[11px] sm:text-xs font-medium text-gray-500 border-b bg-gray-50">
-        {["日","月","火","水","木","金","土"].map((d) => (
-          <div key={d} className="py-1.5 sm:py-2">{d}</div>
+      {/* 曜日行（固定＆大きめ） */}
+      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-semibold text-gray-600 border-b bg-gray-50 sticky top-[44px] sm:top-[52px] z-10">
+        {["日","月","火","水","木","金","土"].map((d, idx) => (
+          <div
+            key={d}
+            className={
+              "py-2 " +
+              (idx === 0 ? "text-red-600" : idx === 6 ? "text-blue-600" : "")
+            }
+          >
+            {d}
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7">{cells}</div>
+      {/* カレンダー本体（タップ幅UP・余白広め） */}
+      <div className="grid grid-cols-7 gap-1 p-1 sm:p-2">{cells}</div>
     </div>
   );
 }
