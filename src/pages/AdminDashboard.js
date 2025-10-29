@@ -401,7 +401,10 @@ export default function AdminDashboard() {
                       {fairData.driver.map((u) => {
                         const checked = selDriver.includes(u.username);
                         return (
-                          <li key={`d-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
+                          <li 
+                            key={`d-${u.username}-${u.rank}`} 
+                            className={`border rounded p-2 text-sm ${checked ? 'bg-green-50 border-green-300 ring-1 ring-green-400' : ''}`}
+                          >
                             <div className="flex justify-between items-center">
                               <label className="flex items-center gap-2">
                                 <input
@@ -415,7 +418,10 @@ export default function AdminDashboard() {
                                     );
                                   }}
                                 />
-                                <span>#{u.rank} {u.username}</span>
+                                <span className={checked ? 'font-semibold text-green-700' : ''}>
+                                  #{u.rank} {u.username}
+                                  {checked && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                </span>
                               </label>
                               <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
                             </div>
@@ -437,7 +443,10 @@ export default function AdminDashboard() {
                       {fairData.attendant.map((u) => {
                         const checked = selAttendant.includes(u.username);
                         return (
-                          <li key={`a-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
+                          <li 
+                            key={`a-${u.username}-${u.rank}`} 
+                            className={`border rounded p-2 text-sm ${checked ? 'bg-green-50 border-green-300 ring-1 ring-green-400' : ''}`}
+                          >
                             <div className="flex justify-between items-center">
                               <label className="flex items-center gap-2">
                                 <input
@@ -451,7 +460,10 @@ export default function AdminDashboard() {
                                     );
                                   }}
                                 />
-                                <span>#{u.rank} {u.username}</span>
+                                <span className={checked ? 'font-semibold text-green-700' : ''}>
+                                  #{u.rank} {u.username}
+                                  {checked && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                </span>
                               </label>
                               <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
                             </div>
