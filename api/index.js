@@ -1,11 +1,105 @@
 // /api/api-lib/index.js
 import { query, healthcheck } from "./_db.js";
+import crypto from "crypto";
 
 // ===== CORS 共通ヘッダ =====
-function withCORS(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function withCORS(req, res) {
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+}
+
+// ===== Cookie ユーティリティ =====
+const SESSION_COOKIE_NAME = "gsession";
+const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
+const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
+
+function base64url(input) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function sign(data) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
+}
+
+function serializeCookie(name, value, { maxAge, path = "/", httpOnly = true, sameSite = "Lax", secure } = {}) {
+  const parts = [`${name}=${value}`];
+  if (maxAge) parts.push(`Max-Age=${maxAge}`);
+  if (path) parts.push(`Path=${path}`);
+  if (httpOnly) parts.push("HttpOnly");
+  if (sameSite) parts.push(`SameSite=${sameSite}`);
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function setSessionCookie(res, payload, req) {
+  const json = JSON.stringify(payload);
+  const b64 = base64url(json);
+  const sig = sign(b64);
+  const value = `${b64}.${sig}`;
+  const secure = (req.headers["x-forwarded-proto"] || "http") === "https";
+  res.setHeader(
+    "Set-Cookie",
+    serializeCookie(SESSION_COOKIE_NAME, value, {
+      maxAge: SESSION_MAX_AGE_SEC,
+      httpOnly: true,
+      sameSite: "Lax",
+      secure,
+      path: "/",
+    })
+  );
+}
+
+function clearSessionCookie(res, req) {
+  const secure = (req.headers["x-forwarded-proto"] || "http") === "https";
+  res.setHeader(
+    "Set-Cookie",
+    serializeCookie(SESSION_COOKIE_NAME, "", {
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "Lax",
+      secure,
+      path: "/",
+    })
+  );
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  return header.split(/;\s*/).reduce((acc, v) => {
+    if (!v) return acc;
+    const idx = v.indexOf("=");
+    if (idx === -1) return acc;
+    const k = decodeURIComponent(v.slice(0, idx).trim());
+    const val = decodeURIComponent(v.slice(idx + 1).trim());
+    acc[k] = val;
+    return acc;
+  }, {});
+}
+
+function getSession(req) {
+  const cookies = parseCookies(req);
+  const raw = cookies[SESSION_COOKIE_NAME];
+  if (!raw) return null;
+  const [b64, sig] = raw.split(".");
+  if (!b64 || !sig) return null;
+  const expected = sign(b64);
+  if (sig !== expected) return null;
+  try {
+    const json = Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const data = JSON.parse(json);
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 // ===== JSONボディパーサ =====
@@ -54,7 +148,7 @@ function resolveRoute(req) {
 // ===== メインハンドラ =====
 export default async function handler(req, res) {
   try {
-    withCORS(res);
+    withCORS(req, res);
     if (req.method === "OPTIONS") return res.status(204).end();
 
     const { q, sub } = resolveRoute(req);
@@ -67,35 +161,47 @@ export default async function handler(req, res) {
     }
 
     // ---- /api/login ----
-if (sub === "login") {
-  // ★ GET でも POST でも受ける（405 を出さない）
-  if (req.method !== "POST" && req.method !== "GET") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
+    if (sub === "login") {
+      if (req.method !== "POST" && req.method !== "GET") {
+        return res.status(405).json({ error: "Method Not Allowed" });
+      }
 
-  // GET のときはクエリから、POST のときは body から受け取る
-  const username =
-    (req.method === "GET" ? q.get("username") : (body || {}).username) || "";
-  const password =
-    (req.method === "GET" ? q.get("password") : (body || {}).password) || "";
+      const username =
+        (req.method === "GET" ? q.get("username") : (body || {}).username) || "";
+      const password =
+        (req.method === "GET" ? q.get("password") : (body || {}).password) || "";
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "username と password が必要です" });
-  }
+      if (!username || !password) {
+        return res.status(400).json({ error: "username と password が必要です" });
+      }
 
-  const r = await query(
-    "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
-    [username]
-  );
-  const u = r.rows?.[0];
-  if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
-  if (u.password !== password)
-    return res.status(401).json({ error: "パスワードが違います" });
+      const r = await query(
+        "SELECT id, username, password, role FROM users WHERE username = $1 LIMIT 1",
+        [username]
+      );
+      const u = r.rows?.[0];
+      if (!u) return res.status(404).json({ error: "ユーザーが見つかりません" });
+      if (u.password !== password)
+        return res.status(401).json({ error: "パスワードが違います" });
 
-  return res
-    .status(200)
-    .json({ message: "OK", role: u.role, username: u.username });
-}
+      // セッション cookie 設定
+      setSessionCookie(res, { id: u.id, username: u.username, role: u.role || "user" }, req);
+
+      return res.status(200).json({ message: "OK", role: u.role, username: u.username });
+    }
+
+    // ---- /api/me ----
+    if (sub === "me") {
+      const sess = getSession(req);
+      if (!sess) return res.status(401).json({ error: "Not authenticated" });
+      return res.status(200).json({ ok: true, ...sess });
+    }
+
+    // ---- /api/logout ----
+    if (sub === "logout") {
+      clearSessionCookie(res, req);
+      return res.status(200).json({ ok: true });
+    }
 
     // ---- /api/register ----
     if (sub === "register") {

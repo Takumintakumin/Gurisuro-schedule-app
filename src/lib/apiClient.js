@@ -11,6 +11,7 @@ export async function apiFetch(path, { method = "GET", params = null, body = nul
     method,
     headers: { "Content-Type": "application/json", ...headers },
     body: body ? JSON.stringify(body) : undefined,
+    credentials: "include",
   });
   const text = await res.text();
   let data = {};

@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
  * シンプルな API 呼び出しユーティリティ（500時のHTMLにも耐える）
  */
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: "include", ...options });
   const text = await res.text();
   let data = {};
   try {
