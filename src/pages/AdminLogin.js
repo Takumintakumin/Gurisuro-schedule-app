@@ -72,6 +72,8 @@ export default function AdminLogin() {
   return (
     <div
       style={{
+        minHeight: "100vh",
+        backgroundColor: "#f0fdf4",
         padding: 16,
         maxWidth: 420,
         margin: "40px auto",
@@ -101,7 +103,7 @@ export default function AdminLogin() {
               padding: 8,
               border: "1px solid #ddd",
               borderRadius: 8,
-              backgroundColor: "#fff9c4",
+              backgroundColor: "#f0fdf4",
             }}
           />
         </label>

@@ -80,8 +80,8 @@ export default function Calendar({
                 src={b.icon}
                 alt={b.label || "event"}
                 title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
-                className="h-5 w-5 object-contain"
-                style={{ marginRight: '4px', marginBottom: '4px' }}
+                className="h-6 w-6 object-contain rounded-sm shadow-sm"
+                style={{ marginRight: '6px', marginBottom: '4px', border: '1px solid rgba(0,0,0,0.1)' }}
                 loading="lazy"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
@@ -92,17 +92,17 @@ export default function Calendar({
           return (
             <span
               key={`b-${idx}`}
-              className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+              className="px-2 py-0.5 rounded-md bg-white/95 text-[11px] font-medium border border-gray-300 shadow-sm"
               style={{ marginRight: '4px', marginBottom: '4px' }}
               title={b.label}
             >
-              {b.label.slice(解题, 6)}
+              {b.label.slice(0, 8)}
             </span>
           );
         })}
         {overflow > 0 && (
           <span
-            className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+            className="px-2 py-0.5 rounded-md bg-amber-100/90 text-[11px] font-medium border border-amber-300 shadow-sm"
             style={{ marginRight: '4px', marginBottom: '4px' }}
             title={`他 ${overflow} 件`}
           >
@@ -220,32 +220,39 @@ export default function Calendar({
     // 4. イベントあり（オレンジ）
     // 注意: キャンセルがあっても定員が埋まった（allConfirmed）場合は緑色を優先
     let base =
-      "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
+      "relative border cursor-pointer select-none transition-all duration-200 min-h-[72px] sm:min-h-[80px] p-2.5 rounded-lg shadow-sm";
     if (allConfirmed || isDecided) {
-      // 確定済みまたは定員が埋まった場合は緑色（キャンセルがあっても優先）
-      base += " bg-green-100 hover:bg-green-200 border-green-300";
+      // 確定済みまたは定員が埋まった場合は鮮やかなグリーン
+      base += " bg-emerald-500 hover:bg-emerald-600 border-emerald-600 text-white shadow-md";
     } else if (isCancelled) {
       // キャンセルがあり、定員が埋まっていない場合
-      base += " bg-red-200 hover:bg-red-300 border-red-400";
+      base += " bg-rose-200 hover:bg-rose-300 border-rose-400 shadow-md";
     } else if (insufficientCapacity) {
       // 1週間以内で定員が埋まっていない場合
-      base += " bg-red-100 hover:bg-red-200 border-red-300";
+      base += " bg-rose-100 hover:bg-rose-200 border-rose-300";
     } else if (dayEvents.length > 0 || hasTags) {
       // イベントがある場合
-      base += " bg-orange-50 hover:bg-orange-100";
-    } else if (unfilled) base += " bg-red-50 hover:bg-red-100";
-    else if (assigned) base += " bg-blue-50 hover:bg-blue-100";
-    else if (userAvail) base += " bg-green-50 hover:bg-green-100";
-    else base += " hover:bg-gray-50";
+      base += " bg-amber-50 hover:bg-amber-100 border-amber-200 shadow-sm";
+    } else if (unfilled) base += " bg-red-50 hover:bg-red-100 border-red-200";
+    else if (assigned) base += " bg-blue-50 hover:bg-blue-100 border-blue-200";
+    else if (userAvail) base += " bg-green-50 hover:bg-green-100 border-green-200";
+    else base += " bg-white hover:bg-green-50/50 border-gray-200";
 
-    // 選択中はリング・今日アウトライン
-    if (isSel) base += " ring-2 ring-blue-500 ring-offset-1";
-    if (isToday(date)) base += " outline outline-1 outline-blue-400";
+    // 選択中はリング・今日アウトライン（より目立つように）
+    if (isSel) base += " ring-3 ring-emerald-400 ring-offset-2 shadow-lg transform scale-105";
+    if (isToday(date) && !isSel) {
+      base += " ring-2 ring-emerald-300 ring-offset-1";
+    }
 
-    // 土日色
+    // 土日色（確定済みの場合は白色テキスト）
     const wd = date.getDay();
-    const dayColor =
-      wd === 0 ? "text-red-600" : wd === 6 ? "text-blue-600" : "text-gray-800";
+    const isConfirmedDay = allConfirmed || isDecided;
+    const dayColor = isConfirmedDay 
+      ? "text-white" 
+      : (wd === 0 ? "text-red-600" : wd === 6 ? "text-blue-600" : "text-gray-800");
+    
+    // 今日の日付には特別なバッジ
+    const isTodayDate = isToday(date);
 
     return (
       <div
@@ -254,16 +261,16 @@ export default function Calendar({
         tabIndex={0}
         aria-label={`${currentYear}年${currentMonth + 1}月${i}日`}
         aria-pressed={isSel ? "true" : "false"}
-        className={base + " rounded-md"}
+        className={base}
         style={{
-          WebkitTransition: 'all 0.15s ease',
-          transition: 'all 0.15s ease',
+          WebkitTransition: 'all 0.2s ease',
+          transition: 'all 0.2s ease',
           WebkitTransform: 'translateZ(0)',
           transform: 'translateZ(0)'
         }}
         onTouchStart={(e) => {
-          e.currentTarget.style.WebkitTransform = 'scale(0.99)';
-          e.currentTarget.style.transform = 'scale(0.99)';
+          e.currentTarget.style.WebkitTransform = 'scale(0.97)';
+          e.currentTarget.style.transform = 'scale(0.97)';
         }}
         onTouchEnd={(e) => {
           e.currentTarget.style.WebkitTransform = 'scale(1)';
@@ -275,10 +282,19 @@ export default function Calendar({
         }}
       >
         {/* 上段：日付 */}
-        <div className="flex items-start justify-between">
-          <span className={`text-[14px] sm:text-[15px] font-bold ${dayColor}`}>
+        <div className="flex items-start justify-between mb-1">
+          <span className={`text-[16px] sm:text-[17px] font-bold ${dayColor}`}>
             {i}
           </span>
+          {isTodayDate && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              isConfirmedDay 
+                ? "bg-white/30 text-white" 
+                : "bg-emerald-500 text-white"
+            }`}>
+              今日
+            </span>
+          )}
         </div>
 
         {/* バッジ（イベントアイコン/タグ） */}
@@ -293,7 +309,7 @@ export default function Calendar({
     cells.push(
       <div
         key={`empty-${i}`}
-        className="border border-gray-200 bg-white/50 min-h-[64px] sm:min-h-[74px]"
+        className="border border-gray-100 bg-green-50/30 min-h-[72px] sm:min-h-[80px] rounded-lg"
         aria-hidden="true"
       />
     );
@@ -303,9 +319,9 @@ export default function Calendar({
   }
 
   return (
-    <div className="mb-3 sm:mb-4 rounded-xl border border-gray-200 overflow-hidden bg-white">
+    <div className="mb-3 sm:mb-4 rounded-xl border border-green-200 overflow-hidden bg-white shadow-lg">
       {/* ヘッダー（デカめ・押しやすい） */}
-      <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 border-b bg-white sticky top-0 z-10">
+      <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10 shadow-sm">
         <button
           className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100"
           style={{
@@ -330,7 +346,7 @@ export default function Calendar({
           </svg>
         </button>
 
-        <h2 className="text-lg sm:text-xl font-extrabold tracking-wide">
+        <h2 className="text-lg sm:text-xl font-extrabold tracking-wide text-gray-800">
           {currentYear}年 {monthNames[currentMonth]}
         </h2>
 
@@ -360,7 +376,7 @@ export default function Calendar({
       </div>
 
       {/* 曜日行（固定＆大きめ） */}
-      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-semibold text-gray-600 border-b bg-gray-50 sticky top-[44px] sm:top-[52px] z-10">
+      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10">
         {["日","月","火","水","木","金","土"].map((d, idx) => (
           <div
             key={d}
@@ -375,15 +391,14 @@ export default function Calendar({
       </div>
 
       {/* カレンダー本体（タップ幅UP・余白広め） */}
-      <div className="grid grid-cols-7 p-1 sm:p-2" style={{ 
+      <div className="grid grid-cols-7 p-2 sm:p-3 bg-white" style={{ 
         display: 'grid', 
         WebkitDisplay: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
         WebkitGridTemplateColumns: 'repeat(7, 1fr)',
-        gap: '4px',
-        WebkitColumnGap: '4px',
-        WebkitRowGap: '4px',
-        padding: '4px'
+        gap: '8px',
+        WebkitColumnGap: '8px',
+        WebkitRowGap: '8px'
       }}>{cells}</div>
     </div>
   );

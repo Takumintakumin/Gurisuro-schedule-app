@@ -193,7 +193,7 @@ export default function UserLogin() {
   const small = { fontSize: 12, color: "#6b7280" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 16 }}>
+    <div style={{ minHeight: "100vh", background: "#f0fdf4", padding: 16 }}>
       <div style={card}>
         <h1 style={{ textAlign: "center", fontSize: 20, fontWeight: 800, marginBottom: 12 }}>
           一般ユーザーログイン

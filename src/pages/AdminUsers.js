@@ -147,8 +147,9 @@ export default function AdminUsers() {
   return (
     <>
     <div 
-      className="min-h-screen bg-gray-50 p-4 sm:p-6"
+      className="min-h-screen p-4 sm:p-6"
       style={{ 
+        backgroundColor: '#f0fdf4',
         paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
         marginBottom: 0
       }}
