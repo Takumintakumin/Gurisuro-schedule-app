@@ -522,14 +522,19 @@ export default async function handler(req, res) {
       const eventId = Number(event_id);
       if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
 
-      // capacity 取得（null は 0 とみなす）
+      // capacity 取得
       const er = await query(
         `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
         [eventId]
       );
       if (!er.rows?.[0]) return res.status(404).json({ error: "イベントが見つかりません" });
-      const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : 0;
-      const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : 0;
+      const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : null;
+      const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : null;
+      
+      // 定員が設定されていない場合はエラー
+      if (capD == null && capA == null) {
+        return res.status(400).json({ error: "定員が設定されていません。運転手または添乗員の定員を設定してください。" });
+      }
 
       // 公平ランキングを取得（v_participationがあれば使用、なければ応募順）
       let r;
@@ -578,8 +583,12 @@ export default async function handler(req, res) {
       const driverRank = r.rows.filter((x) => x.kind === "driver").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
       const attendantRank = r.rows.filter((x) => x.kind === "attendant").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
 
-      const pickedDriver = driverRank.slice(0, Math.max(0, capD)).map((x) => x.username);
-      const pickedAttendant = attendantRank.slice(0, Math.max(0, capA)).map((x) => x.username);
+      // 定員がnullの場合は全員選出、0の場合は0人、正の数の場合はその数まで
+      const pickedDriver = capD == null ? driverRank.map((x) => x.username) : driverRank.slice(0, Math.max(0, capD)).map((x) => x.username);
+      const pickedAttendant = capA == null ? attendantRank.map((x) => x.username) : attendantRank.slice(0, Math.max(0, capA)).map((x) => x.username);
+      
+      // デバッグ情報（開発時に確認用）
+      console.log(`[decide_auto] event_id: ${eventId}, capD: ${capD}, capA: ${capA}, driver応募者: ${driverRank.length}, attendant応募者: ${attendantRank.length}, 選出: driver=${pickedDriver.length}, attendant=${pickedAttendant.length}`);
 
       // selections 更新
       await query(

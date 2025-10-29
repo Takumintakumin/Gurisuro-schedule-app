@@ -6,7 +6,7 @@ import { toLocalYMD } from "../lib/date.js";
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: "include", ...options });
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch {}
