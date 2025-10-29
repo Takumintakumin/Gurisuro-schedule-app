@@ -24,6 +24,7 @@ export default function Calendar({
   assignedSchedule = {},
   unfilledDates = new Set(),
   eventTagsByDate = {},
+  decidedDates = new Set(), // 確定済みの日付のSet (YYYY-MM-DD形式)
 }) {
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
@@ -118,11 +119,14 @@ export default function Calendar({
     const tags = eventTagsByDate?.[key] || [];
     const hasTags = tags.length > 0;
     const dayEvents = eventsByDate[key] || [];
+    const isDecided = decidedDates.has(key);
 
-    // 背景色（優先度：イベント>運休>割当>可用）
+    // 背景色（優先度：確定済み>イベント>運休>割当>可用）
     let base =
       "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
-    if (dayEvents.length > 0 || hasTags)
+    if (isDecided)
+      base += " bg-green-100 hover:bg-green-200 border-green-300";
+    else if (dayEvents.length > 0 || hasTags)
       base += " bg-orange-50 hover:bg-orange-100";
     else if (unfilled) base += " bg-red-50 hover:bg-red-100";
     else if (assigned) base += " bg-blue-50 hover:bg-blue-100";
@@ -151,16 +155,11 @@ export default function Calendar({
           if (e.key === "Enter" || e.key === " ") onDateSelect?.(date);
         }}
       >
-        {/* 上段：日付＋今日タグ */}
+        {/* 上段：日付 */}
         <div className="flex items-start justify-between">
           <span className={`text-[14px] sm:text-[15px] font-bold ${dayColor}`}>
             {i}
           </span>
-          {isToday(date) && (
-            <span className="text-[10px] sm:text-[11px] text-blue-600 font-semibold">
-              今日
-            </span>
-          )}
         </div>
 
         {/* バッジ（イベントアイコン/タグ） */}

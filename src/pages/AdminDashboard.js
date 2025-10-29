@@ -35,14 +35,13 @@ export default function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [decidedDates, setDecidedDates] = useState(new Set());
 
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
   const [customLabel, setCustomLabel] = useState("");
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
-  const [capD, setCapD] = useState(1);
-  const [capA, setCapA] = useState(1);
 
   // 応募状況モーダル
   const [fairOpen, setFairOpen] = useState(false);
@@ -68,7 +67,20 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const r = await apiFetch("/api/events");
-      setEvents(Array.isArray(r.data) ? r.data : []);
+      const evs = Array.isArray(r.data) ? r.data : [];
+      setEvents(evs);
+      
+      // 確定済み日付を集計
+      const decDateSet = new Set();
+      for (const ev of evs) {
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+          if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
+            decDateSet.add(ev.date);
+          }
+        } catch {}
+      }
+      setDecidedDates(decDateSet);
     } catch (e) {
       console.error("fetch events error:", e);
     } finally {
@@ -99,8 +111,8 @@ export default function AdminDashboard() {
         icon: selectedEvent?.icon || "",
         start_time: start,
         end_time: end,
-        capacity_driver: Number(capD),
-        capacity_attendant: Number(capA),
+        capacity_driver: 1, // 確定で一人ずつ
+        capacity_attendant: 1, // 確定で一人ずつ
       };
 
       const r = await apiFetch("/api/events", {
@@ -247,6 +259,7 @@ export default function AdminDashboard() {
           }}
           onDateSelect={(d) => setSelectedDate(d)}
           events={events}
+          decidedDates={decidedDates}
         />
 
         {/* 募集作成フォーム（UI据え置き） */}
@@ -314,28 +327,6 @@ export default function AdminDashboard() {
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <label className="text-sm">
-              運転手の枠
-              <input
-                type="number"
-                min={0}
-                value={capD}
-                onChange={(e) => setCapD(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-            <label className="text-sm">
-              添乗員の枠
-              <input
-                type="number"
-                min={0}
-                value={capA}
-                onChange={(e) => setCapA(e.target.value)}
-                className="mt-1 w-full border rounded p-2"
-              />
-            </label>
-          </div>
 
           <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
             登録する

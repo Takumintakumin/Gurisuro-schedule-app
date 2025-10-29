@@ -245,6 +245,13 @@ export default async function handler(req, res) {
         );
         return res.status(201).json({ ok: true });
       }
+      if (req.method === "PATCH") {
+        const { username, familiar } = body || {};
+        if (!username) return res.status(400).json({ error: "username が必要です" });
+        const famValue = familiar === null || familiar === undefined || familiar === "unknown" ? null : familiar;
+        await query("UPDATE users SET familiar = $2 WHERE username = $1", [username, famValue]);
+        return res.status(200).json({ ok: true });
+      }
       if (req.method === "DELETE") {
         const id = q.get("id");
         if (!id) return res.status(400).json({ error: "id が必要です" });
@@ -296,15 +303,21 @@ export default async function handler(req, res) {
         const eventId = q.get("event_id");
         const username = q.get("username");
         if (eventId) {
+          try {
+            await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
+          } catch {}
           const r = await query(
-            "SELECT id, event_id, username, kind, created_at FROM applications WHERE event_id = $1 ORDER BY created_at ASC",
+            "SELECT id, event_id, username, kind, created_at, COALESCE(is_waitlist, false) as is_waitlist FROM applications WHERE event_id = $1 ORDER BY is_waitlist ASC, created_at ASC",
             [eventId]
           );
           return res.status(200).json(r.rows);
         }
         if (username) {
+          try {
+            await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
+          } catch {}
           const r = await query(
-            "SELECT id, event_id, username, kind, created_at FROM applications WHERE username = $1 ORDER BY created_at DESC",
+            "SELECT id, event_id, username, kind, created_at, COALESCE(is_waitlist, false) as is_waitlist FROM applications WHERE username = $1 ORDER BY created_at DESC",
             [username]
           );
           return res.status(200).json(r.rows);
@@ -315,11 +328,16 @@ export default async function handler(req, res) {
       }
 
       if (req.method === "POST") {
-        const { event_id, username, kind } = body || {};
+        const { event_id, username, kind, is_waitlist = false } = body || {};
         if (!event_id || !username || !kind)
           return res
             .status(400)
             .json({ error: "event_id, username, kind が必要です" });
+
+        // is_waitlistカラムを追加（存在しない場合）
+        try {
+          await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
+        } catch {}
 
         // 確定済みメンバーがいる場合、新規応募を制限
         try {
@@ -336,28 +354,52 @@ export default async function handler(req, res) {
             `SELECT username FROM selections WHERE event_id = $1 AND kind = $2`,
             [event_id, kind]
           );
+          
+          // 定員チェック
+          const evCheck = await query(
+            `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
+            [event_id]
+          );
+          let cap = null;
+          if (evCheck.rows?.[0]) {
+            cap = kind === "driver" ? evCheck.rows[0].capacity_driver : evCheck.rows[0].capacity_attendant;
+          }
+          
+          // 現在の応募数（確定者以外、キャンセル待ち以外）
+          const appCount = await query(
+            `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = $2 AND COALESCE(is_waitlist, false) = false`,
+            [event_id, kind]
+          );
+          const currentCount = Number(appCount.rows?.[0]?.cnt || 0);
+          
           if (decCheck.rows && decCheck.rows.length > 0) {
             // 確定済みメンバーがいる場合
             const isDecidedUser = decCheck.rows.some((r) => r.username === username);
-            if (!isDecidedUser) {
-              // 確定済みではないユーザーの新規応募は拒否
+            if (!isDecidedUser && !is_waitlist) {
+              // 確定済みではないユーザーはキャンセル待ちのみ可能
               return res.status(403).json({ 
-                error: "このイベントは既に確定済みメンバーがいます。新規応募はできません。" 
+                error: "このイベントは既に確定済みメンバーがいます。キャンセル待ちとして登録してください。" 
               });
             }
-            // 確定済みユーザーは応募可能（念のため）
+          } else if (cap != null && currentCount >= cap && !is_waitlist) {
+            // 定員満杯の場合、キャンセル待ちを提案
+            return res.status(403).json({ 
+              error: "定員が満杯です。キャンセル待ちとして登録できます。",
+              can_waitlist: true
+            });
           }
+
         } catch (e) {
           // selectionsテーブルがない場合などは続行
         }
 
         await query(
-          `INSERT INTO applications (event_id, username, kind)
-           VALUES ($1,$2,$3)
-           ON CONFLICT (event_id, username, kind) DO NOTHING`,
-          [event_id, username, kind]
+          `INSERT INTO applications (event_id, username, kind, is_waitlist)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (event_id, username, kind) DO UPDATE SET is_waitlist = $4`,
+          [event_id, username, kind, is_waitlist]
         );
-        return res.status(201).json({ ok: true });
+        return res.status(201).json({ ok: true, waitlist: is_waitlist });
       }
 
       if (req.method === "DELETE") {

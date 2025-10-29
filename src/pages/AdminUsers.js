@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 // 500エラー時のHTMLにも耐える軽量fetch
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: "include", ...options });
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch {}
@@ -66,7 +66,7 @@ export default function AdminUsers() {
   const filtered = useMemo(() => {
     const needle = q.trim();
     return (list || []).filter((u) => {
-      const fam = (u.familiarity || "unknown");
+      const fam = (u.familiar || u.familiarity || "unknown");
       if (famFilter !== "all" && fam !== famFilter) return false;
       if (!needle) return true;
       return String(u.username || "").includes(needle);
@@ -77,7 +77,7 @@ export default function AdminUsers() {
   const counts = useMemo(() => {
     const c = { total: list.length, familiar: 0, unfamiliar: 0, unknown: 0 };
     for (const u of list) {
-      const fam = u.familiarity || "unknown";
+      const fam = u.familiar || u.familiarity || "unknown";
       if (fam === "familiar") c.familiar++;
       else if (fam === "unfamiliar") c.unfamiliar++;
       else c.unknown++;
@@ -190,7 +190,31 @@ export default function AdminUsers() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <FamBadge value={u.familiarity || "unknown"} />
+                    <select
+                      className="border rounded p-1 text-xs"
+                      value={u.familiar || u.familiarity || "unknown"}
+                      onChange={async (e) => {
+                        try {
+                          const r = await apiFetch("/api/users", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              username: u.username,
+                              familiar: e.target.value === "unknown" ? null : e.target.value,
+                            }),
+                          });
+                          if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                          await refresh();
+                        } catch (err) {
+                          alert(`更新に失敗しました: ${err.message}`);
+                        }
+                      }}
+                    >
+                      <option value="unknown">不明</option>
+                      <option value="familiar">詳しい</option>
+                      <option value="unfamiliar">詳しくない</option>
+                    </select>
+                    <FamBadge value={u.familiar || u.familiarity || "unknown"} />
                     <button
                       className="px-3 py-1 rounded bg-red-600 text-white text-xs"
                       onClick={() => handleDelete(u.id)}

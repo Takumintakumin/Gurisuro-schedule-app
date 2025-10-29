@@ -56,44 +56,70 @@ export default function MainApp() {
   // 残枠表示用にイベント別の応募数 + 確定済みメンバーをGET
   const [counts, setCounts] = useState({});
   const [decided, setDecided] = useState({}); // { eventId: { driver: string[], attendant: string[] } }
+  const [decidedDates, setDecidedDates] = useState(new Set()); // 確定済みの日付のSet
   useEffect(() => {
     (async () => {
       const ymd = toLocalYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
       const decOut = {};
+      const decDateSet = new Set();
+      
+      // すべてのイベントをチェックして確定済み日付を集計
+      for (const ev of events) {
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+          if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
+            decDateSet.add(ev.date);
+            if (todays.includes(ev)) {
+              decOut[ev.id] = {
+                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+              };
+            }
+          }
+        } catch {}
+      }
+      
       for (const ev of todays) {
         // 応募数
         const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
         const arr = Array.isArray(r.data) ? r.data : [];
+        const waitlistDriver = arr.filter(a => a.kind === "driver" && a.is_waitlist).length;
+        const waitlistAttendant = arr.filter(a => a.kind === "attendant" && a.is_waitlist).length;
         out[ev.id] = {
-          driver: arr.filter(a => a.kind === "driver").length,
-          attendant: arr.filter(a => a.kind === "attendant").length,
+          driver: arr.filter(a => a.kind === "driver" && !a.is_waitlist).length,
+          attendant: arr.filter(a => a.kind === "attendant" && !a.is_waitlist).length,
+          waitlistDriver,
+          waitlistAttendant,
           raw: arr,
         };
         
-        // 確定済みメンバー
-        try {
-          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-          if (dec.ok && dec.data) {
-            decOut[ev.id] = {
-              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-            };
-          } else {
+        // 確定済みメンバー（既に取得済みでない場合）
+        if (!decOut[ev.id]) {
+          try {
+            const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+            if (dec.ok && dec.data) {
+              decOut[ev.id] = {
+                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+              };
+            } else {
+              decOut[ev.id] = { driver: [], attendant: [] };
+            }
+          } catch {
             decOut[ev.id] = { driver: [], attendant: [] };
           }
-        } catch {
-          decOut[ev.id] = { driver: [], attendant: [] };
         }
       }
       setCounts(out);
       setDecided(decOut);
+      setDecidedDates(decDateSet);
     })();
   }, [events, selectedDate]);
 
-  const hasApplied = (eventId, kind) =>
-    myApps.some((a) => a.event_id === eventId && a.kind === kind);
+  const hasApplied = (eventId, kind, waitlist = false) =>
+    myApps.some((a) => a.event_id === eventId && a.kind === kind && (waitlist ? a.is_waitlist : !a.is_waitlist));
 
   const apply = async (ev, kind) => {
     if (!userName) {
@@ -123,9 +149,44 @@ export default function MainApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_id: ev.id, username: userName, kind }),
       });
-      if (!ok) throw new Error(data?.error || `HTTP ${status}`);
-      await refresh();
-      alert("応募しました！");
+      if (status === 403 && data?.can_waitlist) {
+        // 定員満杯でキャンセル待ち可能
+        if (window.confirm("定員が満杯です。キャンセル待ちとして登録しますか？")) {
+          const waitRes = await apiFetch("/api/applications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event_id: ev.id, username: userName, kind, is_waitlist: true }),
+          });
+          if (waitRes.ok) {
+            await refresh();
+            alert("キャンセル待ちとして登録しました！");
+          } else {
+            alert(`キャンセル待ち登録に失敗しました: ${waitRes.data?.error || waitRes.status}`);
+          }
+        }
+      } else if (!ok) {
+        if (status === 403 && data?.error?.includes("確定済み")) {
+          // 確定済みの場合、キャンセル待ちを提案
+          if (window.confirm("このイベントは既に確定済みです。キャンセル待ちとして登録しますか？")) {
+            const waitRes = await apiFetch("/api/applications", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ event_id: ev.id, username: userName, kind, is_waitlist: true }),
+            });
+            if (waitRes.ok) {
+              await refresh();
+              alert("キャンセル待ちとして登録しました！");
+            } else {
+              alert(`キャンセル待ち登録に失敗しました: ${waitRes.data?.error || waitRes.status}`);
+            }
+          }
+        } else {
+          throw new Error(data?.error || `HTTP ${status}`);
+        }
+      } else {
+        await refresh();
+        alert(data?.waitlist ? "キャンセル待ちとして登録しました！" : "応募しました！");
+      }
     } catch (e) {
       alert(`応募に失敗しました: ${e.message}`);
     } finally {
@@ -177,6 +238,7 @@ export default function MainApp() {
           }}
           onDateSelect={setSelectedDate}
           events={events}
+          decidedDates={decidedDates}
         />
 
         <div className="mt-4">
@@ -213,6 +275,9 @@ export default function MainApp() {
                         <div className="text-xs text-gray-500 mt-1">
                           運転手: {c.driver}{ev.capacity_driver!=null?` / ${ev.capacity_driver}`:""}
                           {remainDriver!=null?`（残り ${remainDriver}）`:""}
+                          {c.waitlistDriver > 0 && (
+                            <span className="text-orange-600 ml-1">【キャンセル待ち: {c.waitlistDriver}人】</span>
+                          )}
                           {hasDecidedDriver && (
                             <span className="text-blue-600 font-semibold">
                               【確定: {dec.driver.join(", ")}】
@@ -221,10 +286,16 @@ export default function MainApp() {
                           {isDecidedDriver && (
                             <span className="text-green-600 font-semibold ml-1">✓ あなたが確定済み</span>
                           )}
+                          {hasApplied(ev.id, "driver", true) && (
+                            <span className="text-orange-600 font-semibold ml-1">✓ あなたがキャンセル待ち</span>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           添乗員: {c.attendant}{ev.capacity_attendant!=null?` / ${ev.capacity_attendant}`:""}
                           {remainAtt!=null?`（残り ${remainAtt}）`:""}
+                          {c.waitlistAttendant > 0 && (
+                            <span className="text-orange-600 ml-1">【キャンセル待ち: {c.waitlistAttendant}人】</span>
+                          )}
                           {hasDecidedAttendant && (
                             <span className="text-blue-600 font-semibold">
                               【確定: {dec.attendant.join(", ")}】
@@ -232,6 +303,9 @@ export default function MainApp() {
                           )}
                           {isDecidedAttendant && (
                             <span className="text-green-600 font-semibold ml-1">✓ あなたが確定済み</span>
+                          )}
+                          {hasApplied(ev.id, "attendant", true) && (
+                            <span className="text-orange-600 font-semibold ml-1">✓ あなたがキャンセル待ち</span>
                           )}
                         </div>
                       </div>
