@@ -408,7 +408,14 @@ export default function MainApp() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <>
+    <div 
+      className="min-h-screen bg-gray-50"
+      style={{ 
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
+        marginBottom: 0
+      }}
+    >
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         {/* ヘッダー（ログアウト追加） */}
         <div className="flex justify-between items-center mb-4">
@@ -575,44 +582,146 @@ export default function MainApp() {
         {activeTab === "notifications" && renderNotificationsTab()}
         {activeTab === "mypage" && renderMypageTab()}
       </div>
+    </div>
 
-      {/* 固定タブバー */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-        <div className="max-w-4xl mx-auto grid grid-cols-3">
+    {/* 固定タブバー */}
+      <div 
+        id="main-tab-bar"
+        style={{ 
+          position: 'fixed',
+          bottom: '0px',
+          left: '0px',
+          right: '0px',
+          width: '100%',
+          minHeight: '64px',
+          backgroundColor: '#ffffff',
+          borderTop: '2px solid #d1d5db',
+          boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          visibility: 'visible',
+          opacity: 1,
+          paddingBottom: 'env(safe-area-inset-bottom)'
+        }}
+      >
+        <div style={{ maxWidth: '896px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', width: '100%', height: '100%', minHeight: '64px' }}>
           <button
             onClick={() => setActiveTab("calendar")}
-            className={`py-3 px-4 flex flex-col items-center gap-1 ${activeTab === "calendar" ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              padding: '12px 16px',
+              backgroundColor: activeTab === "calendar" ? '#dbeafe' : 'transparent',
+              color: activeTab === "calendar" ? '#2563eb' : '#4b5563',
+              fontWeight: activeTab === "calendar" ? '600' : '400',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== "calendar") {
+                e.currentTarget.style.backgroundColor = '#f9fafb';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== "calendar") {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-xs font-medium">カレンダー</span>
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
-            className={`py-3 px-4 flex flex-col items-center gap-1 relative ${activeTab === "notifications" ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              padding: '12px 16px',
+              backgroundColor: activeTab === "notifications" ? '#dbeafe' : 'transparent',
+              color: activeTab === "notifications" ? '#2563eb' : '#4b5563',
+              fontWeight: activeTab === "notifications" ? '600' : '400',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== "notifications") {
+                e.currentTarget.style.backgroundColor = '#f9fafb';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== "notifications") {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-            <span className="text-xs font-medium">通知</span>
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>通知</span>
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              <span style={{
+                position: 'absolute',
+                top: '4px',
+                right: '8px',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                fontSize: '10px',
+                borderRadius: '10px',
+                width: '20px',
+                height: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: '600'
+              }}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab("mypage")}
-            className={`py-3 px-4 flex flex-col items-center gap-1 ${activeTab === "mypage" ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              padding: '12px 16px',
+              backgroundColor: activeTab === "mypage" ? '#dbeafe' : 'transparent',
+              color: activeTab === "mypage" ? '#2563eb' : '#4b5563',
+              fontWeight: activeTab === "mypage" ? '600' : '400',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== "mypage") {
+                e.currentTarget.style.backgroundColor = '#f9fafb';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== "mypage") {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-xs font-medium">マイページ</span>
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>マイページ</span>
           </button>
         </div>
       </div>
-    </div>
-  );
-}
+    </>
