@@ -1,5 +1,5 @@
 // src/pages/UserLogin.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 /**
@@ -17,6 +17,24 @@ async function apiFetch(url, options = {}) {
 
 export default function UserLogin() {
   const nav = useNavigate();
+  
+  // ページロード時にクッキーからセッションを復元
+  useEffect(() => {
+    (async () => {
+      try {
+        const { ok, data } = await apiFetch("/api?path=me");
+        if (ok && data.username) {
+          // クッキーからセッションが復元できた場合、localStorageに保存してリダイレクト
+          localStorage.setItem("userRole", data.role || "user");
+          localStorage.setItem("userName", data.username);
+          nav(data.role === "admin" ? "/admin/dashboard" : "/app");
+        }
+      } catch (err) {
+        // セッションがない場合は通常のログイン画面を表示
+        console.log("No valid session found");
+      }
+    })();
+  }, [nav]);
 
   // ログイン用
   const [name, setName] = useState("");

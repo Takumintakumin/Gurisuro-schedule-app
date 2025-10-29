@@ -15,9 +15,36 @@ async function apiFetch(url, options = {}) {
 
 export default function MainApp() {
   const nav = useNavigate();
-
-  const userName = localStorage.getItem("userName") || "";
+  const [userName, setUserName] = useState("");
   const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
+  
+  // ページロード時にクッキーからセッションを復元
+  useEffect(() => {
+    (async () => {
+      // localStorageから取得を試みる
+      const storedName = localStorage.getItem("userName");
+      if (storedName) {
+        setUserName(storedName);
+        return;
+      }
+      
+      // localStorageにない場合、クッキーから復元
+      try {
+        const { ok, data } = await apiFetch("/api?path=me");
+        if (ok && data.username) {
+          localStorage.setItem("userRole", data.role || "user");
+          localStorage.setItem("userName", data.username);
+          setUserName(data.username);
+        } else {
+          // セッションがない場合、ログイン画面へ
+          nav("/");
+        }
+      } catch (err) {
+        console.log("Session restore failed:", err);
+        nav("/");
+      }
+    })();
+  }, [nav]);
 
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());

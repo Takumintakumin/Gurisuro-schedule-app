@@ -25,7 +25,23 @@ export default function AdminLogin() {
 
   useEffect(() => {
     console.log("[AdminLogin] mounted");
-  }, []);
+    
+    // ページロード時にクッキーからセッションを復元
+    (async () => {
+      try {
+        const { ok, data } = await apiFetchSafe("/api?path=me");
+        if (ok && data.username && data.role === "admin") {
+          // クッキーから管理者セッションが復元できた場合、localStorageに保存してリダイレクト
+          localStorage.setItem("userRole", "admin");
+          localStorage.setItem("userName", data.username);
+          nav("/admin/dashboard");
+        }
+      } catch (err) {
+        // セッションがない場合は通常のログイン画面を表示
+        console.log("No valid admin session found");
+      }
+    })();
+  }, [nav]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
