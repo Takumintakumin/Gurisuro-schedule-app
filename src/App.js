@@ -6,7 +6,6 @@ import UserLogin from "./pages/UserLogin.js";
 import AdminLogin from "./pages/AdminLogin.js";
 import AdminDashboard from "./pages/AdminDashboard.js";
 import AdminUsers from "./pages/AdminUsers.js";
-import AdminLayout from "./pages/AdminLayout.js";
 import MainApp from "./pages/MainApp.js";
 
 // 共通: ログイン必須
@@ -19,7 +18,9 @@ const ProtectedRoute = ({ children }) => {
 // 管理者のみ
 const AdminOnlyRoute = ({ children }) => {
   const role = localStorage.getItem("userRole");
-  if (role !== "admin") return <Navigate to="/admin" replace />;
+  if (!role || role !== "admin") {
+    return <Navigate to="/admin" replace />;
+  }
   return children;
 };
 
@@ -40,19 +41,6 @@ export default function App() {
 
         {/* 管理者ログイン */}
         <Route path="/admin" element={<AdminLogin />} />
-
-        {/* 管理者共通レイアウト */}
-        <Route
-          path="/admin"
-          element={
-            <AdminOnlyRoute>
-              <AdminLayout />
-            </AdminOnlyRoute>
-          }
-        >
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="users" element={<AdminUsers />} />
-        </Route>
 
         {/* 管理者用画面 */}
         <Route
