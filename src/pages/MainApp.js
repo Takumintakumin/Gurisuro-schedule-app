@@ -187,6 +187,8 @@ export default function MainApp() {
   const [counts, setCounts] = useState({});
   const [decided, setDecided] = useState({}); // { eventId: { driver: string[], attendant: string[] } }
   const [decidedDates, setDecidedDates] = useState(new Set()); // 確定済みの日付のSet
+  const [cancelledDates, setCancelledDates] = useState(new Set()); // ユーザーが応募したがキャンセルが出た日付
+  const [decidedMembersByEventId, setDecidedMembersByEventId] = useState({}); // { eventId: { driver: string[], attendant: string[] } } イベントごとの確定状況
   useEffect(() => {
     (async () => {
       const ymd = toLocalYMD(selectedDate);
@@ -239,6 +241,9 @@ export default function MainApp() {
       }
       
       // 他の日付の確定済み状況を簡易的に確認（自分の応募があるイベントのみ）
+      const allDecidedByEventId = {};
+      const userCancelledDateSet = new Set(); // 自分が応募したがキャンセルが出た日付
+      
       if (myApps.length > 0 && events.length > 0) {
         const myEventIds = [...new Set(myApps.map(a => a.event_id))];
         const checks = myEventIds.map(async (eventId) => {
@@ -248,25 +253,68 @@ export default function MainApp() {
           try {
             const dec = await apiFetch(`/api?path=decide&event_id=${eventId}`);
             if (dec.ok && dec.data) {
+              // イベントごとの確定状況を保存
+              allDecidedByEventId[eventId] = {
+                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+              };
+              
               const isMyDecided = 
                 (Array.isArray(dec.data.driver) && dec.data.driver.includes(userName)) ||
                 (Array.isArray(dec.data.attendant) && dec.data.attendant.includes(userName));
               
               if (isMyDecided) {
-                return ev.date;
+                return { date: ev.date, eventId };
               }
             }
           } catch {}
           return null;
         });
         
-        const dates = (await Promise.all(checks)).filter(Boolean);
-        dates.forEach(date => decDateSet.add(date));
+        const results = (await Promise.all(checks)).filter(Boolean);
+        results.forEach(({ date, eventId }) => {
+          decDateSet.add(date);
+          // 確定済みの場合はキャンセルフラグを解除
+        });
+      }
+      
+      // キャンセル通知をチェック（自分が応募したイベントでキャンセルが出た場合）
+      try {
+        const notifsRes = await apiFetch(`/api?path=notifications`);
+        if (notifsRes.ok && Array.isArray(notifsRes.data)) {
+          for (const notif of notifsRes.data) {
+            // キャンセル通知で、自分が応募しているイベントの場合
+            if (notif.kind?.startsWith("cancel_") && myApps.some(a => a.event_id === notif.event_id)) {
+              const ev = events.find(e => e.id === notif.event_id);
+              if (ev && ev.date) {
+                // ただし、既に確定済み（キャンセルが埋まった）の場合は追加しない
+                const evDecided = allDecidedByEventId[notif.event_id];
+                const capacityDriver = ev.capacity_driver ?? 1;
+                const capacityAttendant = ev.capacity_attendant ?? 1;
+                const confirmedDriverCount = evDecided?.driver?.length || 0;
+                const confirmedAttendantCount = evDecided?.attendant?.length || 0;
+                // 定員が埋まっている場合はキャンセルフラグを付けない
+                if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
+                  userCancelledDateSet.add(ev.date);
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+      
+      // 当日のイベントの確定状況も保存
+      for (const ev of todays) {
+        if (decOut[ev.id]) {
+          allDecidedByEventId[ev.id] = decOut[ev.id];
+        }
       }
       
       setCounts(out);
       setDecided(decOut);
       setDecidedDates(decDateSet);
+      setCancelledDates(userCancelledDateSet);
+      setDecidedMembersByEventId(allDecidedByEventId);
     })();
   }, [events, selectedDate, userName, myApps]);
 
@@ -590,6 +638,9 @@ export default function MainApp() {
               onDateSelect={setSelectedDate}
               events={events}
               decidedDates={decidedDates}
+              cancelledDates={cancelledDates}
+              decidedMembersByDate={{ _byEventId: decidedMembersByEventId }}
+              myAppliedEventIds={new Set(myApps.map(a => a.event_id))}
             />
 
             <div className="mt-4">

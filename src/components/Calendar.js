@@ -27,6 +27,7 @@ export default function Calendar({
   decidedDates = new Set(), // 確定済みの日付のSet (YYYY-MM-DD形式) 一般ユーザー: 自分が確定済みの日付、管理者: すべての確定済み日付
   decidedMembersByDate = {}, // 管理者用: { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
   cancelledDates = new Set(), // キャンセルされた日付のSet (YYYY-MM-DD形式)
+  myAppliedEventIds = new Set(), // ユーザー側用: 自分が応募しているイベントIDのSet（管理者側では空のSet）
 }) {
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
@@ -137,37 +138,71 @@ export default function Calendar({
     const daysDiff = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
     const isWithinOneWeek = daysDiff >= 0 && daysDiff <= 7;
     
-    // 管理者用: 運転手と添乗員が確定済みか、定員不足かチェック
+    // 管理者用/ユーザー用: 運転手と添乗員が確定済みか、定員不足かチェック
+    const isAdmin = Object.keys(decidedMembersByEventId).length > 0; // 管理者かどうかの判定（decidedMembersByEventIdがある場合）
     let allConfirmed = false; // 運転手と添乗員が確定済み
     let insufficientCapacity = false; // 1週間以内で定員不足
+    
     if (dayEvents.length > 0) {
-      // まず全てのイベントをチェックして、確定済み/未確定を分類
-      let hasConfirmed = false;
-      let hasUnconfirmed = false;
-      
-      for (const ev of dayEvents) {
-        const evDecided = decidedMembersByEventId[ev.id] || null;
-        // 確定済みかどうかを確認（evDecidedが存在し、driverまたはattendantが存在する）
-        const isEventDecided = evDecided && (evDecided.driver?.length > 0 || evDecided.attendant?.length > 0);
+      if (isAdmin) {
+        // 管理者用: 全てのイベントをチェックして、確定済み/未確定を分類
+        let hasConfirmed = false;
+        let hasUnconfirmed = false;
         
-        if (isEventDecided) {
-          hasConfirmed = true;
-        } else {
-          hasUnconfirmed = true;
+        for (const ev of dayEvents) {
+          const evDecided = decidedMembersByEventId[ev.id] || null;
+          // 確定済みかどうかを確認（evDecidedが存在し、driverまたはattendantが存在する）
+          const isEventDecided = evDecided && (evDecided.driver?.length > 0 || evDecided.attendant?.length > 0);
+          
+          if (isEventDecided) {
+            hasConfirmed = true;
+          } else {
+            hasUnconfirmed = true;
+          }
+        }
+        
+        // 確定済みのイベントがある場合は緑色にする（確定済みが優先）
+        if (hasConfirmed) {
+          allConfirmed = true;
+          insufficientCapacity = false; // 確定済みがある場合は赤色にしない
+        } else if (hasUnconfirmed && isWithinOneWeek) {
+          // 未確定のイベントがあり、1週間以内の場合のみ赤色
+          insufficientCapacity = true;
+        }
+      } else {
+        // ユーザー用: 自分の応募があるイベントで、1週間以内で定員が埋まっていない場合は赤色
+        let hasInsufficientCapacity = false;
+        
+        for (const ev of dayEvents) {
+          // 自分の応募があるイベントのみチェック（myAppliedEventIdsが空の場合は全イベントをチェックしない）
+          if (myAppliedEventIds && myAppliedEventIds.size > 0 && !myAppliedEventIds.has(ev.id)) continue;
+          
+          const evDecided = decidedMembersByEventId[ev.id] || null;
+          const capacityDriver = ev.capacity_driver ?? 1;
+          const capacityAttendant = ev.capacity_attendant ?? 1;
+          const confirmedDriverCount = evDecided?.driver?.length || 0;
+          const confirmedAttendantCount = evDecided?.attendant?.length || 0;
+          
+          // 定員が埋まっているかチェック
+          const isCapacityFilled = confirmedDriverCount >= capacityDriver && confirmedAttendantCount >= capacityAttendant;
+          
+          // 1週間以内で定員が埋まっていない場合
+          if (isWithinOneWeek && !isCapacityFilled) {
+            hasInsufficientCapacity = true;
+            break;
+          }
+        }
+        
+        if (hasInsufficientCapacity) {
+          insufficientCapacity = true;
         }
       }
-      
-      // 確定済みのイベントがある場合は緑色にする（確定済みが優先）
-      if (hasConfirmed) {
-        allConfirmed = true;
-        insufficientCapacity = false; // 確定済みがある場合は赤色にしない
-      } else if (hasUnconfirmed && isWithinOneWeek) {
-        // 未確定のイベントがあり、1週間以内の場合のみ赤色
-        insufficientCapacity = true;
-      }
-    } else if (isDecided) {
-      // decidedDatesに含まれていれば確定済みと見なす
+    }
+    
+    // ユーザー側でも管理者側でも、確定済み（isDecided）の場合は緑色
+    if (isDecided) {
       allConfirmed = true;
+      insufficientCapacity = false; // 確定済みがある場合は赤色にしない
     }
 
     // 背景色（優先度：キャンセル>1週間以内で定員不足=赤>確定済み=緑>その他）
