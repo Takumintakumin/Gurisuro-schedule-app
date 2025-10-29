@@ -585,9 +585,9 @@ export default function MainApp() {
     </div>
 
     {/* 固定タブバー */}
-      <div 
-        id="main-tab-bar"
-        style={{ 
+    <div 
+      id="main-tab-bar"
+      style={{ 
           position: 'fixed',
           bottom: '0px',
           left: '0px',
