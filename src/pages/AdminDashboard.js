@@ -36,7 +36,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [decidedDates, setDecidedDates] = useState(new Set());
-  const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { date: { driver: [], attendant: [] } }
+  const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
 
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
@@ -71,25 +71,34 @@ export default function AdminDashboard() {
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
       
-      // 確定済み日付を集計 + 確定者情報を収集
+      // 確定済み日付とメンバー情報を集計
       const decDateSet = new Set();
-      const decMembersByDate = {};
+      const decMembersMap = {}; // { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
       for (const ev of evs) {
         try {
           const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
           if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
             decDateSet.add(ev.date);
-            // 確定者情報を日付ごとに集計
-            if (!decMembersByDate[ev.date]) {
-              decMembersByDate[ev.date] = { driver: [], attendant: [] };
+            // 日付ごとに確定メンバーをまとめる（複数イベントがある場合に結合）
+            if (!decMembersMap[ev.date]) {
+              decMembersMap[ev.date] = { driver: [], attendant: [] };
             }
-            decMembersByDate[ev.date].driver.push(...(Array.isArray(dec.data.driver) ? dec.data.driver : []));
-            decMembersByDate[ev.date].attendant.push(...(Array.isArray(dec.data.attendant) ? dec.data.attendant : []));
+            if (Array.isArray(dec.data.driver)) {
+              decMembersMap[ev.date].driver.push(...dec.data.driver);
+            }
+            if (Array.isArray(dec.data.attendant)) {
+              decMembersMap[ev.date].attendant.push(...dec.data.attendant);
+            }
           }
         } catch {}
       }
+      // 重複を削除
+      for (const date in decMembersMap) {
+        decMembersMap[date].driver = [...new Set(decMembersMap[date].driver)];
+        decMembersMap[date].attendant = [...new Set(decMembersMap[date].attendant)];
+      }
       setDecidedDates(decDateSet);
-      setDecidedMembersByDate(decMembersByDate);
+      setDecidedMembersByDate(decMembersMap);
     } catch (e) {
       console.error("fetch events error:", e);
     } finally {
