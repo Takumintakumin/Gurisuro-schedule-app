@@ -404,6 +404,22 @@ export default async function handler(req, res) {
             cap = kind === "driver" ? evCheck.rows[0].capacity_driver : evCheck.rows[0].capacity_attendant;
           }
           
+          // 同じイベントで既に別の役割に応募しているかチェック
+          const existingApp = await query(
+            `SELECT kind FROM applications WHERE event_id = $1 AND username = $2`,
+            [event_id, username]
+          );
+          if (existingApp.rows && existingApp.rows.length > 0) {
+            const existingKind = existingApp.rows[0].kind;
+            if (existingKind !== kind) {
+              const existingKindLabel = existingKind === "driver" ? "運転手" : "添乗員";
+              return res.status(403).json({ 
+                error: `このイベントには既に${existingKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。` 
+              });
+            }
+            // 既に同じ役割で応募している場合は重複として処理（ON CONFLICTで処理される）
+          }
+          
           // 現在の応募数（確定者以外）
           const appCount = await query(
             `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = $2`,
@@ -411,15 +427,8 @@ export default async function handler(req, res) {
           );
           const currentCount = Number(appCount.rows?.[0]?.cnt || 0);
           
-          if (decCheck.rows && decCheck.rows.length > 0) {
-            // 確定済みメンバーがいる場合、新規応募を拒否
-            const isDecidedUser = decCheck.rows.some((r) => r.username === username);
-            if (!isDecidedUser) {
-              return res.status(403).json({ 
-                error: "このイベントは既に確定済みメンバーがいます。新規応募はできません。" 
-              });
-            }
-          } else if (cap != null && currentCount >= cap) {
+          // 確定済みメンバーのチェックは削除（一人が応募追加しても他の人が応募できるようにする）
+          if (cap != null && currentCount >= cap) {
             // 運転手で応募した場合、添乗員が不足していれば自動的に添乗員として登録
             if (kind === "driver") {
               try {

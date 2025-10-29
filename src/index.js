@@ -33,20 +33,50 @@ if (!rootElement) {
 if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js', { updateViaCache: 'none' })
+      .register('/sw.js', { 
+        updateViaCache: 'none',
+        scope: '/' 
+      })
       .then((registration) => {
         console.log('SW registered:', registration);
+        
+        // 定期的に更新をチェック（60秒ごと）
+        setInterval(() => {
+          registration.update();
+        }, 60000);
+        
+        // Service Workerからのメッセージを受信
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'SW_UPDATED') {
+            console.log('SW update message received, reloading...');
+            // 少し待ってからリロード（ユーザーの操作を妨げないように）
+            setTimeout(() => {
+              window.location.reload(true);
+            }, 500);
+          }
+        });
+        
         // バージョンアップデートを確認
         registration.addEventListener('updatefound', () => {
           console.log('SW update found, installing...');
           const newWorker = registration.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // 新しいService Workerが利用可能になったら、ページをリロード
-              console.log('New SW installed, reloading page...');
-              window.location.reload();
-            }
-          });
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  // 新しいService Workerが利用可能になったら、ページをリロード
+                  console.log('New SW installed, reloading page...');
+                  // 少し待ってからリロード
+                  setTimeout(() => {
+                    window.location.reload(true);
+                  }, 500);
+                } else {
+                  // 初回インストール
+                  console.log('SW installed for the first time');
+                }
+              }
+            });
+          }
         });
       })
       .catch((error) => {

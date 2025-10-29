@@ -327,7 +327,7 @@ export default function MainApp() {
       return;
     }
     
-    // 確定済みチェック
+    // 確定済みチェック（自分が確定済みの場合は応募変更不可）
     const dec = decided[ev.id] || { driver: [], attendant: [] };
     const isDecided = (kind === "driver" ? dec.driver : dec.attendant).includes(userName);
     if (isDecided) {
@@ -335,10 +335,14 @@ export default function MainApp() {
       return;
     }
     
-    // 確定済みメンバーがいる場合、新規応募を制限
-    const hasDecidedMembers = (kind === "driver" ? dec.driver : dec.attendant).length > 0;
-    if (hasDecidedMembers) {
-      alert("このイベントは既に確定済みメンバーがいます。新規応募はできません。");
+    // 同じイベントで既に別の役割に応募しているかチェック
+    const hasAppliedOtherKind = myApps.some(a => 
+      a.event_id === ev.id && a.kind !== kind
+    );
+    if (hasAppliedOtherKind) {
+      const otherKind = myApps.find(a => a.event_id === ev.id && a.kind !== kind)?.kind;
+      const otherKindLabel = otherKind === "driver" ? "運転手" : "添乗員";
+      alert(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`);
       return;
     }
     
@@ -660,6 +664,10 @@ export default function MainApp() {
                     const appliedDriver = hasApplied(ev.id, "driver");
                     const appliedAtt    = hasApplied(ev.id, "attendant");
                     
+                    // 同じイベントで既に別の役割に応募しているかチェック
+                    const hasAppliedOtherKindDriver = appliedAtt; // 添乗員に応募している場合、運転手は無効
+                    const hasAppliedOtherKindAttendant = appliedDriver; // 運転手に応募している場合、添乗員は無効
+                    
                     const hasDecidedDriver = dec.driver.length > 0;
                     const hasDecidedAttendant = dec.attendant.length > 0;
                     const isDecidedDriver = dec.driver.includes(userName);
@@ -722,8 +730,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || remainDriver===0 || hasDecidedDriver}
+                                disabled={applying || remainDriver===0 || hasDecidedDriver || hasAppliedOtherKindDriver}
                                 onClick={() => apply(ev, "driver")}
+                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : ""}
                               >
                                 運転手で応募
                               </button>
@@ -749,8 +758,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || remainAtt===0 || hasDecidedAttendant}
+                                disabled={applying || remainAtt===0 || hasDecidedAttendant || hasAppliedOtherKindAttendant}
                                 onClick={() => apply(ev, "attendant")}
+                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : ""}
                               >
                                 添乗員で応募
                               </button>

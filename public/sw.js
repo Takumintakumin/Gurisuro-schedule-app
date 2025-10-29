@@ -1,9 +1,11 @@
 // service-worker.js (PWA)
 // バージョンを更新するたびに新しいキャッシュが作成される
-const CACHE_NAME = 'gurisuro-app-v2';
+const CACHE_NAME = 'gurisuro-app-v3';
+const FORCE_UPDATE = false; // デバッグ用: trueにすると即座に更新を強制
 
 // インストール時にキャッシュ
 self.addEventListener('install', (event) => {
+  console.log('SW: Installing new version:', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // 空のキャッシュで開始（プリキャッシュしない）
@@ -11,24 +13,37 @@ self.addEventListener('install', (event) => {
       return Promise.resolve();
     })
   );
+  // すぐに新しいService Workerをアクティブにする
   self.skipWaiting();
 });
 
 // アクティベート時に古いキャッシュを削除
 self.addEventListener('activate', (event) => {
+  console.log('SW: Activating:', CACHE_NAME);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
+            console.log('SW: Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      // すべてのクライアントにコントロールを要求
-      return self.clients.claim();
+      // すべてのクライアントにコントロールを要求（すぐに適用）
+      console.log('SW: Claiming clients');
+      return self.clients.claim().then(() => {
+        // すべてのクライアントに更新通知を送信
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              cacheName: CACHE_NAME
+            });
+          });
+        });
+      });
     })
   );
 });
