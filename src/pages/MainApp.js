@@ -65,16 +65,21 @@ export default function MainApp() {
       const decOut = {};
       const decDateSet = new Set();
       
-      // すべてのイベントをチェックして確定済み日付を集計
+      // すべてのイベントをチェックして確定済み日付を集計（自分の予定が確定した日付のみ）
       for (const ev of events) {
         try {
           const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-          if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
-            decDateSet.add(ev.date);
+          if (dec.ok && dec.data) {
+            const driverDec = Array.isArray(dec.data.driver) ? dec.data.driver : [];
+            const attendantDec = Array.isArray(dec.data.attendant) ? dec.data.attendant : [];
+            // 自分が確定している場合のみ日付を追加
+            if (userName && (driverDec.includes(userName) || attendantDec.includes(userName))) {
+              decDateSet.add(ev.date);
+            }
             if (todays.includes(ev)) {
               decOut[ev.id] = {
-                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+                driver: driverDec,
+                attendant: attendantDec,
               };
             }
           }

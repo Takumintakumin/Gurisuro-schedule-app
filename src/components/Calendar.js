@@ -25,6 +25,7 @@ export default function Calendar({
   unfilledDates = new Set(),
   eventTagsByDate = {},
   decidedDates = new Set(), // 確定済みの日付のSet (YYYY-MM-DD形式)
+  decidedMembersByDate = {}, // 管理者用: { date: { driver: [], attendant: [] } }
 }) {
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
@@ -120,6 +121,8 @@ export default function Calendar({
     const hasTags = tags.length > 0;
     const dayEvents = eventsByDate[key] || [];
     const isDecided = decidedDates.has(key);
+    const decidedMembers = decidedMembersByDate[key] || { driver: [], attendant: [] };
+    const hasDecidedMembers = decidedMembers.driver.length > 0 || decidedMembers.attendant.length > 0;
 
     // 背景色（優先度：確定済み>イベント>運休>割当>可用）
     let base =
@@ -160,6 +163,12 @@ export default function Calendar({
           <span className={`text-[14px] sm:text-[15px] font-bold ${dayColor}`}>
             {i}
           </span>
+          {/* 管理者用：確定者情報の表示 */}
+          {hasDecidedMembers && (
+            <span className="text-[9px] text-green-600 font-semibold" title={`確定: 運転手=${decidedMembers.driver.join(",") || "なし"} 添乗員=${decidedMembers.attendant.join(",") || "なし"}`}>
+              ✓{decidedMembers.driver.length + decidedMembers.attendant.length}
+            </span>
+          )}
         </div>
 
         {/* バッジ（イベントアイコン/タグ） */}

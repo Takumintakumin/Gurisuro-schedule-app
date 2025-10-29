@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [decidedDates, setDecidedDates] = useState(new Set());
+  const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { date: { driver: [], attendant: [] } }
 
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
@@ -70,17 +71,25 @@ export default function AdminDashboard() {
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
       
-      // 確定済み日付を集計
+      // 確定済み日付を集計 + 確定者情報を収集
       const decDateSet = new Set();
+      const decMembersByDate = {};
       for (const ev of evs) {
         try {
           const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
           if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
             decDateSet.add(ev.date);
+            // 確定者情報を日付ごとに集計
+            if (!decMembersByDate[ev.date]) {
+              decMembersByDate[ev.date] = { driver: [], attendant: [] };
+            }
+            decMembersByDate[ev.date].driver.push(...(Array.isArray(dec.data.driver) ? dec.data.driver : []));
+            decMembersByDate[ev.date].attendant.push(...(Array.isArray(dec.data.attendant) ? dec.data.attendant : []));
           }
         } catch {}
       }
       setDecidedDates(decDateSet);
+      setDecidedMembersByDate(decMembersByDate);
     } catch (e) {
       console.error("fetch events error:", e);
     } finally {
@@ -260,6 +269,7 @@ export default function AdminDashboard() {
           onDateSelect={(d) => setSelectedDate(d)}
           events={events}
           decidedDates={decidedDates}
+          decidedMembersByDate={decidedMembersByDate}
         />
 
         {/* 募集作成フォーム（UI据え置き） */}
