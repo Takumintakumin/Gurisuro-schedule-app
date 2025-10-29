@@ -730,7 +730,7 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || remainDriver===0 || hasDecidedDriver || hasAppliedOtherKindDriver}
+                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver}
                                 onClick={() => apply(ev, "driver")}
                                 title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : ""}
                               >
@@ -758,7 +758,7 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || remainAtt===0 || hasDecidedAttendant || hasAppliedOtherKindAttendant}
+                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant}
                                 onClick={() => apply(ev, "attendant")}
                                 title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : ""}
                               >

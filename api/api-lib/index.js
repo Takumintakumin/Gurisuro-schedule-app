@@ -420,75 +420,8 @@ export default async function handler(req, res) {
             // 既に同じ役割で応募している場合は重複として処理（ON CONFLICTで処理される）
           }
           
-          // 現在の応募数（確定者以外）
-          const appCount = await query(
-            `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = $2`,
-            [event_id, kind]
-          );
-          const currentCount = Number(appCount.rows?.[0]?.cnt || 0);
-          
-          // 確定済みメンバーのチェックは削除（一人が応募追加しても他の人が応募できるようにする）
-          if (cap != null && currentCount >= cap) {
-            // 運転手で応募した場合、添乗員が不足していれば自動的に添乗員として登録
-            if (kind === "driver") {
-              try {
-                const attDecCheck = await query(
-                  `SELECT username FROM selections WHERE event_id = $1 AND kind = 'attendant'`,
-                  [event_id]
-                );
-                const attAppCount = await query(
-                  `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = 'attendant'`,
-                  [event_id]
-                );
-                const attCurrentCount = Number(attAppCount.rows?.[0]?.cnt || 0);
-                const attCap = evCheck.rows?.[0]?.capacity_attendant ?? 1;
-                
-                // 添乗員が不足している場合、自動的に添乗員として登録
-                if (attCurrentCount < attCap && attDecCheck.rows.length === 0) {
-                  await query(
-                    `INSERT INTO applications (event_id, username, kind)
-                     VALUES ($1,$2,'attendant')
-                     ON CONFLICT (event_id, username, kind) DO NOTHING`,
-                    [event_id, username]
-                  );
-                  
-                  // 通知を作成
-                  const evInfo = await query(
-                    `SELECT date, label, start_time FROM events WHERE id = $1`,
-                    [event_id]
-                  );
-                  if (evInfo.rows?.[0]) {
-                    const ev = evInfo.rows[0];
-                    await query(`
-                      CREATE TABLE IF NOT EXISTS notifications (
-                        id BIGSERIAL PRIMARY KEY,
-                        username TEXT NOT NULL,
-                        event_id BIGINT NOT NULL,
-                        kind TEXT NOT NULL,
-                        message TEXT NOT NULL,
-                        created_at TIMESTAMPTZ DEFAULT now(),
-                        read_at TIMESTAMPTZ
-                      )
-                    `);
-                    const notifyMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）について、運転手で応募されましたが運転手が満杯のため、添乗員として登録されました。`;
-                    await query(
-                      `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
-                      [username, event_id, 'attendant', notifyMessage]
-                    );
-                  }
-                  
-                  return res.status(201).json({ ok: true, auto_switched: true, switched_to: "attendant" });
-                }
-              } catch (e) {
-                console.error("自動切り替えエラー:", e);
-              }
-            }
-            
-            // 定員満杯の場合は応募を拒否
-            return res.status(403).json({ 
-              error: "定員が満杯です。応募できません。"
-            });
-          }
+          // 定員チェックを削除（何人でも応募できるようにする。管理者が後から選ぶため）
+          // 以前の定員制限と自動切り替えロジックは削除
 
         } catch (e) {
           // selectionsテーブルがない場合などは続行
