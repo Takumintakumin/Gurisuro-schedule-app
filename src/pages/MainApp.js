@@ -683,8 +683,7 @@ export default function MainApp() {
                               {ev.start_time}〜{ev.end_time}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              運転手: {c.driver}{ev.capacity_driver!=null?` / ${ev.capacity_driver}`:""}
-                              {remainDriver!=null?`（残り ${remainDriver}）`:""}
+                              運転手: {c.driver}人
                               {hasDecidedDriver && (
                                 <span className="text-blue-600 font-semibold">
                                   【確定: {dec.driver.join(", ")}】
@@ -695,8 +694,7 @@ export default function MainApp() {
                               )}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              添乗員: {c.attendant}{ev.capacity_attendant!=null?` / ${ev.capacity_attendant}`:""}
-                              {remainAtt!=null?`（残り ${remainAtt}）`:""}
+                              添乗員: {c.attendant}人
                               {hasDecidedAttendant && (
                                 <span className="text-blue-600 font-semibold">
                                   【確定: {dec.attendant.join(", ")}】
