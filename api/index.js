@@ -405,6 +405,86 @@ export default async function handler(req, res) {
       return res.status(200).json({ event_id: Number(eventId), driver, attendant });
     }
 
+    // ---- /api/decide ---- 選出の保存/取得/取消
+    if (sub === "decide") {
+      // テーブルを保証
+      await query(
+        `CREATE TABLE IF NOT EXISTS selections (
+           event_id BIGINT NOT NULL,
+           username TEXT NOT NULL,
+           kind TEXT NOT NULL CHECK (kind IN ('driver','attendant')),
+           decided_at TIMESTAMPTZ DEFAULT now(),
+           PRIMARY KEY (event_id, username, kind)
+         )`
+      );
+
+      if (req.method === "GET") {
+        const eventId = Number(q.get("event_id"));
+        if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+        const r = await query(
+          `SELECT username, kind FROM selections WHERE event_id = $1 ORDER BY decided_at ASC`,
+          [eventId]
+        );
+        const driver = r.rows.filter((x) => x.kind === "driver").map((x) => x.username);
+        const attendant = r.rows.filter((x) => x.kind === "attendant").map((x) => x.username);
+        return res.status(200).json({ event_id: eventId, driver, attendant });
+      }
+
+      if (req.method === "DELETE") {
+        const eventId = Number(q.get("event_id"));
+        if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+        await query(`DELETE FROM selections WHERE event_id = $1`, [eventId]);
+        return res.status(200).json({ ok: true });
+      }
+
+      if (req.method === "POST") {
+        const { event_id, driver = [], attendant = [] } = body || {};
+        const eventId = Number(event_id);
+        if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+
+        // 定員チェック（存在すれば）
+        let capD = null, capA = null;
+        try {
+          const er = await query(
+            `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
+            [eventId]
+          );
+          if (er.rows?.[0]) {
+            capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : null;
+            capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : null;
+          }
+        } catch {}
+
+        if (capD != null && driver.length > capD) {
+          return res.status(400).json({ error: `運転手の選出が定員(${capD})を超えています` });
+        }
+        if (capA != null && attendant.length > capA) {
+          return res.status(400).json({ error: `添乗員の選出が定員(${capA})を超えています` });
+        }
+
+        await query(`DELETE FROM selections WHERE event_id = $1`, [eventId]);
+        const values = [];
+        for (const u of Array.from(new Set(driver))) {
+          values.push([eventId, u, "driver"]);
+        }
+        for (const u of Array.from(new Set(attendant))) {
+          values.push([eventId, u, "attendant"]);
+        }
+        if (values.length) {
+          const params = values.flatMap((v) => v);
+          const tuples = values.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",");
+          await query(
+            `INSERT INTO selections (event_id, username, kind) VALUES ${tuples}
+             ON CONFLICT (event_id, username, kind) DO NOTHING`,
+            params
+          );
+        }
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
     // ---- その他 404 ----
     return res.status(404).json({ error: "Not Found" });
   } catch (err) {

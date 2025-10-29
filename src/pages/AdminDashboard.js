@@ -6,7 +6,7 @@ import { toLocalYMD } from "../lib/date.js";
 
 // 500/HTMLにも耐える軽量 fetch
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: "include", ...options });
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     let data = {};
@@ -49,6 +49,8 @@ export default function AdminDashboard() {
   const [fairLoading, setFairLoading] = useState(false);
   const [fairError, setFairError] = useState("");
   const [fairData, setFairData] = useState({ event_id: null, driver: [], attendant: [] });
+  const [selDriver, setSelDriver] = useState([]);
+  const [selAttendant, setSelAttendant] = useState([]);
 
   // 管理者認証
   useEffect(() => {
@@ -135,6 +137,8 @@ export default function AdminDashboard() {
     setFairLoading(true);
     setFairError("");
     setFairData({ event_id: eventId, driver: [], attendant: [] });
+    setSelDriver([]);
+    setSelAttendant([]);
 
     // 1) 正規ルート
     const tryFairness = async (url) => {
@@ -190,7 +194,15 @@ export default function AdminDashboard() {
             rank: i + 1,
           }));
 
-        setFairData({ event_id: eventId, driver, attendant });
+      setFairData({ event_id: eventId, driver, attendant });
+      // 既存の確定を読み込み
+      try {
+        const dec = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(eventId)}`);
+        if (dec.ok) {
+          setSelDriver(Array.isArray(dec.data.driver) ? dec.data.driver : []);
+          setSelAttendant(Array.isArray(dec.data.attendant) ? dec.data.attendant : []);
+        }
+      } catch {}
         setFairError("公平スコア（v_participation）が使えないため、応募順の簡易表示です。");
       } catch (e2) {
         setFairError(e2.message || "応募状況の取得に失敗しました。");
@@ -395,17 +407,33 @@ export default function AdminDashboard() {
                     <p className="text-xs text-gray-500">応募なし</p>
                   ) : (
                     <ul className="space-y-1">
-                      {fairData.driver.map((u) => (
-                        <li key={`d-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>#{u.rank} {u.username}</span>
-                            <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
-                          </div>
-                          <div className="text-[11px] text-gray-500">
-                            最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
-                          </div>
-                        </li>
-                      ))}
+                      {fairData.driver.map((u) => {
+                        const checked = selDriver.includes(u.username);
+                        return (
+                          <li key={`d-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
+                            <div className="flex justify-between items-center">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelDriver((prev) =>
+                                      e.target.checked
+                                        ? Array.from(new Set([...prev, u.username]))
+                                        : prev.filter((x) => x !== u.username)
+                                    );
+                                  }}
+                                />
+                                <span>#{u.rank} {u.username}</span>
+                              </label>
+                              <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -415,20 +443,100 @@ export default function AdminDashboard() {
                     <p className="text-xs text-gray-500">応募なし</p>
                   ) : (
                     <ul className="space-y-1">
-                      {fairData.attendant.map((u) => (
-                        <li key={`a-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>#{u.rank} {u.username}</span>
-                            <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
-                          </div>
-                          <div className="text-[11px] text-gray-500">
-                            最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
-                          </div>
-                        </li>
-                      ))}
+                      {fairData.attendant.map((u) => {
+                        const checked = selAttendant.includes(u.username);
+                        return (
+                          <li key={`a-${u.username}-${u.rank}`} className="border rounded p-2 text-sm">
+                            <div className="flex justify-between items-center">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelAttendant((prev) =>
+                                      e.target.checked
+                                        ? Array.from(new Set([...prev, u.username]))
+                                        : prev.filter((x) => x !== u.username)
+                                    );
+                                  }}
+                                />
+                                <span>#{u.rank} {u.username}</span>
+                              </label>
+                              <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
+              </div>
+
+              {/* 操作行 */}
+              <div className="mt-4 flex flex-wrap gap-2 items-center">
+                <button
+                  className="px-3 py-2 rounded bg-emerald-600 text-white text-sm"
+                  onClick={async () => {
+                    const ev = events.find((e) => e.id === fairData.event_id) || {};
+                    const capD = ev.capacity_driver != null ? Number(ev.capacity_driver) : null;
+                    const capA = ev.capacity_attendant != null ? Number(ev.capacity_attendant) : null;
+                    if (capD != null) {
+                      setSelDriver(fairData.driver.slice(0, capD).map((x) => x.username));
+                    } else {
+                      setSelDriver([]);
+                    }
+                    if (capA != null) {
+                      setSelAttendant(fairData.attendant.slice(0, capA).map((x) => x.username));
+                    } else {
+                      setSelAttendant([]);
+                    }
+                  }}
+                >
+                  定員に合わせて自動選出
+                </button>
+
+                <button
+                  className="px-3 py-2 rounded bg-blue-600 text-white text-sm"
+                  onClick={async () => {
+                    try {
+                      const r = await apiFetch(`/api?path=decide`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          event_id: fairData.event_id,
+                          driver: selDriver,
+                          attendant: selAttendant,
+                        }),
+                      });
+                      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                      alert("確定を保存しました");
+                    } catch (err) {
+                      alert(`保存に失敗しました: ${err.message}`);
+                    }
+                  }}
+                >
+                  確定を保存
+                </button>
+
+                <button
+                  className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm"
+                  onClick={async () => {
+                    try {
+                      const r = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(fairData.event_id)}`, { method: "DELETE" });
+                      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                      setSelDriver([]);
+                      setSelAttendant([]);
+                      alert("確定を解除しました");
+                    } catch (err) {
+                      alert(`解除に失敗しました: ${err.message}`);
+                    }
+                  }}
+                >
+                  確定を解除
+                </button>
               </div>
 
             </div>
