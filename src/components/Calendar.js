@@ -126,7 +126,8 @@ export default function Calendar({
     const dayEvents = eventsByDate[key] || [];
     const isDecided = decidedDates.has(key);
     const isCancelled = cancelledDates.has(key);
-    const decidedMembers = decidedMembersByDate?.[key] || null; // 管理者用: 確定済みメンバー情報
+    const decidedMembers = decidedMembersByDate?.[key] || null; // 管理者用: 確定済みメンバー情報（日付単位のまとめ）
+    const decidedMembersByEventId = decidedMembersByDate?._byEventId || {}; // 管理者用: イベントIDごとの確定済みメンバー情報
 
     // 1週間前以内かどうかを判定（イベントがある場合のみ）
     const today = new Date();
@@ -139,40 +140,35 @@ export default function Calendar({
     // 管理者用: 運転手と添乗員が確定済みか、定員不足かチェック
     let allConfirmed = false; // 運転手と添乗員が確定済み
     let insufficientCapacity = false; // 1週間以内で定員不足
-    if (decidedMembers && dayEvents.length > 0) {
-      // 1週間以内の場合のみ定員不足をチェック
-      if (isWithinOneWeek) {
-        // 各イベントの定員と確定済み人数をチェック
-        for (const ev of dayEvents) {
-          const capacityDriver = ev.capacity_driver ?? 1; // デフォルト1
-          const capacityAttendant = ev.capacity_attendant ?? 1; // デフォルト1
-          const confirmedDriverCount = decidedMembers.driver?.length || 0;
-          const confirmedAttendantCount = decidedMembers.attendant?.length || 0;
-          
-          // 定員に満たない場合
-          if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
+    if (dayEvents.length > 0) {
+      // 各イベントごとに確認
+      let hasUnconfirmed = false;
+      for (const ev of dayEvents) {
+        const evDecided = decidedMembersByEventId[ev.id] || null;
+        const capacityDriver = ev.capacity_driver ?? 1; // デフォルト1
+        const capacityAttendant = ev.capacity_attendant ?? 1; // デフォルト1
+        // 確定済みかどうかを確認（evDecidedが存在し、driverまたはattendantが存在する）
+        const isEventDecided = evDecided && (evDecided.driver?.length > 0 || evDecided.attendant?.length > 0);
+        
+        if (isEventDecided) {
+          // 確定済みの場合は緑色にする（定員チェックは不要、確定済みが優先）
+        } else {
+          // 未確定の場合のみ、1週間以内で定員不足をチェック（赤色にする条件）
+          if (isWithinOneWeek) {
             insufficientCapacity = true;
-            break;
+            hasUnconfirmed = true;
+            break; // 1つでも未確定で1週間以内なら赤色
           }
+          hasUnconfirmed = true;
         }
       }
       
       // すべてのイベントで運転手と添乗員が定員分確定済みかチェック
-      if (!insufficientCapacity && dayEvents.length > 0) {
+      if (!hasUnconfirmed && dayEvents.length > 0) {
         allConfirmed = true;
-        for (const ev of dayEvents) {
-          const capacityDriver = ev.capacity_driver ?? 1;
-          const capacityAttendant = ev.capacity_attendant ?? 1;
-          const confirmedDriverCount = decidedMembers.driver?.length || 0;
-          const confirmedAttendantCount = decidedMembers.attendant?.length || 0;
-          if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
-            allConfirmed = false;
-            break;
-          }
-        }
       }
-    } else if (isDecided && dayEvents.length > 0) {
-      // 1週間より前のイベントでも、確定済みフラグがあればすべて確定済みと見なす
+    } else if (isDecided) {
+      // decidedDatesに含まれていれば確定済みと見なす
       allConfirmed = true;
     }
 

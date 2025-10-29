@@ -52,9 +52,10 @@ export default function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [decidedDates, setDecidedDates] = useState(new Set());
+      const [decidedDates, setDecidedDates] = useState(new Set());
   const [cancelledDates, setCancelledDates] = useState(new Set()); // キャンセルされた日付
   const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
+  const [decidedMembersByEventId, setDecidedMembersByEventId] = useState({}); // { eventId: { driver: string[], attendant: string[] } }
   
   // 通知
   const [notifications, setNotifications] = useState([]);
@@ -149,12 +150,18 @@ export default function AdminDashboard() {
       
       // 確定済み日付とメンバー情報を集計
       const decDateSet = new Set();
-      const decMembersMap = {}; // { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
+      const decMembersMap = {}; // О { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
+      const decMembersByEventId = {}; // { eventId: { driver: string[], attendant: string[] } }
       for (const ev of evs) {
         try {
           const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
           if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
             decDateSet.add(ev.date);
+            // イベントIDごとに確定メンバーを保存
+            decMembersByEventId[ev.id] = {
+              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+            };
             // 日付ごとに確定メンバーをまとめる（複数イベントがある場合に結合）
             if (!decMembersMap[ev.date]) {
               decMembersMap[ev.date] = { driver: [], attendant: [] };
@@ -175,6 +182,7 @@ export default function AdminDashboard() {
       }
       setDecidedDates(decDateSet);
       setDecidedMembersByDate(decMembersMap);
+      setDecidedMembersByEventId(decMembersByEventId);
       
       // キャンセルされた日付と定員不足の日付を取得（通知から）
       try {
@@ -529,7 +537,7 @@ export default function AdminDashboard() {
               onDateSelect={(d) => setSelectedDate(d)}
               events={events}
               decidedDates={decidedDates}
-              decidedMembersByDate={decidedMembersByDate}
+              decidedMembersByDate={{ ...decidedMembersByDate, _byEventId: decidedMembersByEventId }}
               cancelledDates={cancelledDates}
             />
 
