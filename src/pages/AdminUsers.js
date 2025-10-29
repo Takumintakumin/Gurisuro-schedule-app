@@ -158,8 +158,14 @@ export default function AdminUsers() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">👥 ユーザー管理</h1>
           <div className="flex gap-3">
-            <button onClick={() => nav("/")} className="text-gray-600 underline">
-              一般ログインへ
+            <button
+              onClick={() => {
+                localStorage.clear();
+                nav("/");
+              }}
+              className="text-gray-600 underline"
+            >
+              ログアウト
             </button>
           </div>
         </div>

@@ -364,15 +364,12 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">🗓 管理者ダッシュボード</h1>
           <div className="flex gap-3">
-            <button onClick={() => nav("/")} className="text-gray-600 underline" title="一般ログインへ">
-              一般ログインへ
-            </button>
             <button
               onClick={() => {
                 localStorage.clear();
                 nav("/");
               }}
-              Possibly className="text-gray-600 underline"
+              className="text-gray-600 underline"
             >
               ログアウト
             </button>
