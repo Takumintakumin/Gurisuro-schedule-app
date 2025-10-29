@@ -25,6 +25,7 @@ export default function MainApp() {
   const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "notifications" | "mypage"
   const [myApps, setMyApps] = useState([]); // 自分の応募
   const [notifications, setNotifications] = useState([]); // 通知一覧
+  const [applicationHistory, setApplicationHistory] = useState([]); // 応募履歴（イベント情報込み）
   const [userSettings, setUserSettings] = useState({
     notifications_enabled: true,
     google_calendar_enabled: false,
@@ -75,15 +76,79 @@ export default function MainApp() {
     if (!userName) return;
     const r = await apiFetch(`/api?path=user-settings`);
     if (r.ok && r.data) {
-      setUserSettings(r.data);
+      setUserSettings({
+        notifications_enabled: r.data.notifications_enabled !== false,
+        google_calendar_enabled: r.data.google_calendar_enabled === true,
+        google_calendar_id: r.data.google_calendar_id || null,
+      });
+    }
+  }, [userName]);
+
+  // ---- 応募履歴取得 ----
+  const refreshApplicationHistory = useCallback(async () => {
+    if (!userName) {
+      setApplicationHistory([]);
+      return;
+    }
+    try {
+      // 応募一覧を取得
+      const appsRes = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+      if (!appsRes.ok || !Array.isArray(appsRes.data)) {
+        setApplicationHistory([]);
+        return;
+      }
+
+      // イベント情報を取得
+      const eventsRes = await apiFetch("/api/events");
+      const allEvents = Array.isArray(eventsRes.data) ? eventsRes.data : [];
+      const eventsMap = {};
+      for (const ev of allEvents) {
+        eventsMap[ev.id] = ev;
+      }
+
+      // 確定情報を取得
+      const historyWithDetails = await Promise.all(
+        appsRes.data.map(async (app) => {
+          const ev = eventsMap[app.event_id];
+          let isDecided = false;
+          try {
+            const decRes = await apiFetch(`/api?path=decide&event_id=${app.event_id}`);
+            if (decRes.ok && decRes.data) {
+              const decidedList = decRes.data[app.kind] || [];
+              isDecided = decidedList.includes(userName);
+            }
+          } catch {}
+
+          return {
+            ...app,
+            event: ev || null,
+            isDecided,
+          };
+        })
+      );
+
+      // 日付でソート（新しい順）
+      historyWithDetails.sort((a, b) => {
+        if (!a.event || !b.event) return 0;
+        if (a.event.date !== b.event.date) {
+          return b.event.date.localeCompare(a.event.date);
+        }
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+
+      setApplicationHistory(historyWithDetails);
+    } catch (e) {
+      console.error("application history fetch error:", e);
+      setApplicationHistory([]);
     }
   }, [userName]);
 
   useEffect(() => {
     if (activeTab === "mypage") {
       refreshUserSettings();
+      refreshApplicationHistory();
     }
-  }, [activeTab, refreshUserSettings]);
+  }, [activeTab, refreshUserSettings, refreshApplicationHistory]);
 
   // ---- 通知を既読にする ----
   const markAsRead = async (id) => {
@@ -419,6 +484,61 @@ export default function MainApp() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* 応募履歴 */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-2">応募履歴</h3>
+        {applicationHistory.length === 0 ? (
+          <p className="text-sm text-gray-500 border rounded p-3">応募履歴はありません。</p>
+        ) : (
+          <div className="space-y-2">
+            {applicationHistory.map((app) => {
+              if (!app.event) return null;
+              const kindLabel = app.kind === "driver" ? "運転手" : "添乗員";
+              const kindEmoji = app.kind === "driver" ? "🚗" : "👤";
+              
+              return (
+                <div
+                  key={`${app.id}-${app.kind}`}
+                  className={`border rounded p-3 ${
+                    app.isDecided ? "bg-green-50 border-green-200" : 
+                    app.is_waitlist ? "bg-orange-50 border-orange-200" : 
+                    "bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        {app.event.icon && (
+                          <img src={app.event.icon} alt="" className="w-5 h-5 object-contain" />
+                        )}
+                        <span className="font-medium text-sm">{app.event.label}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 mb-1">
+                        {app.event.date} {app.event.start_time}〜{app.event.end_time}
+                      </div>
+                      <div className="text-xs">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                          app.isDecided ? "bg-green-100 text-green-700" :
+                          app.is_waitlist ? "bg-orange-100 text-orange-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>
+                          {kindEmoji} {kindLabel}
+                          {app.isDecided && " ✓ 確定済み"}
+                          {app.is_waitlist && " ⏳ キャンセル待ち"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        応募日: {new Date(app.created_at).toLocaleString('ja-JP')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <button

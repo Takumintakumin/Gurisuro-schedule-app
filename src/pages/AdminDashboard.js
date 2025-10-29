@@ -73,6 +73,15 @@ export default function AdminDashboard() {
   const [selDriver, setSelDriver] = useState([]);
   const [selAttendant, setSelAttendant] = useState([]);
 
+  // イベント編集モーダル
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editIcon, setEditIcon] = useState("");
+  const [editStart, setEditStart] = useState("10:00");
+  const [editEnd, setEditEnd] = useState("12:00");
+  const [editDate, setEditDate] = useState("");
+
   // 管理者認証
   useEffect(() => {
     const role = localStorage.getItem("userRole");
@@ -200,6 +209,45 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error("create event error:", err);
       alert(`登録に失敗しました: ${err.message}`);
+    }
+  };
+
+  // イベント編集開始
+  const handleEdit = (ev) => {
+    setEditingEvent(ev);
+    setEditLabel(ev.label || "");
+    setEditIcon(ev.icon || "");
+    setEditStart(ev.start_time || "10:00");
+    setEditEnd(ev.end_time || "12:00");
+    setEditDate(ev.date || "");
+    setEditOpen(true);
+  };
+
+  // イベント更新
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!editingEvent) return;
+    
+    try {
+      const r = await apiFetch("/api/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingEvent.id,
+          label: editLabel || null,
+          icon: editIcon || "",
+          start_time: editStart || null,
+          end_time: editEnd || null,
+          date: editDate || null,
+        }),
+      });
+      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+      setEditOpen(false);
+      setEditingEvent(null);
+      await refresh();
+      alert("イベントを更新しました");
+    } catch (err) {
+      alert(`更新に失敗しました: ${err.message}`);
     }
   };
 
@@ -496,6 +544,12 @@ export default function AdminDashboard() {
                       応募状況
                     </button>
                     <button
+                      className="px-3 py-1 rounded bg-green-600 text-white text-sm"
+                      onClick={() => handleEdit(ev)}
+                    >
+                      編集
+                    </button>
+                    <button
                       className="px-3 py-1 rounded bg-red-600 text-white text-sm"
                       onClick={() => handleDelete(ev.id)}
                     >
@@ -683,6 +737,112 @@ export default function AdminDashboard() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* イベント編集モーダル */}
+        {editOpen && editingEvent && (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold">イベント編集（ID: {editingEvent.id}）</h3>
+                <button onClick={() => setEditOpen(false)} className="text-gray-500">✕</button>
+              </div>
+
+              <form onSubmit={handleUpdate} className="space-y-3">
+                {/* 日付 */}
+                <label className="block text-sm">
+                  日付
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="mt-1 w-full border rounded p-2"
+                    required
+                  />
+                </label>
+
+                {/* 画像選択 */}
+                <div>
+                  <div className="text-sm mb-2">イベントアイコン</div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {FIXED_EVENTS.map((fe) => {
+                      const active = editIcon === fe.icon;
+                      return (
+                        <button
+                          key={fe.key}
+                          type="button"
+                          onClick={() => setEditIcon(fe.icon)}
+                          className={`flex flex-col items-center gap-1 border rounded-lg p-2 bg-white hover:bg-gray-50 ${
+                            active ? "ring-2 ring-blue-500" : ""
+                          }`}
+                        >
+                          <img
+                            src={fe.icon}
+                            alt={fe.label}
+                            className="w-10 h-10 object-contain"
+                            onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                          />
+                          <span className="text-[11px] text-gray-700">{fe.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 自由記入（優先） */}
+                <label className="block text-sm">
+                  ラベル（自由記入）
+                  <input
+                    type="text"
+                    placeholder="自由記入（任意）"
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    className="mt-1 w-full border rounded p-2"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">※自由記入がある場合は画像ラベルより優先されます</p>
+                </label>
+
+                {/* 時間 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    開始
+                    <input
+                      type="time"
+                      value={editStart}
+                      onChange={(e) => setEditStart(e.target.value)}
+                      className="mt-1 w-full border rounded p-2"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    終了
+                    <input
+                      type="time"
+                      value={editEnd}
+                      onChange={(e) => setEditEnd(e.target.value)}
+                      className="mt-1 w-full border rounded p-2"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 px-3 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                  >
+                    更新する
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                    className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

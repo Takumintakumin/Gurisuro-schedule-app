@@ -288,6 +288,55 @@ export default async function handler(req, res) {
         );
         return res.status(201).json({ ok: true });
       }
+      if (req.method === "PATCH") {
+        const { id, date, label, icon, start_time, end_time, capacity_driver, capacity_attendant } = body || {};
+        if (!id) return res.status(400).json({ error: "id が必要です" });
+        
+        // 更新するフィールドを構築
+        const updates = [];
+        const values = [];
+        let paramIndex = 1;
+        
+        if (date !== undefined) {
+          updates.push(`date = $${paramIndex++}`);
+          values.push(date);
+        }
+        if (label !== undefined) {
+          updates.push(`label = $${paramIndex++}`);
+          values.push(label);
+        }
+        if (icon !== undefined) {
+          updates.push(`icon = $${paramIndex++}`);
+          values.push(icon);
+        }
+        if (start_time !== undefined) {
+          updates.push(`start_time = $${paramIndex++}`);
+          values.push(start_time);
+        }
+        if (end_time !== undefined) {
+          updates.push(`end_time = $${paramIndex++}`);
+          values.push(end_time);
+        }
+        if (capacity_driver !== undefined) {
+          updates.push(`capacity_driver = $${paramIndex++}`);
+          values.push(capacity_driver);
+        }
+        if (capacity_attendant !== undefined) {
+          updates.push(`capacity_attendant = $${paramIndex++}`);
+          values.push(capacity_attendant);
+        }
+        
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "更新するフィールドがありません" });
+        }
+        
+        values.push(id);
+        await query(
+          `UPDATE events SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
+          values
+        );
+        return res.status(200).json({ ok: true });
+      }
       if (req.method === "DELETE") {
         const id = q.get("id");
         if (!id) return res.status(400).json({ error: "id が必要です" });
