@@ -33,9 +33,21 @@ if (!rootElement) {
 if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { updateViaCache: 'none' })
       .then((registration) => {
         console.log('SW registered:', registration);
+        // バージョンアップデートを確認
+        registration.addEventListener('updatefound', () => {
+          console.log('SW update found, installing...');
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // 新しいService Workerが利用可能になったら、ページをリロード
+              console.log('New SW installed, reloading page...');
+              window.location.reload();
+            }
+          });
+        });
       })
       .catch((error) => {
         console.log('SW registration failed:', error);

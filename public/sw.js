@@ -1,19 +1,14 @@
 // service-worker.js (PWA)
-const CACHE_NAME = 'gurisuro-app-v1';
-const urlsToCache = [
-  '/',
-  '/static/css/main.css',
-  '/static/js/main.js',
-  '/icons/chorus.png'
-];
+// バージョンを更新するたびに新しいキャッシュが作成される
+const CACHE_NAME = 'gurisuro-app-v2';
 
 // インストール時にキャッシュ
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache).catch((err) => {
-        console.warn('SW: Cache add failed:', err);
-      });
+      // 空のキャッシュで開始（プリキャッシュしない）
+      console.log('SW: Cache opened:', CACHE_NAME);
+      return Promise.resolve();
     })
   );
   self.skipWaiting();
@@ -26,18 +21,21 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // すべてのクライアントにコントロールを要求
+      return self.clients.claim();
     })
   );
-  return self.clients.claim();
 });
 
-// フェッチ時にキャッシュを優先、フォールバック
+// フェッチ時にネットワーク優先（最新版を取得）、フォールバックでキャッシュ
 self.addEventListener('fetch', (event) => {
-  // APIリクエストは常にネットワーク優先
+  // APIリクエストは常にネットワーク優先（キャッシュしない）
   if (event.request.url.includes('/api')) {
     event.respondWith(
       fetch(event.request).catch(() => {
@@ -50,25 +48,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // その他はキャッシュ優先
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchResponse) => {
-        // キャッシュ可能なものはキャッシュに保存
-        if (fetchResponse && fetchResponse.status === 200 && fetchResponse.type === 'basic') {
-          const responseToCache = fetchResponse.clone();
+  // HTMLファイルはネットワーク優先、フォールバックでキャッシュ
+  if (event.request.destination === 'document' || event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        // ネットワークから取得できた場合、キャッシュを更新
+        if (response && response.status === 200) {
+          const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
         }
-        return fetchResponse;
-      });
-    }).catch(() => {
-      // オフライン時のフォールバック
-      if (event.request.destination === 'document') {
-        return caches.match('/');
+        return response;
+      }).catch(() => {
+        // ネットワークエラー時はキャッシュから取得
+        return caches.match(event.request).then((cachedResponse) => {
+          return cachedResponse || caches.match('/index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // その他のリソース（JS、CSS、画像など）はネットワーク優先、フォールバックでキャッシュ
+  event.respondWith(
+    fetch(event.request).then((response) => {
+      // ネットワークから取得できた場合、キャッシュを更新
+      if (response && response.status === 200) {
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
       }
+      return response;
+    }).catch(() => {
+      // ネットワークエラー時はキャッシュから取得
+      return caches.match(event.request);
     })
   );
 });
-
