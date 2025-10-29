@@ -550,6 +550,37 @@ export default async function handler(req, res) {
              ON CONFLICT (event_id, username, kind) DO NOTHING`,
             params
           );
+          
+          // 通知を作成
+          await query(`
+            CREATE TABLE IF NOT EXISTS notifications (
+              id BIGSERIAL PRIMARY KEY,
+              username TEXT NOT NULL,
+              event_id BIGINT NOT NULL,
+              kind TEXT NOT NULL,
+              message TEXT NOT NULL,
+              created_at TIMESTAMPTZ DEFAULT now(),
+              read_at TIMESTAMPTZ
+            )
+          `);
+          
+          // イベント情報を取得
+          const eventInfo = await query(`SELECT date, label, start_time FROM events WHERE id = $1`, [eventId]);
+          if (eventInfo.rows?.[0]) {
+            const ev = eventInfo.rows[0];
+            const kindLabels = { driver: "運転手", attendant: "添乗員" };
+            for (const u of Array.from(new Set([...driver, ...attendant]))) {
+              const userKinds = [];
+              if (driver.includes(u)) userKinds.push("driver");
+              if (attendant.includes(u)) userKinds.push("attendant");
+              
+              const message = `${ev.label}（${ev.date} ${ev.start_time}〜）の${userKinds.map(k => kindLabels[k]).join("・")}として確定しました。`;
+              await query(
+                `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                [u, eventId, userKinds.join(","), message]
+              );
+            }
+          }
         }
         return res.status(200).json({ ok: true });
       }
@@ -650,9 +681,138 @@ export default async function handler(req, res) {
            ON CONFLICT (event_id, username, kind) DO NOTHING`,
           params
         );
+        
+        // 通知を作成
+        await query(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id BIGSERIAL PRIMARY KEY,
+            username TEXT NOT NULL,
+            event_id BIGINT NOT NULL,
+            kind TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            read_at TIMESTAMPTZ
+          )
+        `);
+        
+        // イベント情報を取得
+        const eventInfo = await query(`SELECT date, label, start_time FROM events WHERE id = $1`, [eventId]);
+        if (eventInfo.rows?.[0]) {
+          const ev = eventInfo.rows[0];
+          const kindLabels = { driver: "運転手", attendant: "添乗員" };
+          for (const u of Array.from(new Set([...pickedDriver, ...pickedAttendant]))) {
+            const userKinds = [];
+            if (pickedDriver.includes(u)) userKinds.push("driver");
+            if (pickedAttendant.includes(u)) userKinds.push("attendant");
+            
+            const message = `${ev.label}（${ev.date} ${ev.start_time}〜）の${userKinds.map(k => kindLabels[k]).join("・")}として確定しました。`;
+            await query(
+              `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+              [u, eventId, userKinds.join(","), message]
+            );
+          }
+        }
       }
 
       return res.status(200).json({ ok: true, event_id: eventId, driver: pickedDriver, attendant: pickedAttendant });
+    }
+
+    // ---- /api/notifications ---- 通知の取得・既読
+    if (sub === "notifications") {
+      const session = await getSession(req);
+      if (!session?.username) return res.status(401).json({ error: "認証が必要です" });
+
+      // テーブルを保証
+      await query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id BIGSERIAL PRIMARY KEY,
+          username TEXT NOT NULL,
+          event_id BIGINT NOT NULL,
+          kind TEXT NOT NULL,
+          message TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT now(),
+          read_at TIMESTAMPTZ
+        )
+      `);
+
+      if (req.method === "GET") {
+        const r = await query(
+          `SELECT id, event_id, kind, message, created_at, read_at 
+           FROM notifications 
+           WHERE username = $1 
+           ORDER BY created_at DESC 
+           LIMIT 50`,
+          [session.username]
+        );
+        return res.status(200).json(r.rows);
+      }
+
+      if (req.method === "POST") {
+        // 既読にする
+        const { id } = body || {};
+        if (!id) return res.status(400).json({ error: "id が必要です" });
+        await query(
+          `UPDATE notifications SET read_at = now() WHERE id = $1 AND username = $2`,
+          [Number(id), session.username]
+        );
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
+    // ---- /api/user-settings ---- ユーザー設定（通知ON/OFF、Googleカレンダー同期）
+    if (sub === "user-settings") {
+      const session = await getSession(req);
+      if (!session?.username) return res.status(401).json({ error: "認証が必要です" });
+
+      // テーブルを保証
+      await query(`
+        CREATE TABLE IF NOT EXISTS user_settings (
+          username TEXT PRIMARY KEY,
+          notifications_enabled BOOLEAN DEFAULT true,
+          google_calendar_enabled BOOLEAN DEFAULT false,
+          google_calendar_id TEXT,
+          updated_at TIMESTAMPTZ DEFAULT now()
+        )
+      `);
+
+      if (req.method === "GET") {
+        const r = await query(
+          `SELECT notifications_enabled, google_calendar_enabled, google_calendar_id 
+           FROM user_settings 
+           WHERE username = $1`,
+          [session.username]
+        );
+        const settings = r.rows[0] || {
+          notifications_enabled: true,
+          google_calendar_enabled: false,
+          google_calendar_id: null,
+        };
+        return res.status(200).json(settings);
+      }
+
+      if (req.method === "POST") {
+        const { notifications_enabled, google_calendar_enabled, google_calendar_id } = body || {};
+        await query(
+          `INSERT INTO user_settings (username, notifications_enabled, google_calendar_enabled, google_calendar_id, updated_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (username) DO UPDATE SET
+             notifications_enabled = $2,
+             google_calendar_enabled = $3,
+             google_calendar_id = $4,
+             updated_at = now()`,
+          [
+            session.username,
+            notifications_enabled !== false,
+            google_calendar_enabled === true,
+            google_calendar_id || null,
+          ]
+        );
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(405).json({ error: "Method Not Allowed" });
     }
 
     // ---- その他 404 ----
