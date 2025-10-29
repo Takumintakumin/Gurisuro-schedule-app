@@ -170,12 +170,14 @@ export default function Calendar({
           insufficientCapacity = true;
         }
       } else {
-        // ユーザー用: 自分の応募があるイベントで、1週間以内で定員が埋まっていない場合は赤色
+        // ユーザー用: 自分の応募があるイベントで、定員が埋まっているか、1週間以内で定員が埋まっていないかをチェック
         let hasInsufficientCapacity = false;
+        let hasAllCapacityFilled = false; // 自分の応募があるイベントで定員が埋まっている
         
         for (const ev of dayEvents) {
-          // 自分の応募があるイベントのみチェック（myAppliedEventIdsが空の場合は全イベントをチェックしない）
-          if (myAppliedEventIds && myAppliedEventIds.size > 0 && !myAppliedEventIds.has(ev.id)) continue;
+          // 自分の応募があるイベントのみチェック
+          const isMyEvent = myAppliedEventIds && myAppliedEventIds.size > 0 && myAppliedEventIds.has(ev.id);
+          if (!isMyEvent) continue;
           
           const evDecided = decidedMembersByEventId[ev.id] || null;
           const capacityDriver = ev.capacity_driver ?? 1;
@@ -183,40 +185,55 @@ export default function Calendar({
           const confirmedDriverCount = evDecided?.driver?.length || 0;
           const confirmedAttendantCount = evDecided?.attendant?.length || 0;
           
-          // 定員が埋まっているかチェック
+          // 定員が埋まっているかチェック（運転手と添乗員が揃っている）
           const isCapacityFilled = confirmedDriverCount >= capacityDriver && confirmedAttendantCount >= capacityAttendant;
           
-          // 1週間以内で定員が埋まっていない場合
-          if (isWithinOneWeek && !isCapacityFilled) {
+          if (isCapacityFilled) {
+            // 定員が埋まっている場合は緑色にする
+            hasAllCapacityFilled = true;
+          } else if (isWithinOneWeek) {
+            // 1週間以内で定員が埋まっていない場合は赤色にする
             hasInsufficientCapacity = true;
-            break;
           }
         }
         
-        if (hasInsufficientCapacity) {
+        // 定員が埋まっている場合は緑色を優先
+        if (hasAllCapacityFilled) {
+          allConfirmed = true;
+          insufficientCapacity = false; // 定員が埋まっている場合は赤色にしない
+        } else if (hasInsufficientCapacity) {
           insufficientCapacity = true;
         }
       }
     }
     
-    // ユーザー側でも管理者側でも、確定済み（isDecided）の場合は緑色
+    // ユーザー側でも管理者側でも、確定済み（isDecided）の場合は緑色（自分の応募が確定済み）
     if (isDecided) {
       allConfirmed = true;
       insufficientCapacity = false; // 確定済みがある場合は赤色にしない
     }
 
-    // 背景色（優先度：キャンセル>1週間以内で定員不足=赤>確定済み=緑>その他）
+    // 背景色の優先度：
+    // 1. キャンセル（定員が埋まっていない場合のみ）
+    // 2. 1週間以内で定員不足（赤）
+    // 3. 確定済みまたは定員が埋まった（緑）
+    // 4. イベントあり（オレンジ）
+    // 注意: キャンセルがあっても定員が埋まった（allConfirmed）場合は緑色を優先
     let base =
       "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
-    if (isCancelled)
-      base += " bg-red-200 hover:bg-red-300 border-red-400";
-    else if (insufficientCapacity)
-      base += " bg-red-100 hover:bg-red-200 border-red-300";
-    else if (allConfirmed || isDecided)
+    if (allConfirmed || isDecided) {
+      // 確定済みまたは定員が埋まった場合は緑色（キャンセルがあっても優先）
       base += " bg-green-100 hover:bg-green-200 border-green-300";
-    else if (dayEvents.length > 0 || hasTags)
+    } else if (isCancelled) {
+      // キャンセルがあり、定員が埋まっていない場合
+      base += " bg-red-200 hover:bg-red-300 border-red-400";
+    } else if (insufficientCapacity) {
+      // 1週間以内で定員が埋まっていない場合
+      base += " bg-red-100 hover:bg-red-200 border-red-300";
+    } else if (dayEvents.length > 0 || hasTags) {
+      // イベントがある場合
       base += " bg-orange-50 hover:bg-orange-100";
-    else if (unfilled) base += " bg-red-50 hover:bg-red-100";
+    } else if (unfilled) base += " bg-red-50 hover:bg-red-100";
     else if (assigned) base += " bg-blue-50 hover:bg-blue-100";
     else if (userAvail) base += " bg-green-50 hover:bg-green-100";
     else base += " hover:bg-gray-50";
