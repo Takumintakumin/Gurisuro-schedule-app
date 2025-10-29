@@ -130,13 +130,14 @@ export default function AdminDashboard() {
       setDecidedDates(decDateSet);
       setDecidedMembersByDate(decMembersMap);
       
-      // キャンセルされた日付を取得（キャンセル通知から）
+      // キャンセルされた日付と定員不足の日付を取得（通知から）
       try {
         const cancelNotifs = await apiFetch("/api?path=notifications");
         if (cancelNotifs.ok && Array.isArray(cancelNotifs.data)) {
           const cancelDateSet = new Set();
           for (const notif of cancelNotifs.data) {
-            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_")) {
+            // キャンセル通知、繰り上げ通知、定員不足通知を取得
+            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
               // 通知メッセージからイベント日付を抽出するか、イベントIDから取得
               try {
                 const evDetail = evs.find(e => e.id === notif.event_id);

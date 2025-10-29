@@ -352,21 +352,15 @@ export default async function handler(req, res) {
         const eventId = q.get("event_id");
         const username = q.get("username");
         if (eventId) {
-          try {
-            await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
-          } catch {}
           const r = await query(
-            "SELECT id, event_id, username, kind, created_at, COALESCE(is_waitlist, false) as is_waitlist FROM applications WHERE event_id = $1 ORDER BY is_waitlist ASC, created_at ASC",
+            "SELECT id, event_id, username, kind, created_at FROM applications WHERE event_id = $1 ORDER BY created_at ASC",
             [eventId]
           );
           return res.status(200).json(r.rows);
         }
         if (username) {
-          try {
-            await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
-          } catch {}
           const r = await query(
-            "SELECT id, event_id, username, kind, created_at, COALESCE(is_waitlist, false) as is_waitlist FROM applications WHERE username = $1 ORDER BY created_at DESC",
+            "SELECT id, event_id, username, kind, created_at FROM applications WHERE username = $1 ORDER BY created_at DESC",
             [username]
           );
           return res.status(200).json(r.rows);
@@ -377,16 +371,12 @@ export default async function handler(req, res) {
       }
 
       if (req.method === "POST") {
-        const { event_id, username, kind, is_waitlist = false } = body || {};
+        const { event_id, username, kind } = body || {};
         if (!event_id || !username || !kind)
           return res
             .status(400)
             .json({ error: "event_id, username, kind が必要です" });
 
-        // is_waitlistカラムを追加（存在しない場合）
-        try {
-          await query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS is_waitlist BOOLEAN DEFAULT false`);
-        } catch {}
 
         // 確定済みメンバーがいる場合、新規応募を制限
         try {
@@ -414,27 +404,25 @@ export default async function handler(req, res) {
             cap = kind === "driver" ? evCheck.rows[0].capacity_driver : evCheck.rows[0].capacity_attendant;
           }
           
-          // 現在の応募数（確定者以外、キャンセル待ち以外）
+          // 現在の応募数（確定者以外）
           const appCount = await query(
-            `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = $2 AND COALESCE(is_waitlist, false) = false`,
+            `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = $2`,
             [event_id, kind]
           );
           const currentCount = Number(appCount.rows?.[0]?.cnt || 0);
           
           if (decCheck.rows && decCheck.rows.length > 0) {
-            // 確定済みメンバーがいる場合
+            // 確定済みメンバーがいる場合、新規応募を拒否
             const isDecidedUser = decCheck.rows.some((r) => r.username === username);
-            if (!isDecidedUser && !is_waitlist) {
-              // 確定済みではないユーザーはキャンセル待ちのみ可能
+            if (!isDecidedUser) {
               return res.status(403).json({ 
-                error: "このイベントは既に確定済みメンバーがいます。キャンセル待ちとして登録してください。" 
+                error: "このイベントは既に確定済みメンバーがいます。新規応募はできません。" 
               });
             }
-          } else if (cap != null && currentCount >= cap && !is_waitlist) {
-            // 定員満杯の場合、キャンセル待ちを提案
+          } else if (cap != null && currentCount >= cap) {
+            // 定員満杯の場合は応募を拒否
             return res.status(403).json({ 
-              error: "定員が満杯です。キャンセル待ちとして登録できます。",
-              can_waitlist: true
+              error: "定員が満杯です。応募できません。"
             });
           }
 
@@ -443,12 +431,12 @@ export default async function handler(req, res) {
         }
 
         await query(
-          `INSERT INTO applications (event_id, username, kind, is_waitlist)
-           VALUES ($1,$2,$3,$4)
-           ON CONFLICT (event_id, username, kind) DO UPDATE SET is_waitlist = $4`,
-          [event_id, username, kind, is_waitlist]
+          `INSERT INTO applications (event_id, username, kind)
+           VALUES ($1,$2,$3)
+           ON CONFLICT (event_id, username, kind) DO NOTHING`,
+          [event_id, username, kind]
         );
-        return res.status(201).json({ ok: true, waitlist: is_waitlist });
+        return res.status(201).json({ ok: true });
       }
 
       if (req.method === "DELETE") {
@@ -886,12 +874,12 @@ export default async function handler(req, res) {
         // 定員を確認
         const capacity = kind === "driver" ? (ev.capacity_driver ?? 1) : (ev.capacity_attendant ?? 1);
         
-        // 定員に満たない場合はキャンセル待ちから選出
+        // 定員に満たない場合は通常の応募者から自動繰り上げ選出
         if (currentCount < capacity) {
-          // キャンセル待ちの応募者を取得（公平ランキング順）
-          let waitlistQuery;
+          // 通常の応募者（確定されていない）を取得（公平ランキング順）
+          let applicantQuery;
           try {
-            waitlistQuery = await query(`
+            applicantQuery = await query(`
               WITH appl AS (
                 SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
                        COALESCE(v.times, 0) AS times,
@@ -899,7 +887,13 @@ export default async function handler(req, res) {
                 FROM applications a
                 LEFT JOIN v_participation v
                   ON v.username = a.username AND v.kind = a.kind
-                WHERE a.event_id = $1 AND a.kind = $2 AND a.is_waitlist = true
+                WHERE a.event_id = $1 AND a.kind = $2
+                  AND NOT EXISTS (
+                    SELECT 1 FROM selections s 
+                    WHERE s.event_id = a.event_id 
+                      AND s.username = a.username 
+                      AND s.kind = a.kind
+                  )
               ),
               ranked AS (
                 SELECT *,
@@ -916,41 +910,42 @@ export default async function handler(req, res) {
             `, [eventId, kind, capacity - currentCount]);
           } catch {
             // v_participationがない場合は応募順
-            waitlistQuery = await query(
-              `SELECT username, created_at, 
-                      ROW_NUMBER() OVER (ORDER BY created_at ASC) AS rank, 
+            applicantQuery = await query(
+              `SELECT a.username, a.created_at, 
+                      ROW_NUMBER() OVER (ORDER BY a.created_at ASC) AS rank, 
                       0 AS times
-               FROM applications 
-               WHERE event_id = $1 AND kind = $2 AND is_waitlist = true
+               FROM applications a
+               WHERE a.event_id = $1 AND a.kind = $2
+                 AND NOT EXISTS (
+                   SELECT 1 FROM selections s 
+                   WHERE s.event_id = a.event_id 
+                     AND s.username = a.username 
+                     AND s.kind = a.kind
+                 )
                LIMIT $3`,
               [eventId, kind, capacity - currentCount]
             );
           }
 
           // 選出された人を確定
-          const selectedUsernames = waitlistQuery.rows.map(r => r.username);
-          for (const username of selectedUsernames) {
-            await query(
-              `INSERT INTO selections (event_id, username, kind) VALUES ($1, $2, $3)
-               ON CONFLICT (event_id, username, kind) DO NOTHING`,
-              [eventId, username, kind]
-            );
-
-            // 選出された人に通知
-            const confirmMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}として繰り上げ確定しました。`;
-            await query(
-              `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
-              [username, eventId, kind, confirmMessage]
-            );
-
-            // キャンセル待ちから削除
-            await query(
-              `UPDATE applications SET is_waitlist = false WHERE event_id = $1 AND username = $2 AND kind = $3 AND is_waitlist = true`,
-              [eventId, username, kind]
-            );
-          }
-
+          const selectedUsernames = applicantQuery.rows.map(r => r.username);
+          
           if (selectedUsernames.length > 0) {
+            for (const username of selectedUsernames) {
+              await query(
+                `INSERT INTO selections (event_id, username, kind) VALUES ($1, $2, $3)
+                 ON CONFLICT (event_id, username, kind) DO NOTHING`,
+                [eventId, username, kind]
+              );
+
+              // 選出された人に通知
+              const confirmMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}がキャンセルされたため、あなたが繰り上げで確定しました。`;
+              await query(
+                `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                [username, eventId, kind, confirmMessage]
+              );
+            }
+
             // 管理者に繰り上げ確定の通知
             for (const adminRow of adminUsers.rows) {
               const adminUsername = adminRow.username;
@@ -958,6 +953,16 @@ export default async function handler(req, res) {
               await query(
                 `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
                 [adminUsername, eventId, `promote_${kind}`, promoteMessage]
+              );
+            }
+          } else {
+            // 自動選出できない場合（応募者がいない場合）、管理者に通知
+            for (const adminRow of adminUsers.rows) {
+              const adminUsername = adminRow.username;
+              const insufficientMessage = `⚠️【定員不足】${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}が定員不足です。キャンセルにより空きができましたが、繰り上げ可能な応募者がいません。`;
+              await query(
+                `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                [adminUsername, eventId, `insufficient_${kind}`, insufficientMessage]
               );
             }
           }
