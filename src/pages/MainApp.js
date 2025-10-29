@@ -96,15 +96,6 @@ export default function MainApp() {
         } catch {}
       }
       
-سباب                driver: driverDec,
-                attendant: attendantDec,
-              };
-            }
-          }
-        } catch {}
-      }
-      
-      
       for (const ev of todays) {
         // 応募数
         const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
