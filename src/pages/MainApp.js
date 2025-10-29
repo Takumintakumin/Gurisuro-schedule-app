@@ -618,8 +618,8 @@ export default function MainApp() {
                               </button>
                             ) : appliedDriver ? (
                               <button
-                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
-                                disabled={applying || hasDecidedDriver}
+                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300"
+                                disabled={applying}
                                 onClick={() => cancel(ev, "driver")}
                               >
                                 応募取消（運転手）
@@ -645,8 +645,8 @@ export default function MainApp() {
                               </button>
                             ) : appliedAtt ? (
                               <button
-                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
-                                disabled={applying || hasDecidedAttendant}
+                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300"
+                                disabled={applying}
                                 onClick={() => cancel(ev, "attendant")}
                               >
                                 応募取消（添乗員）
