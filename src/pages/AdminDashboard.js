@@ -228,22 +228,23 @@ export default function AdminDashboard() {
             rank: i + 1,
           }));
 
-      setFairData({ event_id: eventId, driver, attendant });
-      // 既存の確定を読み込み
-      try {
-        const dec = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(eventId)}`);
-        if (dec.ok) {
-          setSelDriver(Array.isArray(dec.data.driver) ? dec.data.driver : []);
-          setSelAttendant(Array.isArray(dec.data.attendant) ? dec.data.attendant : []);
-        }
-      } catch {}
+        setFairData({ event_id: eventId, driver, attendant });
         setFairError("公平スコア（v_participation）が使えないため、応募順の簡易表示です。");
       } catch (e2) {
         setFairError(e2.message || "応募状況の取得に失敗しました。");
       }
-    } finally {
-      setFairLoading(false);
     }
+
+    // 既存の確定を読み込み（成功・失敗に関わらず実行）
+    try {
+      const dec = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(eventId)}`);
+      if (dec.ok && dec.data) {
+        setSelDriver(Array.isArray(dec.data.driver) ? dec.data.driver : []);
+        setSelAttendant(Array.isArray(dec.data.attendant) ? dec.data.attendant : []);
+      }
+    } catch {}
+
+    setFairLoading(false);
   };
 
   if (loading) return <div className="p-6">読み込み中…</div>;
