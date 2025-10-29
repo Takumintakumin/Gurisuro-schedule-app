@@ -169,12 +169,12 @@ export default function Calendar({
         
         {/* 管理者用: 確定済みメンバー表示 */}
         {decidedMembers && (decidedMembers.driver?.length > 0 || decidedMembers.attendant?.length > 0) && (
-          <div className="mt-1 text-[9px] text-green-700 font-semibold">
+          <div className="mt-1 px-1 py-0.5 bg-green-100 rounded text-[10px] text-green-800 font-semibold border border-green-300">
             {decidedMembers.driver?.length > 0 && (
-              <div>運転手: {decidedMembers.driver.join(", ")}</div>
+              <div className="truncate" title={`運転手: ${decidedMembers.driver.join(", ")}`}>🚗 {decidedMembers.driver.join(", ")}</div>
             )}
             {decidedMembers.attendant?.length > 0 && (
-              <div>添乗員: {decidedMembers.attendant.join(", ")}</div>
+              <div className="truncate" title={`添乗員: ${decidedMembers.attendant.join(", ")}`}>👤 {decidedMembers.attendant.join(", ")}</div>
             )}
           </div>
         )}

@@ -99,6 +99,10 @@ export default function AdminDashboard() {
       }
       setDecidedDates(decDateSet);
       setDecidedMembersByDate(decMembersMap);
+      // デバッグ: 確定メンバー情報を確認
+      if (Object.keys(decMembersMap).length > 0) {
+        console.log('[AdminDashboard] 確定メンバー情報:', decMembersMap);
+      }
     } catch (e) {
       console.error("fetch events error:", e);
     } finally {
@@ -515,6 +519,8 @@ export default function AdminDashboard() {
                       alert(`自動選出が完了しました。\n運転手: ${r.data.driver.length}人、添乗員: ${r.data.attendant.length}人`);
                       // 応募状況も再取得
                       await openFairness(fairData.event_id);
+                      // カレンダーも更新
+                      await refresh();
                     } catch (err) {
                       alert(`自動選出に失敗しました: ${err.message}`);
                     }
@@ -538,6 +544,8 @@ export default function AdminDashboard() {
                       });
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       alert("確定を保存しました");
+                      // カレンダーも更新
+                      await refresh();
                     } catch (err) {
                       alert(`保存に失敗しました: ${err.message}`);
                     }
@@ -555,6 +563,8 @@ export default function AdminDashboard() {
                       setSelDriver([]);
                       setSelAttendant([]);
                       alert("確定を解除しました");
+                      // カレンダーも更新
+                      await refresh();
                     } catch (err) {
                       alert(`解除に失敗しました: ${err.message}`);
                     }

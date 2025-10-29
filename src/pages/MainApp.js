@@ -79,7 +79,9 @@ export default function MainApp() {
               decDateSet.add(ev.date);
             }
             
-            if (todays.includes(ev)) {
+            // 当日のイベントかチェック（オブジェクトの比較ではなくIDで比較）
+            const isTodayEvent = todays.some(e => e.id === ev.id);
+            if (isTodayEvent) {
               decOut[ev.id] = {
                 driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
                 attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
@@ -123,8 +125,12 @@ export default function MainApp() {
       setCounts(out);
       setDecided(decOut);
       setDecidedDates(decDateSet);
+      // デバッグ: 確定済み日付を確認
+      if (decDateSet.size > 0) {
+        console.log('[MainApp] 自分の確定済み日付:', Array.from(decDateSet), 'userName:', userName);
+      }
     })();
-  }, [events, selectedDate]);
+  }, [events, selectedDate, userName]);
 
   const hasApplied = (eventId, kind, waitlist = false) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind && (waitlist ? a.is_waitlist : !a.is_waitlist));
