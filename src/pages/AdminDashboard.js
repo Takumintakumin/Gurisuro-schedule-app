@@ -1,6 +1,6 @@
 // src/pages/AdminDashboard.js
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
 
@@ -30,9 +30,23 @@ const FIXED_EVENTS = [
 
 export default function AdminDashboard() {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  // タブ管理
-  const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "notifications" | "users"
+  // タブ管理（URLパラメータから取得、デフォルトはcalendar）
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get("tab");
+    return tab && ["calendar", "notifications"].includes(tab) ? tab : "calendar";
+  });
+
+  // URLパラメータの変更を監視
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && ["calendar", "notifications"].includes(tab)) {
+      setActiveTab(tab);
+    } else {
+      setActiveTab("calendar");
+    }
+  }, [searchParams]);
 
   // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -332,21 +346,6 @@ export default function AdminDashboard() {
     </div>
   );
 
-  // ユーザー管理タブの内容（AdminUsersの内容を簡易的に表示）
-  const renderUsersTab = () => (
-    <div>
-      <h2 className="font-semibold mb-4">ユーザー管理</h2>
-      <p className="text-sm text-gray-500 mb-4">
-        ユーザー管理機能については、別ページで詳細な管理が可能です。
-      </p>
-      <button
-        onClick={() => nav("/admin/users")}
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-      >
-        ユーザー管理ページを開く
-      </button>
-    </div>
-  );
 
   if (loading) return <div className="p-6">読み込み中…</div>;
 
@@ -690,7 +689,6 @@ export default function AdminDashboard() {
         </>
         )}
         {activeTab === "notifications" && renderNotificationsTab()}
-        {activeTab === "users" && renderUsersTab()}
       </div>
     </div>
     
@@ -735,7 +733,10 @@ export default function AdminDashboard() {
         minHeight: '64px' 
       }}>
         <button
-          onClick={() => setActiveTab("calendar")}
+          onClick={() => {
+            setActiveTab("calendar");
+            nav("/admin/dashboard?tab=calendar", { replace: true });
+          }}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',
@@ -762,7 +763,10 @@ export default function AdminDashboard() {
           <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
         </button>
         <button
-          onClick={() => setActiveTab("notifications")}
+          onClick={() => {
+            setActiveTab("notifications");
+            nav("/admin/dashboard?tab=notifications", { replace: true });
+          }}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',
@@ -785,7 +789,7 @@ export default function AdminDashboard() {
           }}
         >
           <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159导航 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
           <span style={{ fontSize: '12px', fontWeight: '500' }}>通知</span>
           {unreadCount > 0 && (
@@ -809,7 +813,7 @@ export default function AdminDashboard() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("users")}
+          onClick={() => nav("/admin/users")}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',

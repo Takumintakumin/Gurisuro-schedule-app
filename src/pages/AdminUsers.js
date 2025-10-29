@@ -341,7 +341,7 @@ export default function AdminUsers() {
         minHeight: '64px' 
       }}>
         <button
-          onClick={() => nav("/admin/dashboard")}
+          onClick={() => nav("/admin/dashboard?tab=calendar")}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',
@@ -368,7 +368,7 @@ export default function AdminUsers() {
           <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
         </button>
         <button
-          onClick={() => nav("/admin/dashboard")}
+          onClick={() => nav("/admin/dashboard?tab=calendar")}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',
