@@ -128,11 +128,24 @@ export default function Calendar({
     const isCancelled = cancelledDates.has(key);
     const decidedMembers = decidedMembersByDate?.[key] || null; // 管理者用: 確定済みメンバー情報
 
-    // 背景色（優先度：キャンセル>確定済み（自分）>イベント>運休>割当>可用）
+    // 1週間前以内かどうかを判定（イベントがある場合のみ）
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(date);
+    eventDate.setHours(0, 0, 0, 0);
+    const daysDiff = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
+    const isWithinOneWeek = daysDiff >= 0 && daysDiff <= 7;
+    
+    // イベントがあるが未確定の場合、1週間前以内なら赤色
+    const hasEventButNotDecided = dayEvents.length > 0 && !isDecided;
+
+    // 背景色（優先度：キャンセル>1週間前以内で未確定=赤>確定済み=緑>その他）
     let base =
       "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
     if (isCancelled)
       base += " bg-red-200 hover:bg-red-300 border-red-400";
+    else if (hasEventButNotDecided && isWithinOneWeek)
+      base += " bg-red-100 hover:bg-red-200 border-red-300";
     else if (isDecided)
       base += " bg-green-100 hover:bg-green-200 border-green-300";
     else if (dayEvents.length > 0 || hasTags)

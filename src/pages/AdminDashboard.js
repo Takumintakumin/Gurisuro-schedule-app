@@ -403,37 +403,57 @@ export default function AdminDashboard() {
         <p className="text-sm text-gray-500">通知はありません。</p>
       ) : (
         <ul className="space-y-2">
-          {notifications.map((notif) => (
-            <li key={notif.id} className={`border rounded p-3 ${notif.read_at ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'}`}>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <p className="text-sm">{notif.message}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date(notif.created_at).toLocaleString('ja-JP')}
-                  </p>
+          {notifications.map((notif) => {
+            // 通知からイベントの日付を取得
+            const eventForNotification = events.find(e => e.id === notif.event_id);
+            const handleNotificationClick = () => {
+              if (eventForNotification && eventForNotification.date) {
+                const dateParts = eventForNotification.date.split('-');
+                if (dateParts.length === 3) {
+                  const eventDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+                  setSelectedDate(eventDate);
+                  setActiveTab("calendar");
+                }
+              }
+            };
+            
+            return (
+              <li 
+                key={notif.id} 
+                className={`border rounded p-3 ${notif.read_at ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'} ${eventForNotification ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={handleNotificationClick}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <p className="text-sm">{notif.message}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(notif.created_at).toLocaleString('ja-JP')}
+                    </p>
+                  </div>
+                  {!notif.read_at && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await apiFetch("/api?path=notifications", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: notif.id }),
+                          });
+                          await refresh();
+                        } catch (e) {
+                          alert("既読にするのに失敗しました");
+                        }
+                      }}
+                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      既読
+                    </button>
+                  )}
                 </div>
-                {!notif.read_at && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        await apiFetch("/api?path=notifications", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ id: notif.id }),
-                        });
-                        await refresh();
-                      } catch (e) {
-                        alert("既読にするのに失敗しました");
-                      }
-                    }}
-                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    既読
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -727,7 +747,7 @@ export default function AdminDashboard() {
                 <button
                   className="px-3 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
                   onClick={async () => {
-                    if (!window.confirm("定員に合わせて自動選出し、保存しますか？既存の確定は上書きされます。")) return;
+                    if (!window.confirm("定員に合わせて自動選出しますか？（確定は保存されません。確定を保存ボタンで保存してください）")) return;
                     try {
                       const r = await apiFetch(`/api?path=decide_auto`, {
                         method: "POST",
@@ -737,17 +757,15 @@ export default function AdminDashboard() {
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       setSelDriver(Array.isArray(r.data.driver) ? r.data.driver : []);
                       setSelAttendant(Array.isArray(r.data.attendant) ? r.data.attendant : []);
-                      alert(`自動選出が完了しました。\n運転手: ${r.data.driver.length}人、添乗員: ${r.data.attendant.length}人`);
+                      alert(`自動選出が完了しました。\n運転手: ${r.data.driver.length}人、添乗員: ${r.data.attendant.length}人\n※「確定を保存」ボタンで保存してください。`);
                       // 応募状況も再取得
                       await openFairness(fairData.event_id);
-                      // カレンダーも更新
-                      await refresh();
                     } catch (err) {
                       alert(`自動選出に失敗しました: ${err.message}`);
                     }
                   }}
                 >
-                  定員に合わせて自動選出（保存）
+                  定員に合わせて自動選出
                 </button>
 
                 <button

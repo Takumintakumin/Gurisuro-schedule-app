@@ -379,29 +379,48 @@ export default function MainApp() {
         <p className="text-sm text-gray-500">通知はありません。</p>
       ) : (
         <ul className="space-y-2">
-          {notifications.map((n) => (
-            <li
-              key={n.id}
-              className={`border rounded p-3 ${!n.read_at ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{n.message}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(n.created_at).toLocaleString('ja-JP')}
+          {notifications.map((n) => {
+            // 通知からイベントの日付を取得
+            const eventForNotification = events.find(e => e.id === n.event_id);
+            const handleNotificationClick = () => {
+              if (eventForNotification && eventForNotification.date) {
+                const dateParts = eventForNotification.date.split('-');
+                if (dateParts.length === 3) {
+                  const eventDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+                  setSelectedDate(eventDate);
+                  setActiveTab("calendar");
+                }
+              }
+            };
+            
+            return (
+              <li
+                key={n.id}
+                className={`border rounded p-3 ${!n.read_at ? 'bg-blue-50 border-blue-200' : 'bg-white'} ${eventForNotification ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={handleNotificationClick}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{n.message}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(n.created_at).toLocaleString('ja-JP')}
+                    </div>
                   </div>
+                  {!n.read_at && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAsRead(n.id);
+                      }}
+                      className="ml-2 px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      既読
+                    </button>
+                  )}
                 </div>
-                {!n.read_at && (
-                  <button
-                    onClick={() => markAsRead(n.id)}
-                    className="ml-2 px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    既読
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
