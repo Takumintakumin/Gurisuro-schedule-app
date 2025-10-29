@@ -588,23 +588,23 @@ export default function MainApp() {
     <div 
       id="main-tab-bar"
       style={{ 
-          position: 'fixed',
-          bottom: '0px',
-          left: '0px',
-          right: '0px',
-          width: '100%',
-          minHeight: '64px',
-          backgroundColor: '#ffffff',
-          borderTop: '2px solid #d1d5db',
-          boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          visibility: 'visible',
-          opacity: 1,
-          paddingBottom: 'env(safe-area-inset-bottom)'
-        }}
-      >
+        position: 'fixed',
+        bottom: '0px',
+        left: '0px',
+        right: '0px',
+        width: '100%',
+        minHeight: '64px',
+        backgroundColor: '#ffffff',
+        borderTop: '2px solid #d1d5db',
+        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        zIndex: 99999,
+        display: 'flex',
+        alignItems: 'center',
+        visibility: 'visible',
+        opacity: 1,
+        paddingBottom: 'env(safe-area-inset-bottom)'
+      }}
+    >
         <div style={{ maxWidth: '896px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', width: '100%', height: '100%', minHeight: '64px' }}>
           <button
             onClick={() => setActiveTab("calendar")}
@@ -725,3 +725,5 @@ export default function MainApp() {
         </div>
       </div>
     </>
+  );
+}
