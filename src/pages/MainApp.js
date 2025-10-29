@@ -195,68 +195,80 @@ export default function MainApp() {
       const decOut = {};
       const decDateSet = new Set();
       
-      // すべてのイベントをチェックして、自分が確定済みの日付を集計
-      for (const ev of events) {
-        try {
-          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-          if (dec.ok && dec.data) {
-            // 自分が確定済みかチェック
-            const isMyDecided = 
-              (dec.data.driver && Array.isArray(dec.data.driver) && dec.data.driver.includes(userName)) ||
-              (dec.data.attendant && Array.isArray(dec.data.attendant) && dec.data.attendant.includes(userName));
-            
-            if (isMyDecided) {
-              decDateSet.add(ev.date);
-            }
-            
-            // 当日のイベントかチェック（オブジェクトの比較ではなくIDで比較）
-            const isTodayEvent = todays.some(e => e.id === ev.id);
-            if (isTodayEvent) {
-              decOut[ev.id] = {
-                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-              };
-            }
-          }
-        } catch {}
+      if (!userName) {
+        setCounts(out);
+        setDecided(decOut);
+        setDecidedDates(decDateSet);
+        return;
       }
       
+      // 当日のイベントのみ処理
       for (const ev of todays) {
+        // 応募数と確定済みメンバーを並列取得
+        const [appsRes, decRes] = await Promise.all([
+          apiFetch(`/api/applications?event_id=${ev.id}`).catch(() => ({ ok: false, data: [] })),
+          apiFetch(`/api?path=decide&event_id=${ev.id}`).catch(() => ({ ok: false, data: null }))
+        ]);
+        
         // 応募数
-        const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
-        const arr = Array.isArray(r.data) ? r.data : [];
+        const arr = Array.isArray(appsRes.data) ? appsRes.data : [];
         out[ev.id] = {
           driver: arr.filter(a => a.kind === "driver").length,
           attendant: arr.filter(a => a.kind === "attendant").length,
           raw: arr,
         };
         
-        // 確定済みメンバー（既に取得済みでない場合）
-        if (!decOut[ev.id]) {
-          try {
-            const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-            if (dec.ok && dec.data) {
-              decOut[ev.id] = {
-                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-              };
-            } else {
-              decOut[ev.id] = { driver: [], attendant: [] };
-            }
-          } catch {
-            decOut[ev.id] = { driver: [], attendant: [] };
+        // 確定済みメンバー
+        if (decRes.ok && decRes.data) {
+          decOut[ev.id] = {
+            driver: Array.isArray(decRes.data.driver) ? decRes.data.driver : [],
+            attendant: Array.isArray(decRes.data.attendant) ? decRes.data.attendant : [],
+          };
+          
+          // 自分が確定済みかチェック
+          const isMyDecided = 
+            (decOut[ev.id].driver.includes(userName)) ||
+            (decOut[ev.id].attendant.includes(userName));
+          
+          if (isMyDecided) {
+            decDateSet.add(ev.date);
           }
+        } else {
+          decOut[ev.id] = { driver: [], attendant: [] };
         }
       }
+      
+      // 他の日付の確定済み状況を簡易的に確認（自分の応募があるイベントのみ）
+      if (myApps.length > 0 && events.length > 0) {
+        const myEventIds = [...new Set(myApps.map(a => a.event_id))];
+        const checks = myEventIds.map(async (eventId) => {
+          const ev = events.find(e => e.id === eventId);
+          if (!ev) return null;
+          
+          try {
+            const dec = await apiFetch(`/api?path=decide&event_id=${eventId}`);
+            if (dec.ok && dec.data) {
+              const isMyDecided = 
+                (Array.isArray(dec.data.driver) && dec.data.driver.includes(userName)) ||
+                (Array.isArray(dec.data.attendant) && dec.data.attendant.includes(userName));
+              
+              if (isMyDecided) {
+                return ev.date;
+              }
+            }
+          } catch {}
+          return null;
+        });
+        
+        const dates = (await Promise.all(checks)).filter(Boolean);
+        dates.forEach(date => decDateSet.add(date));
+      }
+      
       setCounts(out);
       setDecided(decOut);
       setDecidedDates(decDateSet);
-      // デバッグ: 確定済み日付を確認
-      if (decDateSet.size > 0) {
-        console.log('[MainApp] 自分の確定済み日付:', Array.from(decDateSet), 'userName:', userName);
-      }
     })();
-  }, [events, selectedDate, userName]);
+  }, [events, selectedDate, userName, myApps]);
 
   const hasApplied = (eventId, kind) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
@@ -293,7 +305,11 @@ export default function MainApp() {
         throw new Error(data?.error || `HTTP ${status}`);
       }
       await refresh();
-      alert("応募しました！");
+      if (data?.auto_switched && data?.switched_to === "attendant") {
+        alert("運転手で応募されましたが運転手が満杯のため、添乗員として登録されました。");
+      } else {
+        alert("応募しました！");
+      }
     } catch (e) {
       alert(`応募に失敗しました: ${e.message}`);
     } finally {
@@ -316,6 +332,15 @@ export default function MainApp() {
         throw new Error(data?.error || `HTTP ${status}`);
       }
       await refresh();
+      // 確定済み日付も再取得
+      const ymd = toLocalYMD(selectedDate);
+      const todays = events.filter((e) => e.date === ymd);
+      if (todays.some(e => e.id === ev.id)) {
+        // キャンセル後に状態を更新
+        setTimeout(() => {
+          refresh();
+        }, 100);
+      }
       alert("キャンセルが完了しました。");
     } catch (e) {
       alert(`キャンセルに失敗しました: ${e.message}`);

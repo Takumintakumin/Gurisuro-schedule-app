@@ -420,6 +420,61 @@ export default async function handler(req, res) {
               });
             }
           } else if (cap != null && currentCount >= cap) {
+            // 運転手で応募した場合、添乗員が不足していれば自動的に添乗員として登録
+            if (kind === "driver") {
+              try {
+                const attDecCheck = await query(
+                  `SELECT username FROM selections WHERE event_id = $1 AND kind = 'attendant'`,
+                  [event_id]
+                );
+                const attAppCount = await query(
+                  `SELECT COUNT(*) as cnt FROM applications WHERE event_id = $1 AND kind = 'attendant'`,
+                  [event_id]
+                );
+                const attCurrentCount = Number(attAppCount.rows?.[0]?.cnt || 0);
+                const attCap = evCheck.rows?.[0]?.capacity_attendant ?? 1;
+                
+                // 添乗員が不足している場合、自動的に添乗員として登録
+                if (attCurrentCount < attCap && attDecCheck.rows.length === 0) {
+                  await query(
+                    `INSERT INTO applications (event_id, username, kind)
+                     VALUES ($1,$2,'attendant')
+                     ON CONFLICT (event_id, username, kind) DO NOTHING`,
+                    [event_id, username]
+                  );
+                  
+                  // 通知を作成
+                  const evInfo = await query(
+                    `SELECT date, label, start_time FROM events WHERE id = $1`,
+                    [event_id]
+                  );
+                  if (evInfo.rows?.[0]) {
+                    const ev = evInfo.rows[0];
+                    await query(`
+                      CREATE TABLE IF NOT EXISTS notifications (
+                        id BIGSERIAL PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        event_id BIGINT NOT NULL,
+                        kind TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT now(),
+                        read_at TIMESTAMPTZ
+                      )
+                    `);
+                    const notifyMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）について、運転手で応募されましたが運転手が満杯のため、添乗員として登録されました。`;
+                    await query(
+                      `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                      [username, event_id, 'attendant', notifyMessage]
+                    );
+                  }
+                  
+                  return res.status(201).json({ ok: true, auto_switched: true, switched_to: "attendant" });
+                }
+              } catch (e) {
+                console.error("自動切り替えエラー:", e);
+              }
+            }
+            
             // 定員満杯の場合は応募を拒否
             return res.status(403).json({ 
               error: "定員が満杯です。応募できません。"
@@ -830,9 +885,14 @@ export default async function handler(req, res) {
       }
       const ev = eventInfo.rows[0];
 
-      // キャンセル実行（確定から削除）
+      // キャンセル実行（確定から削除 + 応募も削除）
       await query(
         `DELETE FROM selections WHERE event_id = $1 AND username = $2 AND kind = $3`,
+        [eventId, session.username, kind]
+      );
+      // 応募も削除（確定済みをキャンセルした場合は応募も取消）
+      await query(
+        `DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = $3`,
         [eventId, session.username, kind]
       );
 
@@ -956,10 +1016,78 @@ export default async function handler(req, res) {
               );
             }
           } else {
+            // 添乗員が不足している場合、運転手として応募している人を添乗員として登録
+            if (kind === "attendant") {
+              try {
+                const driverAppsQuery = await query(`
+                  SELECT DISTINCT a.username
+                  FROM applications a
+                  WHERE a.event_id = $1 AND a.kind = 'driver'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM selections s 
+                      WHERE s.event_id = $1 
+                        AND s.username = a.username 
+                        AND s.kind = 'attendant'
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM selections s 
+                      WHERE s.event_id = $1 
+                        AND s.username = a.username 
+                        AND s.kind = 'driver'
+                    )
+                  LIMIT $2
+                `, [eventId, capacity - currentCount]);
+                
+                const driverUsernames = driverAppsQuery.rows.map(r => r.username);
+                if (driverUsernames.length > 0) {
+                  for (const username of driverUsernames) {
+                    // 添乗員として確定
+                    await query(
+                      `INSERT INTO selections (event_id, username, kind) VALUES ($1, $2, 'attendant')
+                       ON CONFLICT (event_id, username, kind) DO NOTHING`,
+                      [eventId, username]
+                    );
+                    
+                    // 運転手としての応募を削除し、添乗員として応募を追加（既にあれば何もしない）
+                    await query(
+                      `DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = 'driver'`,
+                      [eventId, username]
+                    );
+                    await query(
+                      `INSERT INTO applications (event_id, username, kind)
+                       VALUES ($1, $2, 'attendant')
+                       ON CONFLICT (event_id, username, kind) DO NOTHING`,
+                      [eventId, username]
+                    );
+                    
+                    // 通知
+                    const changeMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）について、運転手で応募されましたが添乗員が不足しているため、添乗員として登録されました。`;
+                    await query(
+                      `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                      [username, eventId, 'attendant', changeMessage]
+                    );
+                  }
+                  
+                  // 管理者に通知
+                  for (const adminRow of adminUsers.rows) {
+                    const adminUsername = adminRow.username;
+                    const promoteMessage = `${driverUsernames.join(", ")}さんが${ev.label}（${ev.date} ${ev.start_time}〜）について、運転手から添乗員として自動登録されました。`;
+                    await query(
+                      `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                      [adminUsername, eventId, `promote_attendant`, promoteMessage]
+                    );
+                  }
+                  return; // 運転手から添乗員に切り替えできたので処理終了
+                }
+              } catch (err) {
+                console.error("運転手→添乗員の自動切り替えエラー:", err);
+              }
+            }
+            
             // 自動選出できない場合（応募者がいない場合）、管理者に通知
             for (const adminRow of adminUsers.rows) {
               const adminUsername = adminRow.username;
-              const insufficientMessage = `⚠️【定員不足】${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}が定員不足です。キャンセルにより空きができましたが、繰り上げ可能な応募者がいません。`;
+                const insufficientMessage = `⚠️【定員不足】${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}が定員不足です。キャンセルにより空きができましたが、繰り上げ可能な応募者がいません。`;
               await query(
                 `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
                 [adminUsername, eventId, `insufficient_${kind}`, insufficientMessage]

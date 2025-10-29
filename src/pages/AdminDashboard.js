@@ -82,6 +82,12 @@ export default function AdminDashboard() {
   const [editEnd, setEditEnd] = useState("12:00");
   const [editDate, setEditDate] = useState("");
 
+  // 手動応募モーダル
+  const [manualApplyOpen, setManualApplyOpen] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [selectedUsername, setSelectedUsername] = useState("");
+  const [selectedKind, setSelectedKind] = useState("driver");
+
   // 管理者認証
   useEffect(() => {
     const role = localStorage.getItem("userRole");
@@ -92,6 +98,43 @@ export default function AdminDashboard() {
     }
     refresh();
   }, [nav]);
+
+  // ユーザーリスト取得
+  const refreshUsers = async () => {
+    try {
+      const r = await apiFetch("/api/users");
+      setUsers(Array.isArray(r.data) ? r.data.filter(u => u.role !== "admin") : []);
+    } catch (e) {
+      console.error("users fetch error:", e);
+    }
+  };
+
+  // 手動応募
+  const handleManualApply = async () => {
+    if (!selectedUsername || !fairData.event_id) {
+      alert("ユーザーを選択してください");
+      return;
+    }
+    try {
+      const r = await apiFetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_id: fairData.event_id,
+          username: selectedUsername,
+          kind: selectedKind,
+        }),
+      });
+      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+      alert("応募を登録しました");
+      setManualApplyOpen(false);
+      setSelectedUsername("");
+      await openFairness(fairData.event_id);
+      await refresh();
+    } catch (e) {
+      alert(`応募の登録に失敗しました: ${e.message}`);
+    }
+  };
 
   // イベント取得
   const refresh = async () => {
@@ -269,9 +312,10 @@ export default function AdminDashboard() {
     setFairOpen(true);
     setFairLoading(true);
     setFairError("");
-    setFairData({ event_id: eventId, driver: [], attendant: [] });
+      setFairData({ event_id: eventId, driver: [], attendant: [] });
     setSelDriver([]);
     setSelAttendant([]);
+    await refreshUsers();
 
     // 1) 正規ルート
     const tryFairness = async (url) => {
@@ -665,6 +709,19 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* 手動応募ボタン */}
+              <div className="mt-4 border-t pt-3">
+                <button
+                  className="px-3 py-2 rounded bg-purple-600 text-white text-sm hover:bg-purple-700"
+                  onClick={() => {
+                    setManualApplyOpen(true);
+                    refreshUsers();
+                  }}
+                >
+                  手動で応募する
+                </button>
+              </div>
+
               {/* 操作行 */}
               <div className="mt-4 flex flex-wrap gap-2 items-center">
                 <button
@@ -844,6 +901,61 @@ export default function AdminDashboard() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* 手動応募モーダル */}
+        {manualApplyOpen && (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50">
+            <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-4 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold">手動で応募する</h3>
+                <button onClick={() => setManualApplyOpen(false)} className="text-gray-500">✕</button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">ユーザー</label>
+                  <select
+                    value={selectedUsername}
+                    onChange={(e) => setSelectedUsername(e.target.value)}
+                    className="w-full border rounded p-2"
+                  >
+                    <option value="">選択してください</option>
+                    {users.map(u => (
+                      <option key={u.username} value={u.username}>{u.username}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">役割</label>
+                  <select
+                    value={selectedKind}
+                    onChange={(e) => setSelectedKind(e.target.value)}
+                    className="w-full border rounded p-2"
+                  >
+                    <option value="driver">運転手</option>
+                    <option value="attendant">添乗員</option>
+                  </select>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleManualApply}
+                    className="flex-1 px-4 py-2 rounded bg-purple-600 text-white hover:bg-purple-700"
+                  >
+                    応募を登録
+                  </button>
+                  <button
+                    onClick={() => setManualApplyOpen(false)}
+                    className="px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
