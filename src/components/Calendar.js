@@ -26,6 +26,7 @@ export default function Calendar({
   eventTagsByDate = {},
   decidedDates = new Set(), // 確定済みの日付のSet (YYYY-MM-DD形式) 一般ユーザー: 自分が確定済みの日付、管理者: すべての確定済み日付
   decidedMembersByDate = {}, // 管理者用: { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
+  cancelledDates = new Set(), // キャンセルされた日付のSet (YYYY-MM-DD形式)
 }) {
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
@@ -124,12 +125,15 @@ export default function Calendar({
     const hasTags = tags.length > 0;
     const dayEvents = eventsByDate[key] || [];
     const isDecided = decidedDates.has(key);
+    const isCancelled = cancelledDates.has(key);
     const decidedMembers = decidedMembersByDate?.[key] || null; // 管理者用: 確定済みメンバー情報
 
-    // 背景色（優先度：確定済み（自分）>イベント>運休>割当>可用）
+    // 背景色（優先度：キャンセル>確定済み（自分）>イベント>運休>割当>可用）
     let base =
       "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
-    if (isDecided)
+    if (isCancelled)
+      base += " bg-red-200 hover:bg-red-300 border-red-400";
+    else if (isDecided)
       base += " bg-green-100 hover:bg-green-200 border-green-300";
     else if (dayEvents.length > 0 || hasTags)
       base += " bg-orange-50 hover:bg-orange-100";
@@ -183,18 +187,6 @@ export default function Calendar({
 
         {/* バッジ（イベントアイコン/タグ） */}
         {(dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)}
-        
-        {/* 管理者用: 確定済みメンバー表示 */}
-        {decidedMembers && (decidedMembers.driver?.length > 0 || decidedMembers.attendant?.length > 0) && (
-          <div className="mt-1 px-1 py-0.5 bg-green-100 rounded text-[10px] text-green-800 font-semibold border border-green-300">
-            {decidedMembers.driver?.length > 0 && (
-              <div className="truncate" title={`運転手: ${decidedMembers.driver.join(", ")}`}>🚗 {decidedMembers.driver.join(", ")}</div>
-            )}
-            {decidedMembers.attendant?.length > 0 && (
-              <div className="truncate" title={`添乗員: ${decidedMembers.attendant.join(", ")}`}>👤 {decidedMembers.attendant.join(", ")}</div>
-            )}
-          </div>
-        )}
       </div>
     );
   };

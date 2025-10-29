@@ -31,12 +31,19 @@ const FIXED_EVENTS = [
 export default function AdminDashboard() {
   const nav = useNavigate();
 
+  // タブ管理
+  const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "notifications" | "users"
+
   // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [decidedDates, setDecidedDates] = useState(new Set());
+  const [cancelledDates, setCancelledDates] = useState(new Set()); // キャンセルされた日付
   const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
+  
+  // 通知
+  const [notifications, setNotifications] = useState([]);
 
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
@@ -99,10 +106,39 @@ export default function AdminDashboard() {
       }
       setDecidedDates(decDateSet);
       setDecidedMembersByDate(decMembersMap);
+      
+      // キャンセルされた日付を取得（キャンセル通知から）
+      try {
+        const cancelNotifs = await apiFetch("/api?path=notifications");
+        if (cancelNotifs.ok && Array.isArray(cancelNotifs.data)) {
+          const cancelDateSet = new Set();
+          for (const notif of cancelNotifs.data) {
+            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_")) {
+              // 通知メッセージからイベント日付を抽出するか、イベントIDから取得
+              try {
+                const evDetail = evs.find(e => e.id === notif.event_id);
+                if (evDetail && evDetail.date) {
+                  cancelDateSet.add(evDetail.date);
+                }
+              } catch {}
+            }
+          }
+          setCancelledDates(cancelDateSet);
+        }
+      } catch {}
+      
       // デバッグ: 確定メンバー情報を確認
       if (Object.keys(decMembersMap).length > 0) {
         console.log('[AdminDashboard] 確定メンバー情報:', decMembersMap);
       }
+      
+      // 通知を取得
+      try {
+        const notifs = await apiFetch("/api?path=notifications");
+        if (notifs.ok && Array.isArray(notifs.data)) {
+          setNotifications(notifs.data);
+        }
+      } catch {}
     } catch (e) {
       console.error("fetch events error:", e);
     } finally {
@@ -247,14 +283,86 @@ export default function AdminDashboard() {
     setFairLoading(false);
   };
 
+  // 通知の未読数
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.read_at).length;
+  }, [notifications]);
+
+  // 通知タブの内容
+  const renderNotificationsTab = () => (
+    <div>
+      <h2 className="font-semibold mb-4">通知一覧</h2>
+      {notifications.length === 0 ? (
+        <p className="text-sm text-gray-500">通知はありません。</p>
+      ) : (
+        <ul className="space-y-2">
+          {notifications.map((notif) => (
+            <li key={notif.id} className={`border rounded p-3 ${notif.read_at ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'}`}>
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <p className="text-sm">{notif.message}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(notif.created_at).toLocaleString('ja-JP')}
+                  </p>
+                </div>
+                {!notif.read_at && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await apiFetch("/api?path=notifications", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: notif.id }),
+                        });
+                        await refresh();
+                      } catch (e) {
+                        alert("既読にするのに失敗しました");
+                      }
+                    }}
+                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    既読
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  // ユーザー管理タブの内容（AdminUsersの内容を簡易的に表示）
+  const renderUsersTab = () => (
+    <div>
+      <h2 className="font-semibold mb-4">ユーザー管理</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        ユーザー管理機能については、別ページで詳細な管理が可能です。
+      </p>
+      <button
+        onClick={() => nav("/admin/users")}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        ユーザー管理ページを開く
+      </button>
+    </div>
+  );
+
   if (loading) return <div className="p-6">読み込み中…</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+    <>
+    <div 
+      className="min-h-screen bg-gray-50 p-4 sm:p-6"
+      style={{ 
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
+        marginBottom: 0
+      }}
+    >
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        {/* ヘッダー（UIはそのまま） */}
+        {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">🗓 管理者カレンダー</h1>
+          <h1 className="text-xl font-bold">🗓 管理者ダッシュボード</h1>
           <div className="flex gap-3">
             <button onClick={() => nav("/")} className="text-gray-600 underline" title="一般ログインへ">
               一般ログインへ
@@ -264,27 +372,31 @@ export default function AdminDashboard() {
                 localStorage.clear();
                 nav("/");
               }}
-              className="text-gray-600 underline"
+              Possibly className="text-gray-600 underline"
             >
               ログアウト
             </button>
           </div>
         </div>
 
-        {/* カレンダー（UIは変更しない） */}
-        <Calendar
-          currentMonth={selectedDate.getMonth()}
-          currentYear={selectedDate.getFullYear()}
-          selectedDate={selectedDate}
-          onMonthChange={(delta) => {
-            const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
-            setSelectedDate(nd);
-          }}
-          onDateSelect={(d) => setSelectedDate(d)}
-          events={events}
-          decidedDates={decidedDates}
-          decidedMembersByDate={decidedMembersByDate}
-        />
+        {/* タブコンテンツ */}
+        {activeTab === "calendar" && (
+          <>
+            {/* カレンダー */}
+            <Calendar
+              currentMonth={selectedDate.getMonth()}
+              currentYear={selectedDate.getFullYear()}
+              selectedDate={selectedDate}
+              onMonthChange={(delta) => {
+                const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
+                setSelectedDate(nd);
+              }}
+              onDateSelect={(d) => setSelectedDate(d)}
+              events={events}
+              decidedDates={decidedDates}
+              decidedMembersByDate={decidedMembersByDate}
+              cancelledDates={cancelledDates}
+            />
 
         {/* 募集作成フォーム（UI据え置き） */}
         <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
@@ -578,7 +690,156 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+        </>
+        )}
+        {activeTab === "notifications" && renderNotificationsTab()}
+        {activeTab === "users" && renderUsersTab()}
       </div>
     </div>
+    
+    {/* 固定タブバー */}
+    <div 
+      id="admin-tab-bar"
+      style={{ 
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        width: '100%',
+        minHeight: '64px',
+        backgroundColor: '#ffffff',
+        borderTop: '2px solid #d1d5db',
+        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        WebkitBoxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        zIndex: 99999,
+        display: 'flex',
+        WebkitDisplay: 'flex',
+        alignItems: 'center',
+        WebkitAlignItems: 'center',
+        visibility: 'visible',
+        opacity: 1,
+        WebkitTransform: 'translateZ(0)',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+        WebkitBackfaceVisibility: 'hidden',
+        backfaceVisibility: 'hidden',
+        paddingBottom: 'env(safe-area-inset-bottom)'
+      }}
+    >
+      <div style={{ 
+        maxWidth: '896px', 
+        margin: '0 auto', 
+        display: 'grid', 
+        WebkitDisplay: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr', 
+        WebkitGridTemplateColumns: '1fr 1fr 1fr',
+        width: '100%', 
+        height: '100%', 
+        minHeight: '64px' 
+      }}>
+        <button
+          onClick={() => setActiveTab("calendar")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: activeTab === "calendar" ? '#dbeafe' : 'transparent',
+            color: activeTab === "calendar" ? '#2563eb' : '#4b5563',
+            fontWeight: activeTab === "calendar" ? '600' : '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("notifications")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: activeTab === "notifications" ? '#dbeafe' : 'transparent',
+            color: activeTab === "notifications" ? '#2563eb' : '#4b5563',
+            fontWeight: activeTab === "notifications" ? '600' : '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s',
+            position: 'relative'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159导航 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>通知</span>
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '4px',
+              right: '8px',
+              backgroundColor: '#ef4444',
+              color: '#ffffff',
+              fontSize: '10px',
+              borderRadius: '10px',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '600'
+            }}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("users")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: activeTab === "users" ? '#dbeafe' : 'transparent',
+            color: activeTab === "users" ? '#2563eb' : '#4b5563',
+            fontWeight: activeTab === "users" ? '600' : '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>ユーザー管理</span>
+        </button>
+      </div>
+    </div>
+    </>
   );
 }

@@ -273,6 +273,29 @@ export default function MainApp() {
     }
   };
 
+  // 確定後のキャンセル
+  const cancelDecided = async (ev, kind) => {
+    if (!userName) return;
+    if (!window.confirm("確定済みのシフトをキャンセルしますか？キャンセル待ちの方が繰り上げで確定される可能性があります。")) return;
+    setApplying(true);
+    try {
+      const { ok, status, data } = await apiFetch("/api?path=cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: ev.id, kind }),
+      });
+      if (!ok) {
+        throw new Error(data?.error || `HTTP ${status}`);
+      }
+      await refresh();
+      alert("キャンセルが完了しました。");
+    } catch (e) {
+      alert(`キャンセルに失敗しました: ${e.message}`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const cancel = async (ev, kind) => {
     if (!userName) return;
     if (!window.confirm("応募を取り消しますか？")) return;
@@ -521,10 +544,11 @@ export default function MainApp() {
                           {["運転手","両方"].includes(userRolePref) && (
                             isDecidedDriver ? (
                               <button
-                                className="px-3 py-1 rounded bg-green-200 text-green-800 text-sm"
-                                disabled
+                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+                                disabled={applying}
+                                onClick={() => cancelDecided(ev, "driver")}
                               >
-                                確定済み（運転手）
+                                キャンセル（運転手）
                               </button>
                             ) : appliedDriver ? (
                               <button
@@ -547,10 +571,11 @@ export default function MainApp() {
                           {["添乘員","両方"].includes(userRolePref) && (
                             isDecidedAttendant ? (
                               <button
-                                className="px-3 py-1 rounded bg-green-200 text-green-800 text-sm"
-                                disabled
+                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+                                disabled={applying}
+                                onClick={() => cancelDecided(ev, "attendant")}
                               >
-                                確定済み（添乗員）
+                                キャンセル（添乗員）
                               </button>
                             ) : appliedAtt ? (
                               <button

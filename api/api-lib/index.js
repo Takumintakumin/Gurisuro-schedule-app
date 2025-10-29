@@ -761,6 +761,166 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
+    // ---- /api/cancel ---- 確定後のキャンセル機能
+    if (sub === "cancel") {
+      const session = await getSession(req);
+      if (!session?.username) return res.status(401).json({ error: "認証が必要です" });
+
+      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+
+      const { event_id, kind } = body || {};
+      const eventId = Number(event_id);
+      if (!eventId || !kind || !["driver", "attendant"].includes(kind)) {
+        return res.status(400).json({ error: "event_id と kind (driver/attendant) が必要です" });
+      }
+
+      // 確定されているか確認
+      const checkDecided = await query(
+        `SELECT username FROM selections WHERE event_id = $1 AND username = $2 AND kind = $3`,
+        [eventId, session.username, kind]
+      );
+      if (checkDecided.rows.length === 0) {
+        return res.status(400).json({ error: "この役割は確定されていません" });
+      }
+
+      // イベント情報を取得
+      const eventInfo = await query(
+        `SELECT date, label, start_time, capacity_driver, capacity_attendant FROM events WHERE id = $1`,
+        [eventId]
+      );
+      if (!eventInfo.rows?.[0]) {
+        return res.status(404).json({ error: "イベントが見つかりません" });
+      }
+      const ev = eventInfo.rows[0];
+
+      // キャンセル実行（確定から削除）
+      await query(
+        `DELETE FROM selections WHERE event_id = $1 AND username = $2 AND kind = $3`,
+        [eventId, session.username, kind]
+      );
+
+      // 管理者への通知を作成
+      await query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id BIGSERIAL PRIMARY KEY,
+          username TEXT NOT NULL,
+          event_id BIGINT NOT NULL,
+          kind TEXT NOT NULL,
+          message TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT now(),
+          read_at TIMESTAMPTZ
+        )
+      `);
+
+      // 管理者ユーザーを取得
+      const adminUsers = await query(`SELECT username FROM users WHERE role = 'admin'`);
+      const kindLabels = { driver: "運転手", attendant: "添乗員" };
+      
+      for (const adminRow of adminUsers.rows) {
+        const adminUsername = adminRow.username;
+        const message = `${session.username}さんが${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}をキャンセルしました。`;
+        await query(
+          `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+          [adminUsername, eventId, `cancel_${kind}`, message]
+        );
+      }
+
+      // 繰り上げ確定: キャンセル待ちから次の人を自動選出
+      try {
+        // 現在の確定済み人数を確認
+        const currentDecided = await query(
+          `SELECT username FROM selections WHERE event_id = $1 AND kind = $2`,
+          [eventId, kind]
+        );
+        const currentCount = currentDecided.rows.length;
+
+        // 定員を確認
+        const capacity = kind === "driver" ? (ev.capacity_driver ?? 1) : (ev.capacity_attendant ?? 1);
+        
+        // 定員に満たない場合はキャンセル待ちから選出
+        if (currentCount < capacity) {
+          // キャンセル待ちの応募者を取得（公平ランキング順）
+          let waitlistQuery;
+          try {
+            waitlistQuery = await query(`
+              WITH appl AS (
+                SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
+                       COALESCE(v.times, 0) AS times,
+                       v.last_at
+                FROM applications a
+                LEFT JOIN v_participation v
+                  ON v.username = a.username AND v.kind = a.kind
+                WHERE a.event_id = $1 AND a.kind = $2 AND a.is_waitlist = true
+              ),
+              ranked AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                         ORDER BY times ASC,
+                                  COALESCE(last_at, 'epoch') ASC,
+                                  created_at ASC
+                       ) AS rnk
+                FROM appl
+              )
+              SELECT username, rnk AS rank, times
+              FROM ranked
+              LIMIT $3
+            `, [eventId, kind, capacity - currentCount]);
+          } catch {
+            // v_participationがない場合は応募順
+            waitlistQuery = await query(
+              `SELECT username, created_at, 
+                      ROW_NUMBER() OVER (ORDER BY created_at ASC) AS rank, 
+                      0 AS times
+               FROM applications 
+               WHERE event_id = $1 AND kind = $2 AND is_waitlist = true
+               LIMIT $3`,
+              [eventId, kind, capacity - currentCount]
+            );
+          }
+
+          // 選出された人を確定
+          const selectedUsernames = waitlistQuery.rows.map(r => r.username);
+          for (const username of selectedUsernames) {
+            await query(
+              `INSERT INTO selections (event_id, username, kind) VALUES ($1, $2, $3)
+               ON CONFLICT (event_id, username, kind) DO NOTHING`,
+              [eventId, username, kind]
+            );
+
+            // 選出された人に通知
+            const confirmMessage = `${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}として繰り上げ確定しました。`;
+            await query(
+              `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+              [username, eventId, kind, confirmMessage]
+            );
+
+            // キャンセル待ちから削除
+            await query(
+              `UPDATE applications SET is_waitlist = false WHERE event_id = $1 AND username = $2 AND kind = $3 AND is_waitlist = true`,
+              [eventId, username, kind]
+            );
+          }
+
+          if (selectedUsernames.length > 0) {
+            // 管理者に繰り上げ確定の通知
+            for (const adminRow of adminUsers.rows) {
+              const adminUsername = adminRow.username;
+              const promoteMessage = `${selectedUsernames.join(", ")}さんが${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}として繰り上げ確定しました。`;
+              await query(
+                `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                [adminUsername, eventId, `promote_${kind}`, promoteMessage]
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("繰り上げ確定エラー:", err);
+        // 繰り上げ確定のエラーはキャンセル処理自体を失敗させない
+      }
+
+      return res.status(200).json({ ok: true, message: "キャンセルが完了しました" });
+    }
+
     // ---- /api/user-settings ---- ユーザー設定（通知ON/OFF、Googleカレンダー同期）
     if (sub === "user-settings") {
       const session = await getSession(req);
