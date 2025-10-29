@@ -70,8 +70,10 @@ export default function AdminDashboard() {
   const [fairLoading, setFairLoading] = useState(false);
   const [fairError, setFairError] = useState("");
   const [fairData, setFairData] = useState({ event_id: null, driver: [], attendant: [] });
-  const [selDriver, setSelDriver] = useState([]);
-  const [selAttendant, setSelAttendant] = useState([]);
+  const [selDriver, setSelDriver] = useState([]); // 選択中（まだ保存されていない）
+  const [selAttendant, setSelAttendant] = useState([]); // 選択中（まだ保存されていない）
+  const [confirmedDriver, setConfirmedDriver] = useState([]); // 確定済み（DBに保存済み）
+  const [confirmedAttendant, setConfirmedAttendant] = useState([]); // 確定済み（DBに保存済み）
 
   // イベント編集モーダル
   const [editOpen, setEditOpen] = useState(false);
@@ -315,6 +317,8 @@ export default function AdminDashboard() {
       setFairData({ event_id: eventId, driver: [], attendant: [] });
     setSelDriver([]);
     setSelAttendant([]);
+    setConfirmedDriver([]);
+    setConfirmedAttendant([]);
     await refreshUsers();
 
     // 1) 正規ルート
@@ -382,8 +386,13 @@ export default function AdminDashboard() {
     try {
       const dec = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(eventId)}`);
       if (dec.ok && dec.data) {
-        setSelDriver(Array.isArray(dec.data.driver) ? dec.data.driver : []);
-        setSelAttendant(Array.isArray(dec.data.attendant) ? dec.data.attendant : []);
+        const confirmedDrivers = Array.isArray(dec.data.driver) ? dec.data.driver : [];
+        const confirmedAttendants = Array.isArray(dec.data.attendant) ? dec.data.attendant : [];
+        setConfirmedDriver(confirmedDrivers);
+        setConfirmedAttendant(confirmedAttendants);
+        // 確定済みを選択済みにも設定（既存の確定済みは選択済みとしても表示）
+        setSelDriver(confirmedDrivers);
+        setSelAttendant(confirmedAttendants);
       }
     } catch {}
 
@@ -650,17 +659,28 @@ export default function AdminDashboard() {
                   ) : (
                     <ul className="space-y-1">
                       {fairData.driver.map((u) => {
-                        const checked = selDriver.includes(u.username);
+                        const isSelected = selDriver.includes(u.username);
+                        const isConfirmed = confirmedDriver.includes(u.username);
+                        const bgClass = isConfirmed 
+                          ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
+                          : isSelected 
+                          ? 'bg-yellow-50 border-yellow-300 ring-1 ring-yellow-400' 
+                          : '';
+                        const textClass = isConfirmed 
+                          ? 'font-semibold text-green-700' 
+                          : isSelected 
+                          ? 'font-semibold text-yellow-700' 
+                          : '';
                         return (
                           <li 
                             key={`d-${u.username}-${u.rank}`} 
-                            className={`border rounded p-2 text-sm ${checked ? 'bg-green-50 border-green-300 ring-1 ring-green-400' : ''}`}
+                            className={`border rounded p-2 text-sm ${bgClass}`}
                           >
                             <div className="flex justify-between items-center">
                               <label className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
-                                  checked={checked}
+                                  checked={isSelected}
                                   onChange={(e) => {
                                     setSelDriver((prev) =>
                                       e.target.checked
@@ -669,9 +689,10 @@ export default function AdminDashboard() {
                                     );
                                   }}
                                 />
-                                <span className={checked ? 'font-semibold text-green-700' : ''}>
+                                <span className={textClass}>
                                   #{u.rank} {u.username}
-                                  {checked && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                  {isConfirmed && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                  {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                 </span>
                               </label>
                               <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
@@ -692,17 +713,28 @@ export default function AdminDashboard() {
                   ) : (
                     <ul className="space-y-1">
                       {fairData.attendant.map((u) => {
-                        const checked = selAttendant.includes(u.username);
+                        const isSelected = selAttendant.includes(u.username);
+                        const isConfirmed = confirmedAttendant.includes(u.username);
+                        const bgClass = isConfirmed 
+                          ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
+                          : isSelected 
+                          ? 'bg-yellow-50 border-yellow-300 ring-1 ring-yellow-400' 
+                          : '';
+                        const textClass = isConfirmed 
+                          ? 'font-semibold text-green-700' 
+                          : isSelected 
+                          ? 'font-semibold text-yellow-700' 
+                          : '';
                         return (
                           <li 
                             key={`a-${u.username}-${u.rank}`} 
-                            className={`border rounded p-2 text-sm ${checked ? 'bg-green-50 border-green-300 ring-1 ring-green-400' : ''}`}
+                            className={`border rounded p-2 text-sm ${bgClass}`}
                           >
                             <div className="flex justify-between items-center">
                               <label className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
-                                  checked={checked}
+                                  checked={isSelected}
                                   onChange={(e) => {
                                     setSelAttendant((prev) =>
                                       e.target.checked
@@ -711,9 +743,10 @@ export default function AdminDashboard() {
                                     );
                                   }}
                                 />
-                                <span className={checked ? 'font-semibold text-green-700' : ''}>
+                                <span className={textClass}>
                                   #{u.rank} {u.username}
-                                  {checked && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                  {isConfirmed && <span className="ml-1 text-green-600">✓ 確定済み</span>}
+                                  {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                 </span>
                               </label>
                               <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
@@ -755,11 +788,12 @@ export default function AdminDashboard() {
                         body: JSON.stringify({ event_id: fairData.event_id }),
                       });
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                      setSelDriver(Array.isArray(r.data.driver) ? r.data.driver : []);
-                      setSelAttendant(Array.isArray(r.data.attendant) ? r.data.attendant : []);
-                      alert(`自動選出が完了しました。\n運転手: ${r.data.driver.length}人、添乗員: ${r.data.attendant.length}人\n※「確定を保存」ボタンで保存してください。`);
-                      // 応募状況も再取得
-                      await openFairness(fairData.event_id);
+                      const autoDrivers = Array.isArray(r.data.driver) ? r.data.driver : [];
+                      const autoAttendants = Array.isArray(r.data.attendant) ? r.data.attendant : [];
+                      // 自動選出は選択済みとして設定（確定済みではない）
+                      setSelDriver(autoDrivers);
+                      setSelAttendant(autoAttendants);
+                      alert(`自動選出が完了しました。\n運転手: ${autoDrivers.length}人、添乗員: ${autoAttendants.length}人\n※「確定を保存」ボタンで保存してください。`);
                     } catch (err) {
                       alert(`自動選出に失敗しました: ${err.message}`);
                     }
@@ -782,6 +816,9 @@ export default function AdminDashboard() {
                         }),
                       });
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                      // 選択済みを確定済みに反映
+                      setConfirmedDriver(selDriver);
+                      setConfirmedAttendant(selAttendant);
                       alert("確定を保存しました");
                       // カレンダーも更新
                       await refresh();
@@ -801,6 +838,8 @@ export default function AdminDashboard() {
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       setSelDriver([]);
                       setSelAttendant([]);
+                      setConfirmedDriver([]);
+                      setConfirmedAttendant([]);
                       alert("確定を解除しました");
                       // カレンダーも更新
                       await refresh();
