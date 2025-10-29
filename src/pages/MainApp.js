@@ -53,14 +53,17 @@ export default function MainApp() {
     return events.filter((e) => e.date === ymd);
   }, [events, selectedDate]);
 
-  // 残枠表示用にイベント別の応募数をGET（簡易版：/api/applications?event_id=）
+  // 残枠表示用にイベント別の応募数 + 確定済みメンバーをGET
   const [counts, setCounts] = useState({});
+  const [decided, setDecided] = useState({}); // { eventId: { driver: string[], attendant: string[] } }
   useEffect(() => {
     (async () => {
       const ymd = toLocalYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
+      const decOut = {};
       for (const ev of todays) {
+        // 応募数
         const r = await apiFetch(`/api/applications?event_id=${ev.id}`);
         const arr = Array.isArray(r.data) ? r.data : [];
         out[ev.id] = {
@@ -68,8 +71,24 @@ export default function MainApp() {
           attendant: arr.filter(a => a.kind === "attendant").length,
           raw: arr,
         };
+        
+        // 確定済みメンバー
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+          if (dec.ok && dec.data) {
+            decOut[ev.id] = {
+              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+            };
+          } else {
+            decOut[ev.id] = { driver: [], attendant: [] };
+          }
+        } catch {
+          decOut[ev.id] = { driver: [], attendant: [] };
+        }
       }
       setCounts(out);
+      setDecided(decOut);
     })();
   }, [events, selectedDate]);
 
@@ -81,6 +100,22 @@ export default function MainApp() {
       alert("先にログインしてください。");
       return;
     }
+    
+    // 確定済みチェック
+    const dec = decided[ev.id] || { driver: [], attendant: [] };
+    const isDecided = (kind === "driver" ? dec.driver : dec.attendant).includes(userName);
+    if (isDecided) {
+      alert("このイベントは既に確定済みです。応募を取り消すことはできません。");
+      return;
+    }
+    
+    // 確定済みメンバーがいる場合、新規応募を制限
+    const hasDecidedMembers = (kind === "driver" ? dec.driver : dec.attendant).length > 0;
+    if (hasDecidedMembers) {
+      alert("このイベントは既に確定済みメンバーがいます。新規応募はできません。");
+      return;
+    }
+    
     setApplying(true);
     try {
       const { ok, status, data } = await apiFetch("/api/applications", {
@@ -152,6 +187,7 @@ export default function MainApp() {
             <ul className="space-y-2">
               {listOfSelected.map((ev) => {
                 const c = counts[ev.id] || { driver: 0, attendant: 0 };
+                const dec = decided[ev.id] || { driver: [], attendant: [] };
                 const remainDriver =
                   ev.capacity_driver != null ? Math.max(0, ev.capacity_driver - c.driver) : null;
                 const remainAtt =
@@ -159,6 +195,11 @@ export default function MainApp() {
 
                 const appliedDriver = hasApplied(ev.id, "driver");
                 const appliedAtt    = hasApplied(ev.id, "attendant");
+                
+                const hasDecidedDriver = dec.driver.length > 0;
+                const hasDecidedAttendant = dec.attendant.length > 0;
+                const isDecidedDriver = dec.driver.includes(userName);
+                const isDecidedAttendant = dec.attendant.includes(userName);
 
                 return (
                   <li key={ev.id} className="border rounded p-3 flex items-center justify-between">
@@ -171,19 +212,44 @@ export default function MainApp() {
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           運転手: {c.driver}{ev.capacity_driver!=null?` / ${ev.capacity_driver}`:""}
-                          {remainDriver!=null?`（残り ${remainDriver}）`:""}　
+                          {remainDriver!=null?`（残り ${remainDriver}）`:""}
+                          {hasDecidedDriver && (
+                            <span className="text-blue-600 font-semibold">
+                              【確定: {dec.driver.join(", ")}】
+                            </span>
+                          )}
+                          {isDecidedDriver && (
+                            <span className="text-green-600 font-semibold ml-1">✓ あなたが確定済み</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
                           添乗員: {c.attendant}{ev.capacity_attendant!=null?` / ${ev.capacity_attendant}`:""}
                           {remainAtt!=null?`（残り ${remainAtt}）`:""}
+                          {hasDecidedAttendant && (
+                            <span className="text-blue-600 font-semibold">
+                              【確定: {dec.attendant.join(", ")}】
+                            </span>
+                          )}
+                          {isDecidedAttendant && (
+                            <span className="text-green-600 font-semibold ml-1">✓ あなたが確定済み</span>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex gap-2">
                       {["運転手","両方"].includes(userRolePref) && (
-                        appliedDriver ? (
+                        isDecidedDriver ? (
+                          <button
+                            className="px-3 py-1 rounded bg-green-200 text-green-800 text-sm"
+                            disabled
+                          >
+                            確定済み（運転手）
+                          </button>
+                        ) : appliedDriver ? (
                           <button
                             className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
-                            disabled={applying}
+                            disabled={applying || hasDecidedDriver}
                             onClick={() => cancel(ev, "driver")}
                           >
                             応募取消（運転手）
@@ -191,7 +257,7 @@ export default function MainApp() {
                         ) : (
                           <button
                             className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-                            disabled={applying || remainDriver===0}
+                            disabled={applying || remainDriver===0 || hasDecidedDriver}
                             onClick={() => apply(ev, "driver")}
                           >
                             運転手で応募
@@ -199,10 +265,17 @@ export default function MainApp() {
                         )
                       )}
                       {["添乘員","両方"].includes(userRolePref) && (
-                        appliedAtt ? (
+                        isDecidedAttendant ? (
+                          <button
+                            className="px-3 py-1 rounded bg-green-200 text-green-800 text-sm"
+                            disabled
+                          >
+                            確定済み（添乗員）
+                          </button>
+                        ) : appliedAtt ? (
                           <button
                             className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm"
-                            disabled={applying}
+                            disabled={applying || hasDecidedAttendant}
                             onClick={() => cancel(ev, "attendant")}
                           >
                             応募取消（添乗員）
@@ -210,7 +283,7 @@ export default function MainApp() {
                         ) : (
                           <button
                             className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
-                            disabled={applying || remainAtt===0}
+                            disabled={applying || remainAtt===0 || hasDecidedAttendant}
                             onClick={() => apply(ev, "attendant")}
                           >
                             添乗員で応募

@@ -321,6 +321,36 @@ export default async function handler(req, res) {
             .status(400)
             .json({ error: "event_id, username, kind が必要です" });
 
+        // 確定済みメンバーがいる場合、新規応募を制限
+        try {
+          await query(
+            `CREATE TABLE IF NOT EXISTS selections (
+               event_id BIGINT NOT NULL,
+               username TEXT NOT NULL,
+               kind TEXT NOT NULL CHECK (kind IN ('driver','attendant')),
+               decided_at TIMESTAMPTZ DEFAULT now(),
+               PRIMARY KEY (event_id, username, kind)
+             )`
+          );
+          const decCheck = await query(
+            `SELECT username FROM selections WHERE event_id = $1 AND kind = $2`,
+            [event_id, kind]
+          );
+          if (decCheck.rows && decCheck.rows.length > 0) {
+            // 確定済みメンバーがいる場合
+            const isDecidedUser = decCheck.rows.some((r) => r.username === username);
+            if (!isDecidedUser) {
+              // 確定済みではないユーザーの新規応募は拒否
+              return res.status(403).json({ 
+                error: "このイベントは既に確定済みメンバーがいます。新規応募はできません。" 
+              });
+            }
+            // 確定済みユーザーは応募可能（念のため）
+          }
+        } catch (e) {
+          // selectionsテーブルがない場合などは続行
+        }
+
         await query(
           `INSERT INTO applications (event_id, username, kind)
            VALUES ($1,$2,$3)
@@ -483,6 +513,99 @@ export default async function handler(req, res) {
       }
 
       return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
+    // ---- /api/decide_auto ---- 定員に合わせて自動選出し保存
+    if (sub === "decide_auto") {
+      if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+      const { event_id } = body || {};
+      const eventId = Number(event_id);
+      if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+
+      // capacity 取得（null は 0 とみなす）
+      const er = await query(
+        `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
+        [eventId]
+      );
+      if (!er.rows?.[0]) return res.status(404).json({ error: "イベントが見つかりません" });
+      const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : 0;
+      const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : 0;
+
+      // 公平ランキングを取得（v_participationがあれば使用、なければ応募順）
+      let r;
+      try {
+        const sql = `
+          WITH appl AS (
+            SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
+                   COALESCE(v.times, 0) AS times,
+                   v.last_at
+            FROM applications a
+            LEFT JOIN v_participation v
+              ON v.username = a.username AND v.kind = a.kind
+            WHERE a.event_id = $1
+          ),
+          ranked AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY kind
+                     ORDER BY times ASC,
+                              COALESCE(last_at, 'epoch') ASC,
+                              created_at ASC
+                   ) AS rnk
+            FROM appl
+          )
+          SELECT * FROM ranked ORDER BY kind, rnk;
+        `;
+        r = await query(sql, [eventId]);
+      } catch (e) {
+        // v_participationがない場合のフォールバック：応募順
+        r = await query(
+          `SELECT id, event_id, username, kind, created_at,
+                 0 AS times, NULL AS last_at
+           FROM applications
+           WHERE event_id = $1
+           ORDER BY kind, created_at ASC`,
+          [eventId]
+        );
+        // ランクを付与
+        const driverRows = r.rows.filter((x) => x.kind === "driver");
+        const attendantRows = r.rows.filter((x) => x.kind === "attendant");
+        driverRows.forEach((row, idx) => { row.rnk = idx + 1; });
+        attendantRows.forEach((row, idx) => { row.rnk = idx + 1; });
+        r.rows = [...driverRows, ...attendantRows];
+      }
+      
+      const driverRank = r.rows.filter((x) => x.kind === "driver").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
+      const attendantRank = r.rows.filter((x) => x.kind === "attendant").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
+
+      const pickedDriver = driverRank.slice(0, Math.max(0, capD)).map((x) => x.username);
+      const pickedAttendant = attendantRank.slice(0, Math.max(0, capA)).map((x) => x.username);
+
+      // selections 更新
+      await query(
+        `CREATE TABLE IF NOT EXISTS selections (
+           event_id BIGINT NOT NULL,
+           username TEXT NOT NULL,
+           kind TEXT NOT NULL CHECK (kind IN ('driver','attendant')),
+           decided_at TIMESTAMPTZ DEFAULT now(),
+           PRIMARY KEY (event_id, username, kind)
+         )`
+      );
+      await query(`DELETE FROM selections WHERE event_id = $1`, [eventId]);
+      const values = [];
+      for (const u of pickedDriver) values.push([eventId, u, "driver"]);
+      for (const u of pickedAttendant) values.push([eventId, u, "attendant"]);
+      if (values.length) {
+        const params = values.flatMap((v) => v);
+        const tuples = values.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",");
+        await query(
+          `INSERT INTO selections (event_id, username, kind) VALUES ${tuples}
+           ON CONFLICT (event_id, username, kind) DO NOTHING`,
+          params
+        );
+      }
+
+      return res.status(200).json({ ok: true, event_id: eventId, driver: pickedDriver, attendant: pickedAttendant });
     }
 
     // ---- その他 404 ----

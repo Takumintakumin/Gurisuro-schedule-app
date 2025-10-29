@@ -478,24 +478,27 @@ export default function AdminDashboard() {
               {/* 操作行 */}
               <div className="mt-4 flex flex-wrap gap-2 items-center">
                 <button
-                  className="px-3 py-2 rounded bg-emerald-600 text-white text-sm"
+                  className="px-3 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
                   onClick={async () => {
-                    const ev = events.find((e) => e.id === fairData.event_id) || {};
-                    const capD = ev.capacity_driver != null ? Number(ev.capacity_driver) : null;
-                    const capA = ev.capacity_attendant != null ? Number(ev.capacity_attendant) : null;
-                    if (capD != null) {
-                      setSelDriver(fairData.driver.slice(0, capD).map((x) => x.username));
-                    } else {
-                      setSelDriver([]);
-                    }
-                    if (capA != null) {
-                      setSelAttendant(fairData.attendant.slice(0, capA).map((x) => x.username));
-                    } else {
-                      setSelAttendant([]);
+                    if (!window.confirm("定員に合わせて自動選出し、保存しますか？既存の確定は上書きされます。")) return;
+                    try {
+                      const r = await apiFetch(`/api?path=decide_auto`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ event_id: fairData.event_id }),
+                      });
+                      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                      setSelDriver(Array.isArray(r.data.driver) ? r.data.driver : []);
+                      setSelAttendant(Array.isArray(r.data.attendant) ? r.data.attendant : []);
+                      alert(`自動選出が完了しました。\n運転手: ${r.data.driver.length}人、添乗員: ${r.data.attendant.length}人`);
+                      // 応募状況も再取得
+                      await openFairness(fairData.event_id);
+                    } catch (err) {
+                      alert(`自動選出に失敗しました: ${err.message}`);
                     }
                   }}
                 >
-                  定員に合わせて自動選出
+                  定員に合わせて自動選出（保存）
                 </button>
 
                 <button
