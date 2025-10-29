@@ -57,6 +57,7 @@ export default function MainApp() {
   const [counts, setCounts] = useState({});
   const [decided, setDecided] = useState({}); // { eventId: { driver: string[], attendant: string[] } }
   const [decidedDates, setDecidedDates] = useState(new Set()); // 確定済みの日付のSet
+  const [decidedMembersByDate, setDecidedMembersByDate] = useState({}); // { date: { driver: [], attendant: [] } }
   useEffect(() => {
     (async () => {
       const ymd = toLocalYMD(selectedDate);
@@ -64,6 +65,7 @@ export default function MainApp() {
       const out = {};
       const decOut = {};
       const decDateSet = new Set();
+      const decMembersByDateObj = {}; // 全てのイベントの確定情報を日付ごとに集計
       
       // すべてのイベントをチェックして確定済み日付を集計（自分の予定が確定した日付のみ）
       for (const ev of events) {
@@ -72,6 +74,14 @@ export default function MainApp() {
           if (dec.ok && dec.data) {
             const driverDec = Array.isArray(dec.data.driver) ? dec.data.driver : [];
             const attendantDec = Array.isArray(dec.data.attendant) ? dec.data.attendant : [];
+            
+            // 日付ごとに確定情報を集計
+            if (!decMembersByDateObj[ev.date]) {
+              decMembersByDateObj[ev.date] = { driver: [], attendant: [] };
+            }
+            decMembersByDateObj[ev.date].driver.push(...driverDec);
+            decMembersByDateObj[ev.date].attendant.push(...attendantDec);
+            
             // 自分が確定している場合のみ日付を追加
             if (userName && (driverDec.includes(userName) || attendantDec.includes(userName))) {
               decDateSet.add(ev.date);
@@ -85,6 +95,15 @@ export default function MainApp() {
           }
         } catch {}
       }
+      
+سباب                driver: driverDec,
+                attendant: attendantDec,
+              };
+            }
+          }
+        } catch {}
+      }
+      
       
       for (const ev of todays) {
         // 応募数
@@ -120,8 +139,9 @@ export default function MainApp() {
       setCounts(out);
       setDecided(decOut);
       setDecidedDates(decDateSet);
+      setDecidedMembersByDate(decMembersByDateObj);
     })();
-  }, [events, selectedDate]);
+  }, [events, selectedDate, userName]);
 
   const hasApplied = (eventId, kind, waitlist = false) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind && (waitlist ? a.is_waitlist : !a.is_waitlist));
@@ -244,6 +264,8 @@ export default function MainApp() {
           onDateSelect={setSelectedDate}
           events={events}
           decidedDates={decidedDates}
+          decidedMembersByDate={decidedMembersByDate}
+          currentUserName={userName}
         />
 
         <div className="mt-4">

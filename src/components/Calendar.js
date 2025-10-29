@@ -26,6 +26,7 @@ export default function Calendar({
   eventTagsByDate = {},
   decidedDates = new Set(), // 確定済みの日付のSet (YYYY-MM-DD形式)
   decidedMembersByDate = {}, // 管理者用: { date: { driver: [], attendant: [] } }
+  currentUserName = null, // 一般ユーザー用: 現在ログインしているユーザー名
 }) {
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
@@ -120,9 +121,19 @@ export default function Calendar({
     const tags = eventTagsByDate?.[key] || [];
     const hasTags = tags.length > 0;
     const dayEvents = eventsByDate[key] || [];
-    const isDecided = decidedDates.has(key);
     const decidedMembers = decidedMembersByDate[key] || { driver: [], attendant: [] };
     const hasDecidedMembers = decidedMembers.driver.length > 0 || decidedMembers.attendant.length > 0;
+    
+    // 一般ユーザー側：自分が確定している場合のみ緑色
+    // 管理者側：誰かが確定していれば緑色
+    let isDecided = false;
+    if (currentUserName) {
+      // 一般ユーザー：自分の確定のみ
+      isDecided = decidedMembers.driver.includes(currentUserName) || decidedMembers.attendant.includes(currentUserName);
+    } else {
+      // 管理者：誰かが確定していれば
+      isDecided = decidedDates.has(key);
+    }
 
     // 背景色（優先度：確定済み>イベント>運休>割当>可用）
     let base =
@@ -164,10 +175,29 @@ export default function Calendar({
             {i}
           </span>
           {/* 管理者用：確定者情報の表示 */}
-          {hasDecidedMembers && (
-            <span className="text-[9px] text-green-600 font-semibold" title={`確定: 運転手=${decidedMembers.driver.join(",") || "なし"} 添乗員=${decidedMembers.attendant.join(",") || "なし"}`}>
-              ✓{decidedMembers.driver.length + decidedMembers.attendant.length}
-            </span>
+          {hasDecidedMembers && !currentUserName && (
+            <div className="text-[9px] text-green-600 font-semibold leading-tight">
+              <div className="flex items-center gap-0.5">
+                <span>✓</span>
+                {decidedMembers.driver.length + decidedMembers.attendant.length > 0 && (
+                  <span>{decidedMembers.driver.length + decidedMembers.attendant.length}</span>
+                )}
+              </div>
+              {(decidedMembers.driver.length > 0 || decidedMembers.attendant.length > 0) && (
+                <div className="text-[8px] mt-0.5 leading-tight" title={`運転手: ${decidedMembers.driver.join(",") || "なし"} / 添乗員: ${decidedMembers.attendant.join(",") || "なし"}`}>
+                  {decidedMembers.driver.length > 0 && (
+                    <div className="truncate max-w-[60px]" title={`運転手: ${decidedMembers.driver.join(",")}`}>
+                      運:{decidedMembers.driver.join(",")}
+                    </div>
+                  )}
+                  {decidedMembers.attendant.length > 0 && (
+                    <div className="truncate max-w-[60px]" title={`添乗員: ${decidedMembers.attendant.join(",")}`}>
+                      添:{decidedMembers.attendant.join(",")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
