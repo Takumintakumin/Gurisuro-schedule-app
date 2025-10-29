@@ -66,7 +66,14 @@ export default function AdminLogin() {
         管理者ログイン
       </h1>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+      <form onSubmit={onSubmit} style={{ 
+        display: "grid", 
+        WebkitDisplay: "grid",
+        gridTemplateColumns: "1fr",
+        WebkitGridTemplateColumns: "1fr",
+        rowGap: "12px",
+        WebkitRowGap: "12px"
+      }}>
         <label>
           <div>ユーザー名</div>
           <input

@@ -182,7 +182,14 @@ export default function UserLogin() {
         </h1>
 
         {/* ログイン */}
-        <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>
+        <form onSubmit={handleLogin} style={{ 
+          display: "grid", 
+          WebkitDisplay: "grid",
+          gridTemplateColumns: "1fr",
+          WebkitGridTemplateColumns: "1fr",
+          rowGap: "12px",
+          WebkitRowGap: "12px"
+        }}>
           <label>
             <div style={{ marginBottom: 6, fontSize: 14 }}>お名前</div>
             <input
@@ -234,7 +241,15 @@ export default function UserLogin() {
 
         {/* 新規登録 */}
         {showRegister && (
-          <form onSubmit={handleRegister} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+          <form onSubmit={handleRegister} style={{ 
+            display: "grid", 
+            WebkitDisplay: "grid",
+            gridTemplateColumns: "1fr",
+            WebkitGridTemplateColumns: "1fr",
+            rowGap: "12px",
+            WebkitRowGap: "12px",
+            marginTop: 12 
+          }}>
             <p style={small}>入力した お名前 と パスワード で登録します。</p>
 
             <label>

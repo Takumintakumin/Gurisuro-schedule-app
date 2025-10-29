@@ -69,7 +69,7 @@ export default function Calendar({
     const overflow = Math.max(allBadges.length - maxBadges, 0);
 
     return (
-      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+      <div className="mt-1.5 flex flex-wrap items-center" style={{ marginTop: '6px', display: 'flex', WebkitDisplay: 'flex', flexWrap: 'wrap', WebkitFlexWrap: 'wrap', alignItems: 'center', WebkitAlignItems: 'center' }}>
         {visible.map((b, idx) => {
           if (b.type === "icon" && b.icon) {
             return (
@@ -79,6 +79,7 @@ export default function Calendar({
                 alt={b.label || "event"}
                 title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
                 className="h-5 w-5 object-contain"
+                style={{ marginRight: '4px', marginBottom: '4px' }}
                 loading="lazy"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
@@ -90,15 +91,17 @@ export default function Calendar({
             <span
               key={`b-${idx}`}
               className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+              style={{ marginRight: '4px', marginBottom: '4px' }}
               title={b.label}
             >
-              {b.label.slice(0, 6)}
+              {b.label.slice(解题, 6)}
             </span>
           );
         })}
         {overflow > 0 && (
           <span
             className="px-1.5 rounded bg-white/90 text-[10px] border border-gray-300 leading-5"
+            style={{ marginRight: '4px', marginBottom: '4px' }}
             title={`他 ${overflow} 件`}
           >
             +{overflow}
@@ -151,7 +154,21 @@ export default function Calendar({
         tabIndex={0}
         aria-label={`${currentYear}年${currentMonth + 1}月${i}日`}
         aria-pressed={isSel ? "true" : "false"}
-        className={base + " rounded-md active:scale-[0.99]"}
+        className={base + " rounded-md"}
+        style={{
+          WebkitTransition: 'all 0.15s ease',
+          transition: 'all 0.15s ease',
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)'
+        }}
+        onTouchStart={(e) => {
+          e.currentTarget.style.WebkitTransform = 'scale(0.99)';
+          e.currentTarget.style.transform = 'scale(0.99)';
+        }}
+        onTouchEnd={(e) => {
+          e.currentTarget.style.WebkitTransform = 'scale(1)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
         onClick={() => onDateSelect?.(date)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") onDateSelect?.(date);
@@ -202,8 +219,22 @@ export default function Calendar({
       {/* ヘッダー（デカめ・押しやすい） */}
       <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 border-b bg-white sticky top-0 z-10">
         <button
-          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 active:scale-[0.98]"
+          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100"
+          style={{
+            WebkitTransition: 'all 0.15s ease',
+            transition: 'all 0.15s ease',
+            WebkitTransform: 'translateZ(0)',
+            transform: 'translateZ(0)'
+          }}
           onClick={() => onMonthChange?.(-1)}
+          onTouchStart={(e) => {
+            e.currentTarget.style.WebkitTransform = 'scale(0.98) translateZ(0)';
+            e.currentTarget.style.transform = 'scale(0.98) translateZ(0)';
+          }}
+          onTouchEnd={(e) => {
+            e.currentTarget.style.WebkitTransform = 'scale(1) translateZ(0)';
+            e.currentTarget.style.transform = 'scale(1) translateZ(0)';
+          }}
           aria-label="前の月へ"
         >
           <svg className="w-6 h-6 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -216,8 +247,22 @@ export default function Calendar({
         </h2>
 
         <button
-          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 active:scale-[0.98]"
+          className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100"
+          style={{
+            WebkitTransition: 'all 0.15s ease',
+            transition: 'all 0.15s ease',
+            WebkitTransform: 'translateZ(0)',
+            transform: 'translateZ(0)'
+          }}
           onClick={() => onMonthChange?.(1)}
+          onTouchStart={(e) => {
+            e.currentTarget.style.WebkitTransform = 'scale(0.98) translateZ(0)';
+            e.currentTarget.style.transform = 'scale(0.98) translateZ(0)';
+          }}
+          onTouchEnd={(e) => {
+            e.currentTarget.style.WebkitTransform = 'scale(1) translateZ(0)';
+            e.currentTarget.style.transform = 'scale(1) translateZ(0)';
+          }}
           aria-label="次の月へ"
         >
           <svg className="w-6 h-6 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -242,7 +287,16 @@ export default function Calendar({
       </div>
 
       {/* カレンダー本体（タップ幅UP・余白広め） */}
-      <div className="grid grid-cols-7 gap-1 p-1 sm:p-2">{cells}</div>
+      <div className="grid grid-cols-7 p-1 sm:p-2" style={{ 
+        display: 'grid', 
+        WebkitDisplay: 'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        WebkitGridTemplateColumns: 'repeat(7, 1fr)',
+        gap: '4px',
+        WebkitColumnGap: '4px',
+        WebkitRowGap: '4px',
+        padding: '4px'
+      }}>{cells}</div>
     </div>
   );
 }

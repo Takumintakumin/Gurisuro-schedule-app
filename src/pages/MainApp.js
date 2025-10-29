@@ -589,37 +589,60 @@ export default function MainApp() {
       id="main-tab-bar"
       style={{ 
         position: 'fixed',
-        bottom: '0px',
-        left: '0px',
-        right: '0px',
+        bottom: 0,
+        left: 0,
+        right: 0,
         width: '100%',
         minHeight: '64px',
         backgroundColor: '#ffffff',
         borderTop: '2px solid #d1d5db',
         boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        WebkitBoxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
         zIndex: 99999,
         display: 'flex',
+        WebkitDisplay: 'flex',
         alignItems: 'center',
+        WebkitAlignItems: 'center',
         visibility: 'visible',
         opacity: 1,
+        WebkitTransform: 'translateZ(0)',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+        WebkitBackfaceVisibility: 'hidden',
+        backfaceVisibility: 'hidden',
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-        <div style={{ maxWidth: '896px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', width: '100%', height: '100%', minHeight: '64px' }}>
+        <div style={{ 
+          maxWidth: '896px', 
+          margin: '0 auto', 
+          display: 'grid', 
+          WebkitDisplay: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr', 
+          WebkitGridTemplateColumns: '1fr 1fr 1fr',
+          width: '100%', 
+          height: '100%', 
+          minHeight: '64px' 
+        }}>
           <button
             onClick={() => setActiveTab("calendar")}
             style={{
               display: 'flex',
+              WebkitDisplay: 'flex',
               flexDirection: 'column',
+              WebkitFlexDirection: 'column',
               alignItems: 'center',
+              WebkitAlignItems: 'center',
               justifyContent: 'center',
-              gap: '4px',
+              WebkitJustifyContent: 'center',
+              marginBottom: '4px',
               padding: '12px 16px',
               backgroundColor: activeTab === "calendar" ? '#dbeafe' : 'transparent',
               color: activeTab === "calendar" ? '#2563eb' : '#4b5563',
               fontWeight: activeTab === "calendar" ? '600' : '400',
               border: 'none',
               cursor: 'pointer',
+              WebkitTransition: 'all 0.2s',
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
@@ -642,16 +665,21 @@ export default function MainApp() {
             onClick={() => setActiveTab("notifications")}
             style={{
               display: 'flex',
+              WebkitDisplay: 'flex',
               flexDirection: 'column',
+              WebkitFlexDirection: 'column',
               alignItems: 'center',
+              WebkitAlignItems: 'center',
               justifyContent: 'center',
-              gap: '4px',
+              WebkitJustifyContent: 'center',
+              marginBottom: '4px',
               padding: '12px 16px',
               backgroundColor: activeTab === "notifications" ? '#dbeafe' : 'transparent',
               color: activeTab === "notifications" ? '#2563eb' : '#4b5563',
               fontWeight: activeTab === "notifications" ? '600' : '400',
               border: 'none',
               cursor: 'pointer',
+              WebkitTransition: 'all 0.2s',
               transition: 'all 0.2s',
               position: 'relative'
             }}
@@ -694,16 +722,21 @@ export default function MainApp() {
             onClick={() => setActiveTab("mypage")}
             style={{
               display: 'flex',
+              WebkitDisplay: 'flex',
               flexDirection: 'column',
+              WebkitFlexDirection: 'column',
               alignItems: 'center',
+              WebkitAlignItems: 'center',
               justifyContent: 'center',
-              gap: '4px',
+              WebkitJustifyContent: 'center',
+              marginBottom: '4px',
               padding: '12px 16px',
               backgroundColor: activeTab === "mypage" ? '#dbeafe' : 'transparent',
               color: activeTab === "mypage" ? '#2563eb' : '#4b5563',
               fontWeight: activeTab === "mypage" ? '600' : '400',
               border: 'none',
               cursor: 'pointer',
+              WebkitTransition: 'all 0.2s',
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
