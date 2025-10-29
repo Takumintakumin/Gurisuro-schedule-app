@@ -564,19 +564,15 @@ export default async function handler(req, res) {
       const eventId = Number(event_id);
       if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
 
-      // capacity 取得
+      // capacity 取得（定員がnullの場合は1人として扱う）
       const er = await query(
         `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
         [eventId]
       );
       if (!er.rows?.[0]) return res.status(404).json({ error: "イベントが見つかりません" });
-      const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : null;
-      const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : null;
-      
-      // 定員が設定されていない場合はエラー
-      if (capD == null && capA == null) {
-        return res.status(400).json({ error: "定員が設定されていません。運転手または添乗員の定員を設定してください。" });
-      }
+      // 定員がnullの場合は1人（デフォルト）として扱う
+      const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : 1;
+      const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : 1;
 
       // 公平ランキングを取得（v_participationがあれば使用、なければ応募順）
       let r;
