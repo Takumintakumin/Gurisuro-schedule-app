@@ -752,6 +752,59 @@ export default async function handler(req, res) {
       console.log(`[decide_auto] event_id: ${eventId}, capD: ${capD}, capA: ${capA}, driver応募者: ${driverRank.length}, attendant応募者: ${attendantRank.length}, 選出: driver=${pickedDriver.length}, attendant=${pickedAttendant.length}`);
 
       // 自動選出は保存しない（手動確定のみ）。選出結果だけを返す
+      await query(
+        `CREATE TABLE IF NOT EXISTS selections (
+           event_id BIGINT NOT NULL,
+           username TEXT NOT NULL,
+           kind TEXT NOT NULL CHECK (kind IN ('driver','attendant')),
+           decided_at TIMESTAMPTZ DEFAULT now(),
+           PRIMARY KEY (event_id, username, kind)
+         )`
+      );
+      await query(`DELETE FROM selections WHERE event_id = $1`, [eventId]);
+      const values = [];
+      for (const u of pickedDriver) values.push([eventId, u, "driver"]);
+      for (const u of pickedAttendant) values.push([eventId, u, "attendant"]);
+      if (values.length) {
+        const params = values.flatMap((v) => v);
+        const tuples = values.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",");
+        await query(
+          `INSERT INTO selections (event_id, username, kind) VALUES ${tuples}
+           ON CONFLICT (event_id, username, kind) DO NOTHING`,
+          params
+        );
+        
+        // 通知を作成
+        await query(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id BIGSERIAL PRIMARY KEY,
+            username TEXT NOT NULL,
+            event_id BIGINT NOT NULL,
+            kind TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            read_at TIMESTAMPTZ
+          )
+        `);
+        
+        // イベント情報を取得
+        const eventInfo = await query(`SELECT date, label, start_time FROM events WHERE id = $1`, [eventId]);
+        if (eventInfo.rows?.[0]) {
+          const ev = eventInfo.rows[0];
+          const kindLabels = { driver: "運転手", attendant: "添乗員" };
+          for (const u of Array.from(new Set([...pickedDriver, ...pickedAttendant]))) {
+            const userKinds = [];
+            if (pickedDriver.includes(u)) userKinds.push("driver");
+            if (pickedAttendant.includes(u)) userKinds.push("attendant");
+            
+            const message = `${ev.label}（${ev.date} ${ev.start_time}〜）の${userKinds.map(k => kindLabels[k]).join("・")}として確定しました。`;
+            await query(
+              `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+              [u, eventId, userKinds.join(","), message]
+            );
+          }
+        }
+      }
 
       return res.status(200).json({ ok: true, event_id: eventId, driver: pickedDriver, attendant: pickedAttendant });
     }
