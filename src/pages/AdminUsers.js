@@ -40,15 +40,6 @@ export default function AdminUsers() {
   const [newRole, setNewRole] = useState("user");
   const [newFam, setNewFam] = useState("unknown");
 
-  useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin") {
-      alert("管理者のみアクセス可能です。");
-      nav("/");
-      return;
-    }
-    refresh();
-  }, [nav]);
 
   const refresh = async () => {
     setLoading(true);
@@ -124,18 +115,49 @@ export default function AdminUsers() {
     }
   };
 
+  // 通知を取得
+  const [notifications, setNotifications] = useState([]);
+  
+  useEffect(() => {
+    const role = localStorage.getItem("userRole");
+    if (role !== "admin") {
+      alert("管理者のみアクセス可能です。");
+      nav("/");
+      return;
+    }
+    refresh();
+    // 通知を取得
+    (async () => {
+      try {
+        const notifs = await apiFetch("/api?path=notifications");
+        if (notifs.ok && Array.isArray(notifs.data)) {
+          setNotifications(notifs.data);
+        }
+      } catch {}
+    })();
+  }, [nav]);
+
+  // 通知の未読数
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.read_at).length;
+  }, [notifications]);
+
   if (loading) return <div className="p-6">読み込み中…</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+    <>
+    <div 
+      className="min-h-screen bg-gray-50 p-4 sm:p-6"
+      style={{ 
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
+        marginBottom: 0
+      }}
+    >
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">👥 ユーザー管理</h1>
           <div className="flex gap-3">
-            <button onClick={() => nav("/admin/dashboard")} className="text-gray-600 underline">
-              カレンダーへ戻る
-            </button>
             <button onClick={() => nav("/")} className="text-gray-600 underline">
               一般ログインへ
             </button>
@@ -271,5 +293,150 @@ export default function AdminUsers() {
         </form>
       </div>
     </div>
+    
+    {/* 固定タブバー */}
+    <div 
+      id="admin-users-tab-bar"
+      style={{ 
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        width: '100%',
+        minHeight: '64px',
+        backgroundColor: '#ffffff',
+        borderTop: '2px solid #d1d5db',
+        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        WebkitBoxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        zIndex: 99999,
+        display: 'flex',
+        WebkitDisplay: 'flex',
+        alignItems: 'center',
+        WebkitAlignItems: 'center',
+        visibility: 'visible',
+        opacity: 1,
+        WebkitTransform: 'translateZ(0)',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
+        WebkitBackfaceVisibility: 'hidden',
+        backfaceVisibility: 'hidden',
+        paddingBottom: 'env(safe-area-inset-bottom)'
+      }}
+    >
+      <div style={{ 
+        maxWidth: '896px', 
+        margin: '0 auto', 
+        display: 'grid', 
+        WebkitDisplay: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr', 
+        WebkitGridTemplateColumns: '1fr 1fr 1fr',
+        width: '100%', 
+        height: '100%', 
+        minHeight: '64px' 
+      }}>
+        <button
+          onClick={() => nav("/admin/dashboard")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            color: '#4b5563',
+            fontWeight: '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
+        </button>
+        <button
+          onClick={() => nav("/admin/dashboard")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            color: '#4b5563',
+            fontWeight: '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s',
+            position: 'relative'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>通知</span>
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '4px',
+              right: '8px',
+              backgroundColor: '#ef4444',
+              color: '#ffffff',
+              fontSize: '10px',
+              borderRadius: '10px',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '600'
+            }}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => nav("/admin/users")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: '#dbeafe',
+            color: '#2563eb',
+            fontWeight: '600',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>ユーザー管理</span>
+        </button>
+      </div>
+    </div>
+    </>
   );
 }
