@@ -70,6 +70,7 @@ export default function AdminDashboard() {
   const [fairLoading, setFairLoading] = useState(false);
   const [fairError, setFairError] = useState("");
   const [fairData, setFairData] = useState({ event_id: null, driver: [], attendant: [] });
+  const [fairEventInfo, setFairEventInfo] = useState(null); // 応募状況モーダル用のイベント情報
   const [selDriver, setSelDriver] = useState([]); // 選択中（まだ保存されていない）
   const [selAttendant, setSelAttendant] = useState([]); // 選択中（まだ保存されていない）
   const [confirmedDriver, setConfirmedDriver] = useState([]); // 確定済み（DBに保存済み）
@@ -319,6 +320,22 @@ export default function AdminDashboard() {
     setSelAttendant([]);
     setConfirmedDriver([]);
     setConfirmedAttendant([]);
+    
+    // イベント情報を取得（曜日とイベント名表示用）
+    const eventInfo = events.find(e => e.id === eventId);
+    if (eventInfo) {
+      const eventDate = new Date(eventInfo.date);
+      const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+      const dayName = dayNames[eventDate.getDay()];
+      setFairEventInfo({
+        date: eventInfo.date,
+        dayName: dayName,
+        label: eventInfo.label || 'イベント'
+      });
+    } else {
+      setFairEventInfo(null);
+    }
+    
     await refreshUsers();
 
     // 1) 正規ルート
@@ -641,7 +658,9 @@ export default function AdminDashboard() {
           <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
             <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold">応募状況（イベントID: {fairData.event_id}）</h3>
+                <h3 className="font-bold">
+                  応募状況{fairEventInfo ? `（${fairEventInfo.date} ${fairEventInfo.dayName} ${fairEventInfo.label}）` : `（イベントID: ${fairData.event_id}）`}
+                </h3>
                 <button onClick={() => setFairOpen(false)} className="text-gray-500">✕</button>
               </div>
 

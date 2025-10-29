@@ -136,17 +136,54 @@ export default function Calendar({
     const daysDiff = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
     const isWithinOneWeek = daysDiff >= 0 && daysDiff <= 7;
     
-    // イベントがあるが未確定の場合、1週間前以内なら赤色
-    const hasEventButNotDecided = dayEvents.length > 0 && !isDecided;
+    // 管理者用: 運転手と添乗員が確定済みか、定員不足かチェック
+    let allConfirmed = false; // 運転手と添乗員が確定済み
+    let insufficientCapacity = false; // 1週間以内で定員不足
+    if (decidedMembers && dayEvents.length > 0) {
+      // 1週間以内の場合のみ定員不足をチェック
+      if (isWithinOneWeek) {
+        // 各イベントの定員と確定済み人数をチェック
+        for (const ev of dayEvents) {
+          const capacityDriver = ev.capacity_driver ?? 1; // デフォルト1
+          const capacityAttendant = ev.capacity_attendant ?? 1; // デフォルト1
+          const confirmedDriverCount = decidedMembers.driver?.length || 0;
+          const confirmedAttendantCount = decidedMembers.attendant?.length || 0;
+          
+          // 定員に満たない場合
+          if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
+            insufficientCapacity = true;
+            break;
+          }
+        }
+      }
+      
+      // すべてのイベントで運転手と添乗員が定員分確定済みかチェック
+      if (!insufficientCapacity && dayEvents.length > 0) {
+        allConfirmed = true;
+        for (const ev of dayEvents) {
+          const capacityDriver = ev.capacity_driver ?? 1;
+          const capacityAttendant = ev.capacity_attendant ?? 1;
+          const confirmedDriverCount = decidedMembers.driver?.length || 0;
+          const confirmedAttendantCount = decidedMembers.attendant?.length || 0;
+          if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
+            allConfirmed = false;
+            break;
+          }
+        }
+      }
+    } else if (isDecided && dayEvents.length > 0) {
+      // 1週間より前のイベントでも、確定済みフラグがあればすべて確定済みと見なす
+      allConfirmed = true;
+    }
 
-    // 背景色（優先度：キャンセル>1週間前以内で未確定=赤>確定済み=緑>その他）
+    // 背景色（優先度：キャンセル>1週間以内で定員不足=赤>確定済み=緑>その他）
     let base =
       "relative border border-gray-200 cursor-pointer select-none transition-colors duration-150 min-h-[64px] sm:min-h-[74px] p-2";
     if (isCancelled)
       base += " bg-red-200 hover:bg-red-300 border-red-400";
-    else if (hasEventButNotDecided && isWithinOneWeek)
+    else if (insufficientCapacity)
       base += " bg-red-100 hover:bg-red-200 border-red-300";
-    else if (isDecided)
+    else if (allConfirmed || isDecided)
       base += " bg-green-100 hover:bg-green-200 border-green-300";
     else if (dayEvents.length > 0 || hasTags)
       base += " bg-orange-50 hover:bg-orange-100";
