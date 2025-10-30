@@ -242,28 +242,33 @@ export default function AdminDashboard() {
           {sortedEvents.map(ev => {
             const dec = decidedMembersByEventId[ev.id] || { driver: [], attendant: [] };
             return (
-              <li key={ev.id} className="border rounded p-3 bg-white flex items-center gap-3">
-                {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{ev.label}</div>
-                  <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    応募 運転手: {dec.driver.length}人 / 添乗員: {dec.attendant.length}人
+              <li key={ev.id} className="border rounded-lg p-3 bg-white">
+                <div className="flex items-center gap-3">
+                  {ev.icon ? (
+                    <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
+                  ) : (
+                    <div className="w-10 h-10 rounded bg-gray-100" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[15px] truncate">{ev.label}</div>
+                    <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
+                    <div className="text-xs text-gray-500 mt-1">運転手: {dec.driver.length}人 / 添乗員: {dec.attendant.length}人</div>
                   </div>
-                  {/* 応募者+確定者リスト simple */}
-                  <div className="mt-1 text-[13px]">
-                    <span className="font-bold text-blue-700">運転手:</span> {dec.driver.join(', ') || 'なし'}
-                  </div>
-                  <div className="text-[13px]">
-                    <span className="font-bold text-green-700">添乗員:</span> {dec.attendant.join(', ') || 'なし'}
+                  <div className="flex flex-col gap-2 ml-2">
+                    <button
+                      className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"
+                      onClick={() => openFairness(ev.id)}
+                    >
+                      応募状況
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm"
+                      onClick={() => handleEdit(ev)}
+                    >
+                      編集
+                    </button>
                   </div>
                 </div>
-                <button
-                  className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
-                  onClick={() => openFairness(ev.id)}
-                >
-                  詳細
-                </button>
               </li>
             );
           })}
