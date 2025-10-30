@@ -31,6 +31,7 @@ const FIXED_EVENTS = [
 export default function AdminDashboard() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
+  const [userName, setUserName] = useState("");
 
   // タブ管理（URLパラメータから取得、デフォルトはcalendar）
   const [activeTab, setActiveTab] = useState(() => {
@@ -103,6 +104,19 @@ export default function AdminDashboard() {
       nav("/");
       return;
     }
+    // 表示用: 現在のログインユーザー名
+    const storedName = localStorage.getItem("userName");
+    if (storedName) setUserName(storedName);
+    // 念のためサーバで確認
+    (async () => {
+      try {
+        const r = await apiFetch("/api?path=me");
+        if (r.ok && r.data?.username) {
+          setUserName(r.data.username);
+          if (!storedName) localStorage.setItem("userName", r.data.username);
+        }
+      } catch {}
+    })();
     refresh();
   }, [nav]);
 
@@ -563,7 +577,10 @@ export default function AdminDashboard() {
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold">🗓 管理者ダッシュボード</h1>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3 text-sm">
+            {userName && (
+              <span className="text-gray-600">ログイン中: <span className="font-semibold">{userName}</span></span>
+            )}
             <button
               onClick={() => {
                 localStorage.clear();
