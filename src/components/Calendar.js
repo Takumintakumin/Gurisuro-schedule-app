@@ -237,7 +237,7 @@ export default function Calendar({
     // 4. イベントあり（オレンジ）
     // 注意: キャンセルがあっても定員が埋まった（allConfirmed）場合は緑色を優先
     let base =
-      "relative border cursor-pointer select-none transition-all duration-200 min-h-[72px] sm:min-h-[80px] p-2.5 rounded-lg shadow-sm";
+      "relative border cursor-pointer select-none transition-all duration-200 min-h-[80px] sm:min-h-[88px] p-2.5 rounded-lg shadow-sm";
     if (allConfirmed || isDecided) {
       // 確定済みまたは定員が埋まった場合は鮮やかなグリーン
       base += " bg-emerald-500 hover:bg-emerald-600 border-emerald-600 text-white shadow-md";
@@ -297,14 +297,24 @@ export default function Calendar({
       >
         {/* 上段：日付 */}
         <div className="flex items-start justify-between mb-1">
-          <span className={`text-[16px] sm:text-[17px] font-bold ${dayColor}`}>
+          <span className={`text-[17px] sm:text-[18px] font-extrabold ${dayColor}`}>
             {i}
           </span>
           {/* 今日バッジは非表示にする */}
         </div>
 
-        {/* バッジ（イベントアイコン/タグ） */}
-        {(dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)}
+        {/* 単一イベントの日は簡易サマリ（時間 + 短縮ラベル）を表示して視認性UP */}
+        {isCompact && dayEvents.length === 1 ? (
+          <div className="mt-1.5 text-[10px] leading-snug text-gray-700 bg-white/80 border border-gray-200 rounded px-1.5 py-0.5 inline-block max-w-full" style={{ maxWidth: '100%' }} title={`${dayEvents[0].label || ''}${dayEvents[0].start_time ? ` ${dayEvents[0].start_time}` : ''}${dayEvents[0].end_time ? `-${dayEvents[0].end_time}` : ''}`}>
+            <span className="font-semibold mr-1">{dayEvents[0].start_time}{dayEvents[0].end_time ? `-${dayEvents[0].end_time}` : ''}</span>
+            <span style={{ display: 'inline-block', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {(dayEvents[0].label || '').replace(/^フリー運行.*/, 'フリー')}
+            </span>
+          </div>
+        ) : (
+          // バッジ（イベントアイコン/タグ）
+          (dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)
+        )}
       </div>
     );
   };
