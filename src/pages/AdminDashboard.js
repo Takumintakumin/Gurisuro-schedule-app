@@ -262,10 +262,28 @@ export default function AdminDashboard() {
                   {/* サマリラベル（仮置き、確定時は緑帯・要確定/キャンセル等は黄色） */}
                   <div className={`inline-block mt-1 px-2 py-0.5 rounded border text-xs font-bold ${statusColor}`}>{statusLabel}</div>
                 </div>
-                <div className="flex flex-col gap-2 ml-2">
-                  <button className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm" onClick={() => openFairness(ev.id)}>応募状況</button>
-                  <button className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm" onClick={() => handleEdit(ev)}>編集</button>
-                  <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
+              <div className="flex flex-col gap-2 ml-2">
+                <button
+                  className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"
+                  onClick={() => {
+                    setActiveTab("calendar");
+                    nav("/admin/dashboard?tab=calendar", { replace: true });
+                    setTimeout(() => openFairness(ev.id), 0);
+                  }}
+                >
+                  応募状況
+                </button>
+                <button
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm"
+                  onClick={() => {
+                    setActiveTab("calendar");
+                    nav("/admin/dashboard?tab=calendar", { replace: true });
+                    setTimeout(() => handleEdit(ev), 0);
+                  }}
+                >
+                  編集
+                </button>
+                <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
                 </div>
               </div>
             </li>
@@ -1174,8 +1192,8 @@ export default function AdminDashboard() {
         margin: '0 auto', 
         display: 'grid', 
         WebkitDisplay: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr', 
-        WebkitGridTemplateColumns: '1fr 1fr 1fr',
+        gridTemplateColumns: 'repeat(4, 1fr)', 
+        WebkitGridTemplateColumns: 'repeat(4, 1fr)',
         width: '100%', 
         height: '100%', 
         minHeight: '64px' 
