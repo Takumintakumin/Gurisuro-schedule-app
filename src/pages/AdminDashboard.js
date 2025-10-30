@@ -301,9 +301,9 @@ export default function AdminDashboard() {
   const renderApplyTab = () => {
     if (applyLoading) return <div className="p-6">読み込み中…</div>;
     if (applyError) return <div className="text-red-600 p-4">{applyError}</div>;
-    let filtered = applyEvents.filter(ev => ev.date);
-    if (showOnlyMine) filtered = filtered.filter(ev => myApplyEventIds.has(ev.id));
-    // 日付昇順
+    // 注: 応募ユーザー絞り込み機能OFF。本番は管理者なので全イベント強制
+    let filtered = applyEvents.filter(ev => ev.date); // dateがあるもののみ（念のため）
+    // 必ず日付昇順
     filtered.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
 
     // 14日ごとの区切り
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
     let periodStart = pageEvents[0]?.date;
     let periodEnd = pageEvents[pageEvents.length - 1]?.date;
 
-    // 月別モーダル表示用
+    // 月別モーダル
     let monthEvents = [];
     if (showMonthModal && modalMonth) {
       monthEvents = filtered.filter(ev => ev.date && ev.date.startsWith(modalMonth));
@@ -329,20 +329,15 @@ export default function AdminDashboard() {
     return (
       <div>
         <h2 className="font-semibold mb-4">イベント一覧</h2>
-        <div className="mb-2">
-          <button onClick={() => setShowOnlyMine(false)} style={{ fontWeight: !showOnlyMine ? 'bold' : 'normal' }}>すべて</button>
-          {' / '}
-          <button onClick={() => setShowOnlyMine(true)} style={{ fontWeight: showOnlyMine ? 'bold' : 'normal' }}>自分が応募したイベント</button>
-        </div>
         <div className="flex items-center gap-4 mb-2">
-          <button 
-            disabled={nowPage <= 0} 
+          <button
+            disabled={nowPage <= 0}
             onClick={() => setEventPage(p => Math.max(0, p - 1))}
             className={`px-3 py-1 rounded ${nowPage <= 0 ? 'bg-gray-200 text-gray-400' : 'bg-gray-600 text-white'}`}
           >← 前へ</button>
           <span className="text-sm">{periodStart || '---'} ～ {periodEnd || '---'} （{nowPage + 1} / {totalPages}ページ）</span>
-          <button 
-            disabled={nowPage >= totalPages - 1} 
+          <button
+            disabled={nowPage >= totalPages - 1}
             onClick={() => setEventPage(p => Math.min(totalPages - 1, p + 1))}
             className={`px-3 py-1 rounded ${nowPage >= totalPages - 1 ? 'bg-gray-200 text-gray-400' : 'bg-gray-600 text-white'}`}
           >次へ →</button>
@@ -357,9 +352,8 @@ export default function AdminDashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{ev.label}</div>
                   <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                  {myApplyEventIds.has(ev.id) && <span className="text-emerald-600 font-bold ml-2">応募済み</span>}
                 </div>
-                <button 
+                <button
                   className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
                   onClick={() => { setShowMonthModal(true); setModalMonth(ym); }}
                 >詳細（月一覧）</button>
