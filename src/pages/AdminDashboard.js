@@ -228,13 +228,13 @@ export default function AdminDashboard() {
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
   const renderApplyTab = () => {
-    // 今日以降＋登録済みイベントのみ
+    // 全イベント（過去含む）を日付→開始時刻で昇順ソート
     const sortedEvents = [...events]
-      .filter(ev => ev.date && ev.date >= todayYMD)
+      .filter(ev => ev.date)
       .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
     return (
       <div>
-        <h2 className="font-semibold mb-4">今後の登録イベント・応募状況</h2>
+        <h2 className="font-semibold mb-4">登録イベント一覧</h2>
         <ul className="space-y-2">
           {sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
@@ -1219,7 +1219,7 @@ export default function AdminDashboard() {
           <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>応募状況</span>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>イベント一覧</span>
         </button>
         <button
           onClick={() => {
