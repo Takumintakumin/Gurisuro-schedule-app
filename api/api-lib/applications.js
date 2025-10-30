@@ -75,6 +75,39 @@ export default async function handler(req, res) {
       if (!event_id || !username || !kind) {
         return res.status(400).json({ error: "event_id, username, kind は必須です" });
       }
+      // 同一ユーザーが同じ時間帯に重複応募できないようにサーバー側でブロック
+      // 対象イベントの日時を取得
+      const evRes = await query(
+        `SELECT date, start_time, end_time FROM events WHERE id = $1`,
+        [event_id]
+      );
+      const target = evRes.rows?.[0] || null;
+      if (target && target.date && target.start_time) {
+        // 同日の既存応募のうち、時間が重なるものを検出
+        // 文字列の HH:MM 同士の比較で重なりを判定
+        const overlapRes = await query(
+          `SELECT 1
+             FROM applications a
+             JOIN events e ON e.id = a.event_id
+            WHERE a.username = $1
+              AND e.date = $2
+              AND (
+                    -- 開始時刻が同一
+                    (e.start_time = $3)
+                 OR (
+                      -- 両方とも終了時刻が存在し、時間帯が重複
+                      e.start_time IS NOT NULL AND e.end_time IS NOT NULL
+                  AND $3 IS NOT NULL AND $4 IS NOT NULL
+                  AND NOT (e.end_time <= $3 OR $4 <= e.start_time)
+                 )
+              )
+            LIMIT 1`,
+          [username, target.date, target.start_time, target.end_time || target.start_time]
+        );
+        if (overlapRes.rows && overlapRes.rows.length > 0) {
+          return res.status(400).json({ error: "同じ時間帯に重複して応募することはできません" });
+        }
+      }
       await query(
         `INSERT INTO applications (event_id, username, kind)
          VALUES ($1,$2,$3)

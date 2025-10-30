@@ -372,6 +372,33 @@ export default function MainApp() {
       alert(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`);
       return;
     }
+
+    // 同じ時間帯への重複応募をクライアント側でもガード（サーバー側もチェック済み）
+    const targetDate = ev.date;
+    const targetStart = ev.start_time;
+    const targetEnd = ev.end_time || ev.start_time;
+    const eventsMapById = Object.fromEntries(events.map(e => [e.id, e]));
+    const overlapsTime = (a, b) => {
+      if (!a || !b) return false;
+      if (!a.start_time || !b.start_time) return false;
+      const aStart = a.start_time;
+      const aEnd = a.end_time || a.start_time;
+      const bStart = b.start_time;
+      const bEnd = b.end_time || b.start_time;
+      // 文字列の HH:MM 比較で重なり判定
+      if (aStart === bStart) return true;
+      return !(aEnd <= bStart || bEnd <= aStart);
+    };
+    const hasTimeConflict = myApps.some(a => {
+      const ev2 = eventsMapById[a.event_id];
+      if (!ev2) return false;
+      if (ev2.date !== targetDate) return false;
+      return overlapsTime(ev2, { start_time: targetStart, end_time: targetEnd });
+    });
+    if (hasTimeConflict) {
+      alert("同じ時間帯に既に応募済みです。別の時間帯を選択してください。");
+      return;
+    }
     
     setApplying(true);
     try {
@@ -695,6 +722,26 @@ export default function MainApp() {
                     // 同じイベントで既に別の役割に応募しているかチェック
                     const hasAppliedOtherKindDriver = appliedAtt; // 添乗員に応募している場合、運転手は無効
                     const hasAppliedOtherKindAttendant = appliedDriver; // 運転手に応募している場合、添乗員は無効
+                  
+                  // 同日の他イベントと時間帯が重なる応募が既にあるか（UI 無効化用）
+                  const eventsMapById = Object.fromEntries(events.map(e => [e.id, e]));
+                  const overlapsTime = (a, b) => {
+                    if (!a || !b) return false;
+                    if (!a.start_time || !b.start_time) return false;
+                    const aStart = a.start_time;
+                    const aEnd = a.end_time || a.start_time;
+                    const bStart = b.start_time;
+                    const bEnd = b.end_time || b.start_time;
+                    if (aStart === bStart) return true;
+                    return !(aEnd <= bStart || bEnd <= aStart);
+                  };
+                  const hasAnyTimeConflict = myApps.some(a => {
+                    const ev2 = eventsMapById[a.event_id];
+                    if (!ev2) return false;
+                    if (ev2.id === ev.id) return false;
+                    if (ev2.date !== ev.date) return false;
+                    return overlapsTime(ev2, ev);
+                  });
                     
                     const hasDecidedDriver = dec.driver.length > 0;
                     const hasDecidedAttendant = dec.attendant.length > 0;
@@ -756,9 +803,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver}
+                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver || hasAnyTimeConflict}
                                 onClick={() => apply(ev, "driver")}
-                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : ""}
+                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
                               >
                                 運転手で応募
                               </button>
@@ -784,9 +831,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
-                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant}
+                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant || hasAnyTimeConflict}
                                 onClick={() => apply(ev, "attendant")}
-                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : ""}
+                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
                               >
                                 添乗員で応募
                               </button>

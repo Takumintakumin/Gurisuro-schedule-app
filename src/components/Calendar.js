@@ -376,7 +376,7 @@ export default function Calendar({
       </div>
 
       {/* 曜日行（固定＆大きめ） */}
-      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10">
+      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10 px-3 sm:px-4">
         {["日","月","火","水","木","金","土"].map((d, idx) => (
           <div
             key={d}
@@ -391,7 +391,7 @@ export default function Calendar({
       </div>
 
       {/* カレンダー本体（タップ幅UP・余白広め） */}
-      <div className="grid grid-cols-7 p-2 sm:p-3 bg-white" style={{ 
+      <div className="grid grid-cols-7 bg-white px-3 sm:px-4 py-2 sm:py-3" style={{ 
         display: 'grid', 
         WebkitDisplay: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
