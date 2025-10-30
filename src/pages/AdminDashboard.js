@@ -173,52 +173,50 @@ export default function AdminDashboard() {
   const refresh = async () => {
     setLoading(true);
     try {
+      // 1) まずイベントだけ取得して即描画
       const r = await apiFetch("/api/events");
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
+      setLoading(false); // ここで即座にローディング解除
 
-      // 確定済み情報の大量リクエストはSafariでAccess Controlに引っかかるため省略
-      // 確定状況は必要時（応募状況モーダルを開いたとき）だけ取得する
+      // 2) 以降はバックグラウンド更新（描画はブロックしない）
+      // 確定済み情報の大量リクエストは省略（必要時にモーダルで取得）
       setDecidedDates(new Set());
       setDecidedMembersByDate({});
       setDecidedMembersByEventId({});
 
-      // キャンセルされた日付と定員不足の日付を取得（通知から）
-      try {
-        const cancelNotifs = await apiFetch("/api?path=notifications");
-        if (cancelNotifs.ok && Array.isArray(cancelNotifs.data)) {
-          const cancelDateSet = new Set();
-          for (const notif of cancelNotifs.data) {
-            // キャンセル通知、繰り上げ通知、定員不足通知を取得
-            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
-              // 通知メッセージからイベント日付を抽出するか、イベントIDから取得
-              try {
-                const evDetail = evs.find(e => e.id === notif.event_id);
-                if (evDetail && evDetail.date) {
-                  cancelDateSet.add(evDetail.date);
-                }
-              } catch {}
+      // キャンセル・繰上げ・定員不足の検知は通知から集計（非同期）
+      (async () => {
+        try {
+          const cancelNotifs = await apiFetch("/api?path=notifications");
+          if (cancelNotifs.ok && Array.isArray(cancelNotifs.data)) {
+            const cancelDateSet = new Set();
+            for (const notif of cancelNotifs.data) {
+              if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
+                try {
+                  const evDetail = evs.find(e => e.id === notif.event_id);
+                  if (evDetail && evDetail.date) cancelDateSet.add(evDetail.date);
+                } catch {}
+              }
             }
+            setCancelledDates(cancelDateSet);
           }
-          setCancelledDates(cancelDateSet);
-        }
-      } catch {}
+        } catch {}
+      })();
 
-      // デバッグログ（開発時のみ）
+      // 通知一覧も非同期で更新
+      (async () => {
+        try {
+          const notifs = await apiFetch("/api?path=notifications");
+          if (notifs.ok && Array.isArray(notifs.data)) setNotifications(notifs.data);
+        } catch {}
+      })();
+
       if (process.env.NODE_ENV !== 'production') {
         console.log('[AdminDashboard] events loaded:', evs.length);
       }
-
-      // 通知を取得
-      try {
-        const notifs = await apiFetch("/api?path=notifications");
-        if (notifs.ok && Array.isArray(notifs.data)) {
-          setNotifications(notifs.data);
-        }
-      } catch {}
     } catch (e) {
       console.error("fetch events error:", e);
-    } finally {
       setLoading(false);
     }
   };
@@ -243,26 +241,36 @@ export default function AdminDashboard() {
           {!loading && sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
-        {sortedEvents.map((ev) => (
-          <li key={ev.id} className="border rounded-lg p-3 bg-white">
-            <div className="flex items-center gap-3">
-              {ev.icon ? (
-                <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
-              ) : (
-                <div className="w-10 h-10 rounded bg-gray-100" />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
-                <div className="text-xs text-gray-600 truncate">{ev.date || '-'} {ev.start_time || ''}〜{ev.end_time || ''}</div>
+        {sortedEvents.map((ev) => {
+          // サマリー用: 管理者一覧では即時に確定情報は取得しないためサマリ表現は簡易
+          const statusLabel = (ev.status === '要確定' ? '要確定' : '確定済み');
+          const statusColor = (ev.status === '要確定' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' : 'bg-green-50 text-green-700 border-green-200');
+          // UI例: 運転手 x 名/添乗員 y 名は ev には未集計のため、“応募状況”押下で詳細確認できる。
+          return (
+            <li key={ev.id} className="border rounded-lg p-3 bg-white">
+              <div className="flex items-center gap-3">
+                {ev.icon ? (
+                  <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
+                ) : (
+                  <div className="w-10 h-10 rounded bg-gray-100" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex gap-2 items-center">
+                    <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
+                  </div>
+                  <div className="text-xs text-gray-600 truncate">{ev.date || '-'} {ev.start_time || ''}〜{ev.end_time || ''}</div>
+                  {/* サマリラベル（仮置き、確定時は緑帯・要確定/キャンセル等は黄色） */}
+                  <div className={`inline-block mt-1 px-2 py-0.5 rounded border text-xs font-bold ${statusColor}`}>{statusLabel}</div>
+                </div>
+                <div className="flex flex-col gap-2 ml-2">
+                  <button className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm" onClick={() => openFairness(ev.id)}>応募状況</button>
+                  <button className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm" onClick={() => handleEdit(ev)}>編集</button>
+                  <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
+                </div>
               </div>
-              <div className="flex flex-col gap-2 ml-2">
-                <button className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm" onClick={() => openFairness(ev.id)}>応募状況</button>
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm" onClick={() => handleEdit(ev)}>編集</button>
-                <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
-              </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
         </ul>
       </div>
     );
