@@ -541,7 +541,31 @@ export default function AdminDashboard() {
     </div>
   );
 
+  // ログアウトハンドラ修正
+  const handleLogout = () => {
+    if (!window.confirm("ログアウトしますか？")) return;
+    fetch("/api?path=logout", { method: "POST", credentials: "include" }).catch(() => {});
+    localStorage.clear();
+    setTimeout(() => {
+      window.location.replace("/admin/login");
+      window.location.reload();
+    }, 0);
+  };
 
+  // 通知取得：初回＆タブ変化時のみ
+  useEffect(() => {
+    if (activeTab === "notifications") {
+      (async () => {
+        const notifs = await apiFetch("/api?path=notifications");
+        if (notifs.ok && Array.isArray(notifs.data)) {
+          setNotifications(notifs.data);
+        }
+      })();
+    }
+    // eslint-disable-next-line
+  }, [activeTab]);
+
+  // 読み込みフラグとAPI呼び出し位置を整理, 必ず何か表示
   if (loading) return <div className="p-6">読み込み中…</div>;
 
   return (
@@ -560,10 +584,7 @@ export default function AdminDashboard() {
           <h1 className="text-xl font-bold">🗓 管理者ダッシュボード</h1>
           <div className="flex gap-3">
             <button
-              onClick={() => {
-                localStorage.clear();
-                nav("/");
-              }}
+              onClick={handleLogout}
               className="text-gray-600 underline"
             >
               ログアウト
