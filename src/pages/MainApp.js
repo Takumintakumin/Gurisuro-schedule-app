@@ -54,7 +54,7 @@ export default function MainApp() {
   const [events, setEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [applying, setApplying] = useState(false);
-  const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "notifications" | "mypage"
+  const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "apply" | "notifications" | "mypage"
   const [myApps, setMyApps] = useState([]); // 自分の応募
   const [notifications, setNotifications] = useState([]); // 通知一覧
   const [applicationHistory, setApplicationHistory] = useState([]); // 応募履歴（イベント情報込み）
@@ -717,6 +717,56 @@ export default function MainApp() {
     </div>
   );
 
+  // --- 応募状況リスト ---
+  const renderApplyTab = () => {
+    // 応募可能なイベントを日付昇順にリスト
+    const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
+    return (
+      <div>
+        <h2 className="font-semibold mb-4">今後のイベント一覧（募集中）</h2>
+        <ul className="space-y-2">
+          {sortedEvents.length === 0 && (
+            <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
+          )}
+          {sortedEvents.map(ev => {
+            const appliedDriver = hasApplied(ev.id, "driver");
+            const appliedAtt    = hasApplied(ev.id, "attendant");
+            const c = counts?.[ev.id] || { driver: 0, attendant: 0 };
+            const dec = decided?.[ev.id] || { driver: [], attendant: [] };
+            return (
+              <li key={ev.id} className="border rounded p-3 bg-white flex items-center gap-3">
+                {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{ev.label}</div>
+                  <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    運転手: {c.driver}人 / 添乗員: {c.attendant}人
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 items-end text-xs">
+                  <button
+                    className={appliedDriver ? "bg-gray-300 text-gray-700 px-2 py-1 rounded" : "bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"}
+                    disabled={applying}
+                    onClick={() => appliedDriver ? cancel(ev, "driver") : apply(ev, "driver")}
+                  >
+                    {appliedDriver ? "運転手 応募取消" : "運転手で応募"}
+                  </button>
+                  <button
+                    className={appliedAtt ? "bg-gray-300 text-gray-700 px-2 py-1 rounded" : "bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700"}
+                    disabled={applying}
+                    onClick={() => appliedAtt ? cancel(ev, "attendant") : apply(ev, "attendant")}
+                  >
+                    {appliedAtt ? "添乗員 応募取消" : "添乗員で応募"}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  };
+
   return (
     <>
     <div 
@@ -908,6 +958,7 @@ export default function MainApp() {
             </div>
           </>
         )}
+        {activeTab === "apply" && renderApplyTab()}
         {activeTab === "notifications" && renderNotificationsTab()}
         {activeTab === "mypage" && renderMypageTab()}
       </div>
@@ -947,7 +998,7 @@ export default function MainApp() {
           margin: '0 auto', 
           display: 'grid', 
           WebkitDisplay: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr', 
+          gridTemplateColumns: '1fr 1fr 1fr 1fr', 
           WebkitGridTemplateColumns: '1fr 1fr 1fr',
           width: '100%', 
           height: '100%', 
@@ -989,6 +1040,28 @@ export default function MainApp() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("apply")}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '4px',
+              padding: '12px 16px',
+              backgroundColor: activeTab === "apply" ? '#dbeafe' : 'transparent',
+              color: activeTab === "apply" ? '#2563eb' : '#4b5563',
+              fontWeight: activeTab === "apply" ? '600' : '400',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>応募状況</span>
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
