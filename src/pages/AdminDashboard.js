@@ -241,6 +241,7 @@ export default function AdminDashboard() {
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
   const renderApplyTab = () => {
+    if (loading) return <div className="p-6">読み込み中...</div>;
     if (applyTabError) return <div className="text-red-600 p-4">{applyTabError} <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={refresh}>再取得</button></div>;
     // 今日以降＋登録済みイベントのみ
     const sortedEvents = [...events]
@@ -564,7 +565,8 @@ export default function AdminDashboard() {
   };
 
 
-  if (loading) return <div className="p-6">読み込み中…</div>;
+  // カレンダータブがactiveの時だけグローバルloadingとする
+  if (activeTab === "calendar" && loading) return <div className="p-6">読み込み中…</div>;
 
   return (
     <>
