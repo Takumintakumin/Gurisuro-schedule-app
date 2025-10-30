@@ -4,12 +4,14 @@ import crypto from "crypto";
 
 // ===== CORS 共通ヘッダ =====
 function withCORS(req, res) {
-  const origin = req.headers.origin || "*";
-  res.setHeader("Access-Control-Allow-Origin", origin);
+  // 本番URLを明示指定
+  res.setHeader("Access-Control-Allow-Origin", "https://gurisuro-schedule-app.vercel.app");
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, OPTIONS");
+  // 認証付きfetchでcookie/認証情報を許可
   res.setHeader("Access-Control-Allow-Credentials", "true");
+  // 必要なヘッダーは網羅
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie, X-Requested-With");
 }
 
 // ===== Cookie ユーティリティ =====
