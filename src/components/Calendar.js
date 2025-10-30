@@ -240,9 +240,6 @@ export default function Calendar({
 
     // 選択中はリング・今日アウトライン（より目立つように）
     if (isSel) base += " ring-3 ring-emerald-400 ring-offset-2 shadow-lg transform scale-105";
-    if (isToday(date) && !isSel) {
-      base += " ring-2 ring-emerald-300 ring-offset-1";
-    }
 
     // 土日色（確定済みの場合は白色テキスト）
     const wd = date.getDay();
@@ -286,15 +283,7 @@ export default function Calendar({
           <span className={`text-[16px] sm:text-[17px] font-bold ${dayColor}`}>
             {i}
           </span>
-          {isTodayDate && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              isConfirmedDay 
-                ? "bg-white/30 text-white" 
-                : "bg-emerald-500 text-white"
-            }`}>
-              今日
-            </span>
-          )}
+          {/* 今日バッジは非表示にする */}
         </div>
 
         {/* バッジ（イベントアイコン/タグ） */}
@@ -376,7 +365,7 @@ export default function Calendar({
       </div>
 
       {/* 曜日行（固定＆大きめ） */}
-      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10 px-3 sm:px-4">
+      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10 px-3 sm:px-4" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
         {["日","月","火","水","木","金","土"].map((d, idx) => (
           <div
             key={d}
@@ -394,8 +383,8 @@ export default function Calendar({
       <div className="grid grid-cols-7 bg-white px-3 sm:px-4 py-2 sm:py-3" style={{ 
         display: 'grid', 
         WebkitDisplay: 'grid',
-        gridTemplateColumns: 'repeat(7, 1fr)',
-        WebkitGridTemplateColumns: 'repeat(7, 1fr)',
+        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+        WebkitGridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
         gap: '8px',
         WebkitColumnGap: '8px',
         WebkitRowGap: '8px'

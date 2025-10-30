@@ -548,23 +548,23 @@ export default async function handler(req, res) {
         const eventId = Number(event_id);
         if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
 
-        // 定員チェック（存在すれば）
-        let capD = null, capA = null;
+        // 定員チェック（null の場合はデフォルト1人として扱う）
+        let capD = 1, capA = 1;
         try {
           const er = await query(
             `SELECT capacity_driver, capacity_attendant FROM events WHERE id = $1`,
             [eventId]
           );
           if (er.rows?.[0]) {
-            capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : null;
-            capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : null;
+            capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : 1;
+            capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : 1;
           }
         } catch {}
 
-        if (capD != null && driver.length > capD) {
+        if (driver.length > capD) {
           return res.status(400).json({ error: `運転手の選出が定員(${capD})を超えています` });
         }
-        if (capA != null && attendant.length > capA) {
+        if (attendant.length > capA) {
           return res.status(400).json({ error: `添乗員の選出が定員(${capA})を超えています` });
         }
 

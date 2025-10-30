@@ -62,10 +62,17 @@ export default function MainApp() {
   // ---- ログアウト ----
   const handleLogout = () => {
     if (!window.confirm("ログアウトしますか？")) return;
+    // サーバー側のセッションCookieも削除
+    fetch("/api?path=logout", { method: "POST", credentials: "include" }).catch(() => {});
+    // ローカル情報クリア
     localStorage.removeItem("userName");
     localStorage.removeItem("userRole");
     localStorage.removeItem("userRolePref");
-    nav("/"); // 一般ログインへ戻る
+    // 戻る操作での表示崩れを防ぐためにリロード
+    nav("/");
+    setTimeout(() => {
+      try { window.location.replace("/"); } catch {}
+    }, 50);
   };
 
   // ---- イベント一覧 + 自分の応募一覧取得 ----

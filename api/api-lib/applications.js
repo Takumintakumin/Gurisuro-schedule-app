@@ -75,6 +75,19 @@ export default async function handler(req, res) {
       if (!event_id || !username || !kind) {
         return res.status(400).json({ error: "event_id, username, kind は必須です" });
       }
+      // 同一イベントで運転手/添乗員の両方に応募することを禁止
+      {
+        const existRes = await query(
+          `SELECT kind FROM applications WHERE event_id = $1 AND username = $2 LIMIT 1`,
+          [event_id, username]
+        );
+        if (existRes.rows && existRes.rows.length > 0) {
+          const existingKind = existRes.rows[0].kind;
+          if (existingKind !== kind) {
+            return res.status(400).json({ error: "同じイベントで運転手と添乗員の両方に応募することはできません" });
+          }
+        }
+      }
       // 同一ユーザーが同じ時間帯に重複応募できないようにサーバー側でブロック
       // 対象イベントの日時を取得
       const evRes = await query(
