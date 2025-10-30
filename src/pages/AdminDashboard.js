@@ -240,13 +240,46 @@ export default function AdminDashboard() {
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
+
+  // --- state追加
+  const [applyTabApplications, setApplyTabApplications] = useState({});
+  const [applyTabAppLoading, setApplyTabAppLoading] = useState(false);
+  const [applyTabAppError, setApplyTabAppError] = useState("");
+
+  // --- useEffectでactiveTabが'apply'のとき全イベント分応募履歴取得
+  useEffect(() => {
+    if (activeTab === 'apply' && events.length > 0) {
+      setApplyTabAppLoading(true);
+      setApplyTabAppError("");
+      Promise.all(
+        events.map(ev => apiFetch(`/api/applications?event_id=${encodeURIComponent(ev.id)}`))
+      ).then(results => {
+        const appMap = {};
+        events.forEach((ev, idx) => {
+          const r = results[idx];
+          if (r.ok && Array.isArray(r.data)) {
+            appMap[ev.id] = r.data;
+          } else {
+            appMap[ev.id] = [];
+          }
+        });
+        setApplyTabApplications(appMap);
+      }).catch(e => {
+        setApplyTabAppError("応募状況の取得に失敗しました");
+      }).finally(() => setApplyTabAppLoading(false));
+    }
+  }, [activeTab, events]);
+
+  // --- renderApplyTabを書き換え
   const renderApplyTab = () => {
-    if (loading) return <div className="p-6">読み込み中...</div>;
     if (applyTabError) return <div className="text-red-600 p-4">{applyTabError} <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={refresh}>再取得</button></div>;
-    // 今日以降＋登録済みイベントのみ
+    if (applyTabAppLoading) return <div className="p-6">応募状況読み込み中...</div>;
+    if (applyTabAppError) return <div className="text-red-600 p-4">{applyTabAppError}</div>;
+
+    const todayYMD = toLocalYMD(new Date());
     const sortedEvents = [...events]
       .filter(ev => ev.date && ev.date >= todayYMD)
-      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || ''));
     return (
       <div>
         <h2 className="font-semibold mb-4">今後の登録イベント・応募状況</h2>
@@ -255,7 +288,7 @@ export default function AdminDashboard() {
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
           {sortedEvents.map(ev => {
-            const dec = decidedMembersByEventId[ev.id] || { driver: [], attendant: [] };
+            const apps = applyTabApplications[ev.id] || [];
             return (
               <li key={ev.id} className="border rounded p-3 bg-white flex items-center gap-3">
                 {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
@@ -263,14 +296,7 @@ export default function AdminDashboard() {
                   <div className="font-medium truncate">{ev.label}</div>
                   <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    応募 運転手: {dec.driver.length}人 / 添乗員: {dec.attendant.length}人
-                  </div>
-                  {/* 応募者+確定者リスト simple */}
-                  <div className="mt-1 text-[13px]">
-                    <span className="font-bold text-blue-700">運転手:</span> {dec.driver.join(', ') || 'なし'}
-                  </div>
-                  <div className="text-[13px]">
-                    <span className="font-bold text-green-700">添乗員:</span> {dec.attendant.join(', ') || 'なし'}
+                    応募数: {apps.length}人{apps.length > 0 && ' ／ '}{apps.map(a => a.username).join(', ')}
                   </div>
                 </div>
                 <button
