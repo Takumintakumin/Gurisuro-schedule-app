@@ -61,7 +61,7 @@ export default function AdminDashboard() {
   const [notifications, setNotifications] = useState([]);
 
   // 募集作成フォーム
-  const [selectedEvent, setSelectedEvent] = useState(FIXED_EVENTS[0]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [customLabel, setCustomLabel] = useState("");
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
@@ -570,6 +570,16 @@ export default function AdminDashboard() {
                   </button>
                 );
               })}
+            </div>
+            {/* 選択解除 */}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedEvent(null)}
+                className="px-3 py-1.5 text-sm rounded-lg border bg-white hover:bg-gray-50"
+              >
+                選択なしにする
+              </button>
             </div>
             {/* プリセット（テキスト）: フリー運行 / 循環運行 */}
             <div className="mt-3 flex flex-wrap gap-2">
