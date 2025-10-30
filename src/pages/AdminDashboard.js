@@ -32,21 +32,8 @@ export default function AdminDashboard() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // タブ管理（URLパラメータから取得、デフォルトはcalendar）
-  const [activeTab, setActiveTab] = useState(() => {
-    const tab = searchParams.get("tab");
-    return tab && ["calendar", "apply", "notifications", "users"].includes(tab) ? tab : "calendar";
-  });
-
-  // URLパラメータの変更を監視
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab && ["calendar", "apply", "notifications", "users"].includes(tab)) {
-      setActiveTab(tab);
-    } else {
-      setActiveTab("calendar");
-    }
-  }, [searchParams]);
+  // タブ管理（URLパラメータ不要、URLパラメータ反映はsetActiveTab内で一度だけ）
+  const [activeTab, setActiveTab] = useState("calendar");
 
   // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -1170,10 +1157,12 @@ export default function AdminDashboard() {
           <button
             key={tab.key}
             onClick={() => {
-              setActiveTab(tab.key);
-              // 通知&カレンダー&応募状況はdashboardルート、ユーザー管理だけ別ページ遷移
-              if (tab.key !== "users") nav(tab.route, { replace: true });
-              else nav(tab.route);
+              if (tab.key === "users") {
+                nav(tab.route);
+              } else {
+                setActiveTab(tab.key);
+                nav(tab.route, { replace: true });
+              }
             }}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '4px', padding: '12px 16px', backgroundColor: activeTab === tab.key ? '#dbeafe' : 'transparent', color: activeTab === tab.key ? '#2563eb' : '#4b5563', fontWeight: activeTab === tab.key ? '600' : '400', border: 'none', cursor: 'pointer', transition: 'all 0.2s', position: tab.key === 'notifications' ? 'relative' : 'static'
