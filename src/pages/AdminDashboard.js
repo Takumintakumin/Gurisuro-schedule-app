@@ -541,7 +541,7 @@ export default function AdminDashboard() {
     </div>
   );
 
-  // ログアウトハンドラ修正
+  // ログアウト処理
   const handleLogout = () => {
     if (!window.confirm("ログアウトしますか？")) return;
     fetch("/api?path=logout", { method: "POST", credentials: "include" }).catch(() => {});
@@ -552,20 +552,7 @@ export default function AdminDashboard() {
     }, 0);
   };
 
-  // 通知取得：初回＆タブ変化時のみ
-  useEffect(() => {
-    if (activeTab === "notifications") {
-      (async () => {
-        const notifs = await apiFetch("/api?path=notifications");
-        if (notifs.ok && Array.isArray(notifs.data)) {
-          setNotifications(notifs.data);
-        }
-      })();
-    }
-    // eslint-disable-next-line
-  }, [activeTab]);
 
-  // 読み込みフラグとAPI呼び出し位置を整理, 必ず何か表示
   if (loading) return <div className="p-6">読み込み中…</div>;
 
   return (
@@ -1193,14 +1180,11 @@ export default function AdminDashboard() {
         {tabList.map(tab => (
           <button
             key={tab.key}
-            onClick={() => {
-              if (tab.key === "users") {
-                nav(tab.route);
-              } else {
-                setActiveTab(tab.key);
-                nav(tab.route, { replace: true });
-              }
+            onClick={()=> {
+              if(tab.key==='users') { setActiveTab('calendar'); nav(tab.route); return; }
+              setActiveTab(tab.key); nav(tab.route, {replace:true});
             }}
+            className={activeTab === tab.key ? 'bg-blue-100 font-extrabold text-blue-800' : ''}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '4px', padding: '12px 16px', backgroundColor: activeTab === tab.key ? '#dbeafe' : 'transparent', color: activeTab === tab.key ? '#2563eb' : '#4b5563', fontWeight: activeTab === tab.key ? '600' : '400', border: 'none', cursor: 'pointer', transition: 'all 0.2s', position: tab.key === 'notifications' ? 'relative' : 'static'
             }}

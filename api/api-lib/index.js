@@ -67,6 +67,7 @@ function setSessionCookie(res, payload, req) {
 }
 
 function clearSessionCookie(res, req) {
+  // 強制的に全条件で削除/無効
   const secure = (req.headers["x-forwarded-proto"] || "http") === "https";
   res.setHeader(
     "Set-Cookie",
@@ -76,6 +77,8 @@ function clearSessionCookie(res, req) {
       sameSite: "Lax",
       secure,
       path: "/",
+      // expiresも必ず明示的に追記
+      expires: new Date(0).toUTCString(),
     })
   );
 }
