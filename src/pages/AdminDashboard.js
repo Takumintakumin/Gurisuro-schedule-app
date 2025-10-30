@@ -595,6 +595,11 @@ export default function AdminDashboard() {
         </div>
 
         {/* タブコンテンツ */}
+        {activeTab === "apply" && (
+          <div className="mb-3 p-3 rounded border border-dashed bg-yellow-50 text-yellow-800 text-sm">
+            デバッグ: applyタブを表示中 / events件数: {Array.isArray(events) ? events.length : 'N/A'}
+          </div>
+        )}
         {activeTab === "calendar" && (
           <>
             {/* カレンダー */}
