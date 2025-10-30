@@ -35,13 +35,13 @@ export default function AdminDashboard() {
   // タブ管理（URLパラメータから取得、デフォルトはcalendar）
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
-    return tab && ["calendar", "notifications"].includes(tab) ? tab : "calendar";
+    return tab && ["calendar", "apply", "notifications"].includes(tab) ? tab : "calendar";
   });
 
   // URLパラメータの変更を監視
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab && ["calendar", "notifications"].includes(tab)) {
+    if (tab && ["calendar", "apply", "notifications"].includes(tab)) {
       setActiveTab(tab);
     } else {
       setActiveTab("calendar");
@@ -226,6 +226,51 @@ export default function AdminDashboard() {
 
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
+  const todayYMD = toLocalYMD(new Date());
+  const renderApplyTab = () => {
+    // 今日以降＋登録済みイベントのみ
+    const sortedEvents = [...events]
+      .filter(ev => ev.date && ev.date >= todayYMD)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
+    return (
+      <div>
+        <h2 className="font-semibold mb-4">今後の登録イベント・応募状況</h2>
+        <ul className="space-y-2">
+          {sortedEvents.length === 0 && (
+            <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
+          )}
+          {sortedEvents.map(ev => {
+            const dec = decidedMembersByEventId[ev.id] || { driver: [], attendant: [] };
+            return (
+              <li key={ev.id} className="border rounded p-3 bg-white flex items-center gap-3">
+                {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{ev.label}</div>
+                  <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    応募 運転手: {dec.driver.length}人 / 添乗員: {dec.attendant.length}人
+                  </div>
+                  {/* 応募者+確定者リスト simple */}
+                  <div className="mt-1 text-[13px]">
+                    <span className="font-bold text-blue-700">運転手:</span> {dec.driver.join(', ') || 'なし'}
+                  </div>
+                  <div className="text-[13px]">
+                    <span className="font-bold text-green-700">添乗員:</span> {dec.attendant.join(', ') || 'なし'}
+                  </div>
+                </div>
+                <button
+                  className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
+                  onClick={() => openFairness(ev.id)}
+                >
+                  詳細
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  };
 
   // 募集登録
   const handleSubmit = async (e) => {
@@ -913,6 +958,9 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {activeTab === "apply" && renderApplyTab()}
+        {activeTab === "notifications" && renderNotificationsTab()}
+
         {/* イベント編集モーダル */}
         {editOpen && editingEvent && (
           <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
@@ -1075,7 +1123,6 @@ export default function AdminDashboard() {
         )}
         </>
         )}
-        {activeTab === "notifications" && renderNotificationsTab()}
       </div>
     </div>
     
@@ -1148,6 +1195,28 @@ export default function AdminDashboard() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("apply")}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: activeTab === "apply" ? '#dbeafe' : 'transparent',
+            color: activeTab === "apply" ? '#2563eb' : '#4b5563',
+            fontWeight: activeTab === "apply" ? '600' : '400',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>応募状況</span>
         </button>
         <button
           onClick={() => {
