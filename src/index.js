@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client'; // React 18からcreateRootを使用
 import './index.css'; // Tailwind CSSを適用するためのCSSファイルをインポート
 import App from './App.js'; // 作成したAppコンポーネントをインポート
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 // React 18の新しいAPIであるcreateRootを使用して、アプリケーションをレンダリング
 const rootElement = document.getElementById('root');
@@ -15,7 +16,7 @@ if (!rootElement) {
         <App />
       </React.StrictMode>
     );
-    console.log('App rendered successfully');
+    if (IS_DEV) console.log('App rendered successfully');
   } catch (error) {
     console.error('Error rendering app:', error);
     rootElement.innerHTML = `
@@ -38,7 +39,7 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         scope: '/' 
       })
       .then((registration) => {
-        console.log('SW registered:', registration);
+        // 静かな本番運用のためログは出さない
         
         // 定期的に更新をチェック（60秒ごと）
         setInterval(() => {
@@ -48,7 +49,6 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         // Service Workerからのメッセージを受信
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event.data && event.data.type === 'SW_UPDATED') {
-            console.log('SW update message received, reloading...');
             // 少し待ってからリロード（ユーザーの操作を妨げないように）
             setTimeout(() => {
               window.location.reload(true);
@@ -58,21 +58,19 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         
         // バージョンアップデートを確認
         registration.addEventListener('updatefound', () => {
-          console.log('SW update found, installing...');
           const newWorker = registration.installing;
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed') {
                 if (navigator.serviceWorker.controller) {
                   // 新しいService Workerが利用可能になったら、ページをリロード
-                  console.log('New SW installed, reloading page...');
                   // 少し待ってからリロード
                   setTimeout(() => {
                     window.location.reload(true);
                   }, 500);
                 } else {
                   // 初回インストール
-                  console.log('SW installed for the first time');
+                  // no-op
                 }
               }
             });
@@ -80,7 +78,7 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
         });
       })
       .catch((error) => {
-        console.log('SW registration failed:', error);
+        if (IS_DEV) console.log('SW registration failed:', error);
       });
   });
 }

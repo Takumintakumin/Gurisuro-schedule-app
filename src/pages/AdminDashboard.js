@@ -205,8 +205,8 @@ export default function AdminDashboard() {
         }
       } catch {}
 
-      // デバッグ: 確定メンバー情報を確認
-      if (Object.keys(decMembersMap).length > 0) {
+      // デバッグログ（開発時のみ）
+      if (process.env.NODE_ENV !== 'production' && Object.keys(decMembersMap).length > 0) {
         console.log('[AdminDashboard] 確定メンバー情報:', decMembersMap);
       }
 
