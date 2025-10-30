@@ -300,21 +300,21 @@ export default function Calendar({
           <span className={`text-[17px] sm:text-[18px] font-extrabold ${dayColor}`}>
             {i}
           </span>
-          {/* 今日バッジは非表示にする */}
+          {/* 右上に小さなイベントマーク（コンパクト時のみ） */}
+          {isCompact && (dayEvents.length > 0 || hasTags) && (
+            <span
+              aria-label="イベントあり"
+              title="イベントあり"
+              className="inline-block rounded-full bg-amber-500"
+              style={{ width: '6px', height: '6px', marginTop: '2px' }}
+            />
+          )}
         </div>
 
-        {/* 単一イベントの日は簡易サマリ（時間 + 短縮ラベル）を表示して視認性UP */}
-        {isCompact && dayEvents.length === 1 ? (
-          <div className="mt-1.5 text-[10px] leading-snug text-gray-700 bg-white/80 border border-gray-200 rounded px-1.5 py-0.5 inline-block max-w-full" style={{ maxWidth: '100%' }} title={`${dayEvents[0].label || ''}${dayEvents[0].start_time ? ` ${dayEvents[0].start_time}` : ''}${dayEvents[0].end_time ? `-${dayEvents[0].end_time}` : ''}`}>
-            <span className="font-semibold mr-1">{dayEvents[0].start_time}{dayEvents[0].end_time ? `-${dayEvents[0].end_time}` : ''}</span>
-            <span style={{ display: 'inline-block', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {(dayEvents[0].label || '').replace(/^フリー運行.*/, 'フリー')}
-            </span>
-          </div>
-        ) : (
-          // バッジ（イベントアイコン/タグ）
-          (dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)
-        )}
+        {/* コンパクト時は時間やラベルを出さず、マークのみ。通常時はバッジ表示 */}
+        {isCompact
+          ? null
+          : ((dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags))}
       </div>
     );
   };
