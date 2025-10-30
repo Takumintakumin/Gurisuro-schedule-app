@@ -257,13 +257,22 @@ export default function AdminDashboard() {
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
   const renderApplyTab = () => {
-    // 全イベント（過去含む）を日付→開始時刻で昇順ソート
+    // デバッグ：現在のevents配列を出力
+    console.log('applyタブ events:', events);
+    // ★UIにも生データを表示
     const sortedEvents = [...events]
-      .filter(ev => ev.date)
-      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
+      //.filter(ev => ev.date) // 一時的にはずす
+      .sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '');
+      });
     return (
       <div>
-        <h2 className="font-semibold mb-4">登録イベント一覧</h2>
+        <h2 className="font-semibold mb-4">登録イベント一覧（デバッグ表示中）</h2>
+        {/* デバッグ出力 */}
+        <pre style={{background:'#eee',fontSize:'12px',padding:'8px',overflow:'auto',maxHeight:200}}>
+          {JSON.stringify(events, null, 2)}
+        </pre>
         {loading && (
           <p className="text-sm text-gray-500">読み込み中…</p>
         )}
@@ -271,35 +280,12 @@ export default function AdminDashboard() {
           {!loading && sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
-          {sortedEvents.map(ev => {
-            const dec = decidedMembersByEventId[ev.id] || { driver: [], attendant: [] };
+          {sortedEvents.map((ev,idx) => {
+            // どんなオブジェクトであっても一旦全情報だけ表示する（枠デバッグ）
             return (
-              <li key={ev.id} className="border rounded-lg p-3 bg-white">
+              <li key={ev.id||idx} className="border rounded-lg p-3 bg-white">
                 <div className="flex items-center gap-3">
-                  {ev.icon ? (
-                    <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
-                  ) : (
-                    <div className="w-10 h-10 rounded bg-gray-100" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[15px] truncate">{ev.label}</div>
-                    <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                    <div className="text-xs text-gray-500 mt-1">運転手: {dec.driver.length}人 / 添乗員: {dec.attendant.length}人</div>
-                  </div>
-                  <div className="flex flex-col gap-2 ml-2">
-                    <button
-                      className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm"
-                      onClick={() => openFairness(ev.id)}
-                    >
-                      応募状況
-                    </button>
-                    <button
-                      className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm"
-                      onClick={() => handleEdit(ev)}
-                    >
-                      編集
-                    </button>
-                  </div>
+                  <pre style={{background:'#fafb', fontSize:'11px', margin:0}}>{JSON.stringify(ev, null, 2)}</pre>
                 </div>
               </li>
             );
