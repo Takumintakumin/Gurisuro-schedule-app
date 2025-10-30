@@ -64,13 +64,14 @@ export default function AdminDashboard() {
   // 通知
   const [notifications, setNotifications] = useState([]);
 
-  // タブ切替時のデータ確保（特に直接 /admin/dashboard?tab=apply に来た場合）
+  // タブ切替時のデータ確保（applyに直接来た際、必ず一度のみ取得）
+  const [didFetchOnce, setDidFetchOnce] = useState(false);
   useEffect(() => {
-    if (activeTab === "apply" && events.length === 0 && !loading) {
-      // イベントが未取得なら取得
+    if (activeTab === "apply" && !didFetchOnce) {
+      setDidFetchOnce(true);
       refresh();
     }
-  }, [activeTab, events.length, loading]);
+  }, [activeTab, didFetchOnce]);
 
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(null);
