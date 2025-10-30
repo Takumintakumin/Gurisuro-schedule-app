@@ -28,7 +28,23 @@ export default function Calendar({
   decidedMembersByDate = {}, // 管理者用: { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
   cancelledDates = new Set(), // キャンセルされた日付のSet (YYYY-MM-DD形式)
   myAppliedEventIds = new Set(), // ユーザー側用: 自分が応募しているイベントIDのSet（管理者側では空のSet）
+  compact = false, // モバイルで見やすくするための簡易表示
 }) {
+  // 画面幅による自動コンパクト判定（初期）
+  const [isCompact, setIsCompact] = React.useState(() => {
+    if (typeof window === "undefined") return !!compact;
+    try { return compact || window.matchMedia('(max-width: 420px)').matches; } catch { return !!compact; }
+  });
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia('(max-width: 420px)');
+    const handler = () => setIsCompact(compact || mq.matches);
+    try { mq.addEventListener('change', handler); } catch { mq.addListener(handler); }
+    handler();
+    return () => {
+      try { mq.removeEventListener('change', handler); } catch { mq.removeListener(handler); }
+    };
+  }, [compact]);
   // events を日付キーにまとめる
   const eventsByDate = React.useMemo(() => {
     const map = {};
@@ -53,15 +69,16 @@ export default function Calendar({
   };
 
   const renderBadges = (dayEvents, tags) => {
-    const maxBadges = 4;
+    const maxBadges = isCompact ? 1 : 4;
 
+    // コンパクト時はイベント優先、タグは省略
     const eventBadges = (dayEvents || []).map((ev) =>
       ev && ev.icon
         ? { type: "icon", icon: ev.icon, label: ev.label, start: ev.start_time }
         : { type: "text", label: ev?.label || "" }
     );
 
-    const tagBadges = (tags || []).map((t) => ({
+    const tagBadges = isCompact ? [] : (tags || []).map((t) => ({
       type: "text",
       label: t?.label || t?.key || "",
     }));
@@ -71,7 +88,7 @@ export default function Calendar({
     const overflow = Math.max(allBadges.length - maxBadges, 0);
 
     return (
-      <div className="mt-1.5 flex flex-wrap items-center" style={{ marginTop: '6px', display: 'flex', WebkitDisplay: 'flex', flexWrap: 'wrap', WebkitFlexWrap: 'wrap', alignItems: 'center', WebkitAlignItems: 'center' }}>
+      <div className="mt-1.5 flex flex-wrap items-center" style={{ marginTop: isCompact ? '4px' : '6px', display: 'flex', WebkitDisplay: 'flex', flexWrap: 'wrap', WebkitFlexWrap: 'wrap', alignItems: 'center', WebkitAlignItems: 'center' }}>
         {visible.map((b, idx) => {
           if (b.type === "icon" && b.icon) {
             return (
@@ -80,8 +97,8 @@ export default function Calendar({
                 src={b.icon}
                 alt={b.label || "event"}
                 title={b.label ? `${b.label}${b.start ? ` ${b.start}` : ""}` : ""}
-                className="h-6 w-6 object-contain rounded-sm shadow-sm"
-                style={{ marginRight: '6px', marginBottom: '4px', border: '1px solid rgba(0,0,0,0.1)' }}
+                className={"object-contain rounded-sm shadow-sm " + (isCompact ? "h-5 w-5" : "h-6 w-6")}
+                style={{ marginRight: isCompact ? '4px' : '6px', marginBottom: '4px', border: '1px solid rgba(0,0,0,0.1)' }}
                 loading="lazy"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
@@ -92,17 +109,17 @@ export default function Calendar({
           return (
             <span
               key={`b-${idx}`}
-              className="px-2 py-0.5 rounded-md bg-white/95 text-[11px] font-medium border border-gray-300 shadow-sm"
+              className={"rounded-md bg-white/95 font-medium border border-gray-300 shadow-sm " + (isCompact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11px]")}
               style={{ marginRight: '4px', marginBottom: '4px' }}
               title={b.label}
             >
-              {b.label.slice(0, 8)}
+              {isCompact ? (b.label.startsWith("フリー運行") ? "フリー" : b.label.slice(0, 4)) : b.label.slice(0, 8)}
             </span>
           );
         })}
         {overflow > 0 && (
           <span
-            className="px-2 py-0.5 rounded-md bg-amber-100/90 text-[11px] font-medium border border-amber-300 shadow-sm"
+            className={"rounded-md font-medium border border-amber-300 shadow-sm " + (isCompact ? "px-1.5 py-0.5 text-[10px] bg-amber-100/90" : "px-2 py-0.5 text-[11px] bg-amber-100/90")}
             style={{ marginRight: '4px', marginBottom: '4px' }}
             title={`他 ${overflow} 件`}
           >

@@ -759,6 +759,7 @@ export default function MainApp() {
               cancelledDates={cancelledDates}
               decidedMembersByDate={{ _byEventId: decidedMembersByEventId }}
               myAppliedEventIds={new Set(myApps.map(a => a.event_id))}
+              compact={true}
             />
 
             <div className="mt-4">
