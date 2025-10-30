@@ -177,41 +177,11 @@ export default function AdminDashboard() {
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
 
-      // 確定済み日付とメンバー情報を集計
-      const decDateSet = new Set();
-      const decMembersMap = {}; // О { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
-      const decMembersByEventId = {}; // { eventId: { driver: string[], attendant: string[] } }
-      for (const ev of evs) {
-        try {
-          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-          if (dec.ok && dec.data && (dec.data.driver?.length > 0 || dec.data.attendant?.length > 0)) {
-            decDateSet.add(ev.date);
-            // イベントIDごとに確定メンバーを保存
-            decMembersByEventId[ev.id] = {
-              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-            };
-            // 日付ごとに確定メンバーをまとめる（複数イベントがある場合に結合）
-            if (!decMembersMap[ev.date]) {
-              decMembersMap[ev.date] = { driver: [], attendant: [] };
-            }
-            if (Array.isArray(dec.data.driver)) {
-              decMembersMap[ev.date].driver.push(...dec.data.driver);
-            }
-            if (Array.isArray(dec.data.attendant)) {
-              decMembersMap[ev.date].attendant.push(...dec.data.attendant);
-            }
-          }
-        } catch {}
-      }
-      // 重複を削除
-      for (const date in decMembersMap) {
-        decMembersMap[date].driver = [...new Set(decMembersMap[date].driver)];
-        decMembersMap[date].attendant = [...new Set(decMembersMap[date].attendant)];
-      }
-      setDecidedDates(decDateSet);
-      setDecidedMembersByDate(decMembersMap);
-      setDecidedMembersByEventId(decMembersByEventId);
+      // 確定済み情報の大量リクエストはSafariでAccess Controlに引っかかるため省略
+      // 確定状況は必要時（応募状況モーダルを開いたとき）だけ取得する
+      setDecidedDates(new Set());
+      setDecidedMembersByDate({});
+      setDecidedMembersByEventId({});
 
       // キャンセルされた日付と定員不足の日付を取得（通知から）
       try {
@@ -235,8 +205,8 @@ export default function AdminDashboard() {
       } catch {}
 
       // デバッグログ（開発時のみ）
-      if (process.env.NODE_ENV !== 'production' && Object.keys(decMembersMap).length > 0) {
-        console.log('[AdminDashboard] 確定メンバー情報:', decMembersMap);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[AdminDashboard] events loaded:', evs.length);
       }
 
       // 通知を取得
@@ -257,22 +227,15 @@ export default function AdminDashboard() {
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
   const renderApplyTab = () => {
-    // デバッグ：現在のevents配列を出力
-    console.log('applyタブ events:', events);
-    // ★UIにも生データを表示
-    const sortedEvents = [...events]
-      //.filter(ev => ev.date) // 一時的にはずす
-      .sort((a, b) => {
-        if (!a.date || !b.date) return 0;
-        return a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '');
-      });
+  const sortedEvents = [...events]
+    .filter(ev => ev && typeof ev === 'object')
+    .sort((a, b) => {
+      if (!a.date || !b.date) return 0;
+      return a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '');
+    });
     return (
       <div>
-        <h2 className="font-semibold mb-4">登録イベント一覧（デバッグ表示中）</h2>
-        {/* デバッグ出力 */}
-        <pre style={{background:'#eee',fontSize:'12px',padding:'8px',overflow:'auto',maxHeight:200}}>
-          {JSON.stringify(events, null, 2)}
-        </pre>
+      <h2 className="font-semibold mb-4">登録イベント一覧</h2>
         {loading && (
           <p className="text-sm text-gray-500">読み込み中…</p>
         )}
@@ -280,16 +243,25 @@ export default function AdminDashboard() {
           {!loading && sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
-          {sortedEvents.map((ev,idx) => {
-            // どんなオブジェクトであっても一旦全情報だけ表示する（枠デバッグ）
-            return (
-              <li key={ev.id||idx} className="border rounded-lg p-3 bg-white">
-                <div className="flex items-center gap-3">
-                  <pre style={{background:'#fafb', fontSize:'11px', margin:0}}>{JSON.stringify(ev, null, 2)}</pre>
-                </div>
-              </li>
-            );
-          })}
+        {sortedEvents.map((ev) => (
+          <li key={ev.id} className="border rounded-lg p-3 bg-white">
+            <div className="flex items-center gap-3">
+              {ev.icon ? (
+                <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
+              ) : (
+                <div className="w-10 h-10 rounded bg-gray-100" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
+                <div className="text-xs text-gray-600 truncate">{ev.date || '-'} {ev.start_time || ''}〜{ev.end_time || ''}</div>
+              </div>
+              <div className="flex flex-col gap-2 ml-2">
+                <button className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm" onClick={() => openFairness(ev.id)}>応募状況</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm" onClick={() => handleEdit(ev)}>編集</button>
+              </div>
+            </div>
+          </li>
+        ))}
         </ul>
       </div>
     );
