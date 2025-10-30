@@ -571,6 +571,25 @@ export default function AdminDashboard() {
                 );
               })}
             </div>
+            {/* プリセット（テキスト）: フリー運行 / 循環運行 */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setCustomLabel("フリー運行")}
+                className="px-3 py-1.5 text-sm rounded-lg border bg-white hover:bg-gray-50"
+                title="ラベルに『フリー運行』をセット"
+              >
+                フリー運行
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomLabel("循環運行")}
+                className="px-3 py-1.5 text-sm rounded-lg border bg-white hover:bg-gray-50"
+                title="ラベルに『循環運行』をセット"
+              >
+                循環運行
+              </button>
+            </div>
           </div>
 
           {/* 自由記入（優先） */}
