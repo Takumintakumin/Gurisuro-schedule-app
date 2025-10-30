@@ -34,13 +34,16 @@ export default function AdminDashboard() {
 
   // タブ管理（URLパラメータから取得、デフォルトはcalendar）
   const [activeTab, setActiveTab] = useState(() => {
-    const tab = searchParams.get("tab");
+    let tab = searchParams.get("tab");
+    // 軽い入力ミスを許容（例: aaply, appl, applies など）
+    if (tab && /^appl/i.test(tab)) tab = "apply";
     return tab && ["calendar", "apply", "notifications"].includes(tab) ? tab : "calendar";
   });
 
   // URLパラメータの変更を監視
   useEffect(() => {
-    const tab = searchParams.get("tab");
+    let tab = searchParams.get("tab");
+    if (tab && /^appl/i.test(tab)) tab = "apply";
     if (tab && ["calendar", "apply", "notifications"].includes(tab)) {
       setActiveTab(tab);
     } else {
