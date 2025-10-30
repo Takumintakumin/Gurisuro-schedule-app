@@ -57,7 +57,9 @@ export default function MainApp() {
   const [activeTab, setActiveTab] = useState("calendar"); // "calendar" | "apply" | "notifications" | "mypage"
   const [myApps, setMyApps] = useState([]); // 自分の応募
   const [notifications, setNotifications] = useState([]); // 通知一覧
+  const MAX_NOTIFS = 30; // 表示・保持の上限（古いものは自動的に非表示）
   const [applicationHistory, setApplicationHistory] = useState([]); // 応募履歴（イベント情報込み）
+  const [showHistory, setShowHistory] = useState(false); // 折り畳み（既定は非表示）
   const [userSettings, setUserSettings] = useState({
     notifications_enabled: true,
     google_calendar_enabled: false,
@@ -109,7 +111,13 @@ export default function MainApp() {
     if (!userName) return;
     const r = await apiFetch(`/api?path=notifications`);
     if (r.ok && Array.isArray(r.data)) {
-      setNotifications(r.data);
+      // 新しい順にソートして最新MAX_NOTIFS件のみ保持
+      const sorted = [...r.data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      const latest = sorted.slice(0, MAX_NOTIFS);
+      setNotifications(latest);
+      // 古い未読が大量にある場合は自動で既読化（サーバ対応があれば最適化可）
+      const older = sorted.slice(MAX_NOTIFS).filter(n => !n.read_at);
+      older.slice(0, 20).forEach(n => markAsRead(n.id)); // 一度に叩きすぎない
     }
   }, [userName]);
 
@@ -117,7 +125,10 @@ export default function MainApp() {
     if (activeTab === "notifications") {
       (async () => {
         const r = await apiFetch(`/api?path=notifications`);
-        if (r.ok && Array.isArray(r.data)) setNotifications(r.data);
+        if (r.ok && Array.isArray(r.data)) {
+          const sorted = [...r.data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+          setNotifications(sorted.slice(0, MAX_NOTIFS));
+        }
       })();
     }
   }, [activeTab]);
@@ -655,8 +666,18 @@ export default function MainApp() {
 
       {/* 応募履歴 */}
       <div className="mb-6">
-        <h3 className="font-semibold mb-2">応募履歴</h3>
-        {applicationHistory.length === 0 ? (
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold">応募履歴</h3>
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            className="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-50"
+          >
+            {showHistory ? "閉じる" : "表示"}
+          </button>
+        </div>
+        {!showHistory ? (
+          <p className="text-xs text-gray-500">必要な時だけ表示できます。</p>
+        ) : applicationHistory.length === 0 ? (
           <p className="text-sm text-gray-500 border rounded p-3">応募履歴はありません。</p>
         ) : (
           <div className="space-y-2">
