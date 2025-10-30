@@ -991,10 +991,12 @@ export default function MainApp() {
         left: 0,
         right: 0,
         width: '100%',
-        minHeight: '64px',
-        backgroundColor: '#ffffff',
-        borderTop: '2px solid #d1d5db',
-        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        minHeight: '72px',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        borderTop: '1px solid #e5e7eb',
+        boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.12)',
         WebkitBoxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
         zIndex: 99999,
         display: 'flex',
@@ -1017,10 +1019,10 @@ export default function MainApp() {
           display: 'grid', 
           WebkitDisplay: 'grid',
           gridTemplateColumns: '1fr 1fr 1fr 1fr', 
-          WebkitGridTemplateColumns: '1fr 1fr 1fr',
+          WebkitGridTemplateColumns: '1fr 1fr 1fr 1fr',
           width: '100%', 
           height: '100%', 
-          minHeight: '64px' 
+          minHeight: '72px' 
         }}>
           <button
             onClick={() => setActiveTab("calendar")}

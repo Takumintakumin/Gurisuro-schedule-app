@@ -167,13 +167,13 @@ export default function AdminUsers() {
       className="min-h-screen p-4 sm:p-6"
       style={{ 
         backgroundColor: '#f0fdf4',
-        paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
+        paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
         marginBottom: 0
       }}
     >
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between mb-4">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-0 sm:p-0">
+        {/* ヘッダー（検索を固定） */}
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold">👥 ユーザー管理</h1>
           <div className="flex gap-3">
             <button
@@ -189,22 +189,11 @@ export default function AdminUsers() {
         </div>
 
         {/* サマリ＆フィルタ */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
-          <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
-            <div className="border rounded p-2">
-              合計 <span className="font-semibold">{counts.total}</span>
-            </div>
-            <div className="border rounded p-2">
-              詳しい <span className="font-semibold text-emerald-700">{counts.familiar}</span>
-            </div>
-            <div className="border rounded p-2">
-              詳しくない <span className="font-semibold text-orange-700">{counts.unfamiliar}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
+        <div className="px-4 pt-3 pb-4 border-b">
+          <div className="flex items-end gap-2">
             <input
-              className="border rounded p-2 text-sm"
-              placeholder="名前で検索"
+              className="flex-1 border rounded p-2 text-sm"
+              placeholder="名前で検索（入力で表示）"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -219,6 +208,11 @@ export default function AdminUsers() {
               <option value="unknown">不明</option>
             </select>
           </div>
+          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mt-2">
+            <div className="border rounded p-2">合計 <span className="font-semibold">{counts.total}</span></div>
+            <div className="border rounded p-2">詳しい <span className="font-semibold text-emerald-700">{counts.familiar}</span></div>
+            <div className="border rounded p-2">詳しくない <span className="font-semibold text-orange-700">{counts.unfamiliar}</span></div>
+          </div>
         </div>
 
         {/* 一覧（検索開始まで表示しない） */}
@@ -227,17 +221,17 @@ export default function AdminUsers() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-500">該当するユーザーがいません。</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3 p-4">
             {filtered.map((u) => (
-              <li key={u.id} className="border rounded p-3 bg-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{u.username}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">役割: {u.role || "user"}</div>
+              <li key={u.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-base truncate">{u.username}</div>
+                    <div className="text-xs text-gray-500">役割: {u.role || "user"}</div>
                     {/* 表示名の編集 */}
                     <div className="mt-2 flex gap-2 items-center">
                       <input
-                        className="border rounded p-1 text-xs w-40"
+                        className="border rounded p-2 text-sm w-full"
                         defaultValue={u.display_name || ""}
                         placeholder="表示名"
                         onBlur={async (e) => {
@@ -253,13 +247,13 @@ export default function AdminUsers() {
                           }
                         }}
                       />
-                      <span className="text-xs text-gray-400">フォーカス外しで保存</span>
+                      {/* ヒントを省略してコンパクトに */}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {/* 役割変更 */}
                     <select
-                      className="border rounded p-1 text-xs"
+                      className="border rounded p-2 text-sm"
                       defaultValue={u.role || "user"}
                       onChange={async (e) => {
                         try {
@@ -282,7 +276,7 @@ export default function AdminUsers() {
                     {/* 応募適性（既存） */}
                     <div className="flex items-center gap-2">
                       <select
-                        className="border rounded p-1 text-xs"
+                        className="border rounded p-2 text-sm"
                         value={u.familiar || u.familiarity || "unknown"}
                         onChange={async (e) => {
                           try {
@@ -306,9 +300,9 @@ export default function AdminUsers() {
                     </div>
 
                     {/* 便利アクション */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 col-span-2">
                       <button
-                        className="px-2 py-1 rounded bg-indigo-600 text-white text-xs"
+                        className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm"
                         onClick={async () => {
                           // 履歴モーダルを開く（下で定義）
                           setHistoryTarget(u.username);
@@ -318,7 +312,7 @@ export default function AdminUsers() {
                         履歴
                       </button>
                       <button
-                        className="px-2 py-1 rounded bg-amber-500 text-white text-xs"
+                        className="px-3 py-1.5 rounded bg-amber-500 text-white text-sm"
                         onClick={async () => {
                           const newPw = prompt("一時パスワードを入力");
                           if (!newPw) return;
@@ -338,7 +332,7 @@ export default function AdminUsers() {
                         一時PW
                       </button>
                       <button
-                        className="px-2 py-1 rounded bg-gray-200 text-gray-800 text-xs"
+                        className="px-3 py-1.5 rounded bg-gray-200 text-gray-800 text-sm"
                         onClick={async () => {
                           if (!confirm("このユーザーを強制ログアウトしますか？")) return;
                           try {
@@ -353,7 +347,7 @@ export default function AdminUsers() {
                         強制ログアウト
                       </button>
                       <button
-                        className="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                        className="px-3 py-1.5 rounded bg-red-600 text-white text-sm"
                         onClick={() => handleDelete(u.id)}
                       >
                         削除
@@ -455,10 +449,12 @@ export default function AdminUsers() {
         left: 0,
         right: 0,
         width: '100%',
-        minHeight: '64px',
-        backgroundColor: '#ffffff',
-        borderTop: '2px solid #d1d5db',
-        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
+        minHeight: '72px',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        borderTop: '1px solid #e5e7eb',
+        boxShadow: '0 -6px 12px -6px rgba(0,0,0,0.12)',
         WebkitBoxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06)',
         zIndex: 99999,
         display: 'flex',
@@ -484,7 +480,7 @@ export default function AdminUsers() {
         WebkitGridTemplateColumns: 'repeat(4, 1fr)',
         width: '100%', 
         height: '100%', 
-        minHeight: '64px' 
+        minHeight: '72px' 
       }}>
         <button
           onClick={() => nav("/admin/dashboard?tab=calendar")}
