@@ -63,6 +63,7 @@ export default function AdminDashboard() {
 
   // 通知
   const [notifications, setNotifications] = useState([]);
+  const [decidedEventIds, setDecidedEventIds] = useState(new Set());
 
   // タブ切替時のデータ確保（applyに直接来た際、必ず一度のみ取得）
   const [didFetchOnce, setDidFetchOnce] = useState(false);
@@ -213,6 +214,20 @@ export default function AdminDashboard() {
         } catch {}
       })();
 
+      // 一覧用：確定済みイベントの簡易判定（重くならない範囲で最大60件）
+      (async () => {
+        const ids = new Set();
+        for (const ev of evs.slice(0, 60)) {
+          try {
+            const d = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+            if (d.ok && d.data && ((Array.isArray(d.data.driver) && d.data.driver.length) || (Array.isArray(d.data.attendant) && d.data.attendant.length))) {
+              ids.add(ev.id);
+            }
+          } catch {}
+        }
+        setDecidedEventIds(ids);
+      })();
+
       if (process.env.NODE_ENV !== 'production') {
         console.log('[AdminDashboard] events loaded:', evs.length);
       }
@@ -243,8 +258,10 @@ export default function AdminDashboard() {
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
         {sortedEvents.map((ev) => {
+          const isDecided = decidedEventIds.has(ev.id);
+          const liCls = isDecided ? "border rounded-lg p-3 bg-green-50 border-green-200" : "border rounded-lg p-3 bg-white";
           return (
-            <li key={ev.id} className="border rounded-lg p-3 bg-white">
+            <li key={ev.id} className={liCls}>
               <div className="flex items-center gap-3">
                 {ev.icon ? (
                   <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
@@ -589,11 +606,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* タブコンテンツ */}
-        {activeTab === "apply" && (
-          <div className="mb-3 p-3 rounded border border-dashed bg-yellow-50 text-yellow-800 text-sm">
-            デバッグ: applyタブを表示中 / events件数: {Array.isArray(events) ? events.length : 'N/A'}
-          </div>
-        )}
+        
         {activeTab === "calendar" && (
           <>
             {/* カレンダー */}
@@ -624,7 +637,7 @@ export default function AdminDashboard() {
         </div>
 
         {createOpen && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: 'calc(120px + env(safe-area-inset-bottom))' }}>
             <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">{ymd} の募集を作成</h2>
