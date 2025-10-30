@@ -30,6 +30,9 @@ export default function Calendar({
   myAppliedEventIds = new Set(), // ユーザー側用: 自分が応募しているイベントIDのSet（管理者側では空のSet）
   compact = false, // モバイルで見やすくするための簡易表示
 }) {
+  // 追加: 月/週 表示トグル
+  const [viewMode, setViewMode] = React.useState("month");
+
   // 画面幅による自動コンパクト判定（初期）
   const [isCompact, setIsCompact] = React.useState(() => {
     if (typeof window === "undefined") return !!compact;
@@ -362,10 +365,29 @@ export default function Calendar({
     cells.push(renderDayCell(i));
   }
 
+  // カレンダーグリッド作成
+  const totalDays = [];
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    totalDays.push(null); // 空白セル
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    totalDays.push(i);
+  }
+  // weekMode時、選択中日が含まれる週だけ抜き出す
+  let visibleCells = [];
+  if (viewMode === "week" && selectedDate) {
+    const idx = firstDayOfMonth + selectedDate.getDate() - 1;
+    const startIdx = Math.floor(idx / 7) * 7;
+    visibleCells = totalDays.slice(startIdx, startIdx+7);
+    while (visibleCells.length < 7) visibleCells.push(null);
+  } else {
+    visibleCells = totalDays;
+  }
+
   return (
-    <div className="mb-3 sm:mb-4 rounded-xl border border-green-200 overflow-hidden bg-white shadow-lg">
+    <div className="mb-0 w-full bg-white" style={{ boxShadow: 'none', border: 'none', borderRadius: 0, maxWidth: '100%', margin: 0 }}>
       {/* ヘッダー（デカめ・押しやすい） */}
-      <div className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10 shadow-sm">
+      <div className="flex items-center justify-between px-0 py-2 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10" style={{margin:0}}>
         <button
           className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100"
           style={{
@@ -417,33 +439,30 @@ export default function Calendar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
           </svg>
         </button>
+        {/* 右端に表示切替 */}
+        <div className="ml-3 flex gap-2">
+          <button onClick={()=>setViewMode("month")} style={{fontWeight: viewMode==="month"?'bold':'normal',background:viewMode==="month"?'#e0ffe9':'transparent'}} className="px-2 py-1 rounded">月</button>
+          <button onClick={()=>setViewMode("week")}  style={{fontWeight: viewMode==="week"?'bold':'normal',background:viewMode==="week"?'#e0ffe9':'transparent'}} className="px-2 py-1 rounded">週</button>
+        </div>
       </div>
 
       {/* 曜日行（固定＆大きめ） */}
-      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10 px-3 sm:px-4" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', margin:0, padding:0 }}>
         {["日","月","火","水","木","金","土"].map((d, idx) => (
-          <div
-            key={d}
-            className={
-              "py-2 " +
-              (idx === 0 ? "text-red-600" : idx === 6 ? "text-blue-600" : "")
-            }
-          >
-            {d}
-          </div>
+          <div key={d} className={"py-2 "+(idx===0?"text-red-600":idx===6?"text-blue-600":"")} style={{margin:0}}>{d}</div>
         ))}
       </div>
 
       {/* カレンダー本体（タップ幅UP・余白広め） */}
-      <div className="grid grid-cols-7 bg-white px-3 sm:px-4 py-2 sm:py-3" style={{ 
-        display: 'grid', 
-        WebkitDisplay: 'grid',
+      <div className="grid grid-cols-7 bg-white" style={{
+        display: 'grid',
         gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-        WebkitGridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-        gap: '8px',
-        WebkitColumnGap: '8px',
-        WebkitRowGap: '8px'
-      }}>{cells}</div>
+        gap: '3px',
+        padding: 0,
+        margin: 0
+      }}>{visibleCells.map((cell, i) =>
+          cell===null ? <div key={`empty-${i}`}></div> : renderDayCell(cell)
+        )}</div>
     </div>
   );
 }

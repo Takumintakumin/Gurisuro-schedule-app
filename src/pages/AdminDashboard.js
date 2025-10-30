@@ -35,7 +35,7 @@ export default function AdminDashboard() {
   // タブリストおよびアクティブタブ管理
   const tabList = [
     { key: 'calendar', label: 'カレンダー', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>), route: '/admin/dashboard?tab=calendar' },
-    { key: 'apply', label: '応募状況', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>), route: '/admin/dashboard?tab=apply' },
+    { key: 'apply', label: 'イベント一覧', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>), route: '/admin/dashboard?tab=apply' },
     { key: 'notifications', label: '通知', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>), route: '/admin/dashboard?tab=notifications' },
     { key: 'users', label: 'ユーザー管理', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>), route: '/admin/users' },
   ];
@@ -245,6 +245,8 @@ export default function AdminDashboard() {
   const [applyTabApplications, setApplyTabApplications] = useState({});
   const [applyTabAppLoading, setApplyTabAppLoading] = useState(false);
   const [applyTabAppError, setApplyTabAppError] = useState("");
+  const [myAppliedEventIds, setMyAppliedEventIds] = useState(new Set());
+  const [showOnlyMyApps, setShowOnlyMyApps] = useState(false);
 
   // --- useEffectでactiveTabが'apply'のとき全イベント分応募履歴取得
   useEffect(() => {
@@ -270,44 +272,51 @@ export default function AdminDashboard() {
     }
   }, [activeTab, events]);
 
-  // --- renderApplyTabを書き換え
+  // activeTab/apply時に自分の応募取得
+  useEffect(() => {
+    if (activeTab === 'apply') {
+      (async () => {
+        try {
+          const myres = await apiFetch('/api/applications?username=admin');
+          if (myres.ok && Array.isArray(myres.data)) {
+            setMyAppliedEventIds(new Set(myres.data.map(a=>a.event_id)));
+          }
+        } catch {}
+      })();
+    }
+  }, [activeTab]);
+
+  // タブlabelをイベント一覧に
   const renderApplyTab = () => {
     if (applyTabError) return <div className="text-red-600 p-4">{applyTabError} <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={refresh}>再取得</button></div>;
     if (applyTabAppLoading) return <div className="p-6">応募状況読み込み中...</div>;
     if (applyTabAppError) return <div className="text-red-600 p-4">{applyTabAppError}</div>;
 
     const todayYMD = toLocalYMD(new Date());
-    const sortedEvents = [...events]
-      .filter(ev => ev.date && ev.date >= todayYMD)
-      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || ''));
+    let filtered = [...events].filter(ev => ev.date && ev.date >= todayYMD);
+    if (showOnlyMyApps) filtered = filtered.filter(ev=>myAppliedEventIds.has(ev.id));
     return (
       <div>
-        <h2 className="font-semibold mb-4">今後の登録イベント・応募状況</h2>
+        <h2>イベント一覧</h2>
+        <div>
+          <button onClick={()=>setShowOnlyMyApps(false)} style={{fontWeight:!showOnlyMyApps?'bold':'normal'}}>すべて</button>
+          <button onClick={()=>setShowOnlyMyApps(true)} style={{fontWeight:showOnlyMyApps?'bold':'normal'}}>自分が応募したイベント</button>
+        </div>
         <ul className="space-y-2">
-          {sortedEvents.length === 0 && (
+          {filtered.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
-          {sortedEvents.map(ev => {
-            const apps = applyTabApplications[ev.id] || [];
-            return (
-              <li key={ev.id} className="border rounded p-3 bg-white flex items-center gap-3">
-                {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{ev.label}</div>
-                  <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    応募数: {apps.length}人{apps.length > 0 && ' ／ '}{apps.map(a => a.username).join(', ')}
-                  </div>
-                </div>
-                <button
-                  className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
-                  onClick={() => openFairness(ev.id)}
-                >
-                  詳細
-                </button>
-              </li>
-            );
-          })}
+          {filtered.map(ev=>(
+            <li key={ev.id} className="border rounded p-3 flex items-center gap-3">
+              {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{ev.label}</div>
+                <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
+                {myAppliedEventIds.has(ev.id) && <span className="text-emerald-600 font-bold ml-2">応募済み</span>}
+              </div>
+              <button className="px-3 py-1 rounded bg-indigo-600 text-white text-sm" onClick={()=>openFairness(ev.id)}>詳細</button>
+            </li>
+          ))}
         </ul>
       </div>
     );
@@ -514,6 +523,16 @@ export default function AdminDashboard() {
   const unreadCount = useMemo(() => {
     return notifications.filter(n => !n.read_at).length;
   }, [notifications]);
+
+  // 通知タブはactiveTab変化ごとにfetch
+  useEffect(()=>{
+    if(activeTab==="notifications"){ (async()=>{
+      try {
+        const r = await apiFetch("/api?path=notifications");
+        if(r.ok&&Array.isArray(r.data)) setNotifications(r.data);
+      }catch{}
+    })(); }
+  },[activeTab]);
 
   // 通知タブの内容
   const renderNotificationsTab = () => (
