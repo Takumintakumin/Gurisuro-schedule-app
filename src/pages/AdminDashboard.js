@@ -1,5 +1,5 @@
 // src/pages/AdminDashboard.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
@@ -32,8 +32,24 @@ export default function AdminDashboard() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // タブ管理（URLパラメータ不要、URLパラメータ反映はsetActiveTab内で一度だけ）
-  const [activeTab, setActiveTab] = useState("calendar");
+  // タブリストおよびアクティブタブ管理
+  const tabList = [
+    { key: 'calendar', label: 'カレンダー', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>), route: '/admin/dashboard?tab=calendar' },
+    { key: 'apply', label: '応募状況', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>), route: '/admin/dashboard?tab=apply' },
+    { key: 'notifications', label: '通知', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>), route: '/admin/dashboard?tab=notifications' },
+    { key: 'users', label: 'ユーザー管理', icon: (<svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>), route: '/admin/users' },
+  ];
+
+  const [activeTab, setActiveTab] = useState('calendar');
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    let tabParam = sp.get("tab");
+    if (!tabParam || !tabList.some(t => t.key === tabParam)) {
+      tabParam = "calendar";
+    }
+    setActiveTab(tabParam);
+    // eslint-disable-next-line
+  }, [window.location.search]);
 
   // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
