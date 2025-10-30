@@ -31,7 +31,16 @@ function sign(data) {
 
 function serializeCookie(name, value, { maxAge, path = "/", httpOnly = true, sameSite = "Lax", secure } = {}) {
   const parts = [`${name}=${value}`];
-  if (maxAge) parts.push(`Max-Age=${maxAge}`);
+  if (typeof maxAge === "number") {
+    parts.push(`Max-Age=${maxAge}`);
+    const expires = new Date(Date.now() + maxAge * 1000);
+    // Max-Age=0 のときも過去日付を設定して確実に消す
+    if (maxAge === 0) {
+      parts.push(`Expires=${new Date(0).toUTCString()}`);
+    } else {
+      parts.push(`Expires=${expires.toUTCString()}`);
+    }
+  }
   if (path) parts.push(`Path=${path}`);
   if (httpOnly) parts.push("HttpOnly");
   if (sameSite) parts.push(`SameSite=${sameSite}`);
@@ -187,6 +196,11 @@ export default async function handler(req, res) {
       // セッション cookie 設定
       setSessionCookie(res, { id: u.id, username: u.username, role: u.role || "user" }, req);
 
+      // 認証系はキャッシュさせない
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Vary", "Cookie");
       return res.status(200).json({ message: "OK", role: u.role, username: u.username });
     }
 
@@ -194,12 +208,22 @@ export default async function handler(req, res) {
     if (sub === "me") {
       const sess = getSession(req);
       if (!sess) return res.status(401).json({ error: "Not authenticated" });
+      // 認証系はキャッシュさせない
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Vary", "Cookie");
       return res.status(200).json({ ok: true, ...sess });
     }
 
     // ---- /api/logout ----
     if (sub === "logout") {
       clearSessionCookie(res, req);
+      // 認証系はキャッシュさせない
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Vary", "Cookie");
       return res.status(200).json({ ok: true });
     }
 
