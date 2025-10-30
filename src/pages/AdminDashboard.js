@@ -18,6 +18,24 @@ async function apiFetch(url, options = {}) {
   return { ok: res.ok, status: res.status, data: {}, text };
 }
 
+async function safeApiFetch(url, options = {}, nav = null) {
+  const res = await fetch(url, { credentials: "include", ...options });
+  if (res.status === 401 || res.status === 403) {
+    alert("再ログインしてください");
+    if (nav) nav("/admin/login");
+    throw new Error("unauthorized");
+  }
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return { ok: res.ok, status: res.status, data, text: "" };
+  }
+  let text = "";
+  try { text = await res.text(); } catch {}
+  return { ok: res.ok, status: res.status, data: {}, text };
+}
+
 // 固定イベント（画像は public/icons 配下）
 const FIXED_EVENTS = [
   { key: "grandgolf", label: "グランドゴルフ", icon: "/icons/grandgolf.png" },
@@ -115,7 +133,7 @@ export default function AdminDashboard() {
   // ユーザーリスト取得
   const refreshUsers = async () => {
     try {
-      const r = await apiFetch("/api/users");
+      const r = await safeApiFetch("/api/users", {}, nav);
       setUsers(Array.isArray(r.data) ? r.data.filter(u => u.role !== "admin") : []);
     } catch (e) {
       console.error("users fetch error:", e);
@@ -157,7 +175,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setApplyTabError("");
     try {
-      const r = await apiFetch("/api/events");
+      const r = await safeApiFetch("/api/events", {}, nav);
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
       
@@ -225,7 +243,7 @@ export default function AdminDashboard() {
       
       // 通知を取得
       try {
-        const notifs = await apiFetch("/api?path=notifications");
+        const notifs = await safeApiFetch("/api?path=notifications", {}, nav);
         if (notifs.ok && Array.isArray(notifs.data)) {
           setNotifications(notifs.data);
         }
@@ -252,13 +270,13 @@ export default function AdminDashboard() {
     if (activeTab === 'apply') {
       setApplyLoading(true); setApplyError("");
       Promise.all([
-        apiFetch('/api/events'),
-        apiFetch('/api/applications?username=admin'),
+        safeApiFetch('/api/events', {}, nav),
+        safeApiFetch(`/api/applications?username=admin`, {}, nav),
       ]).then(([r1, r2]) => {
         setApplyEvents(Array.isArray(r1.data)?r1.data:[]);
         setMyApplyEventIds(new Set((Array.isArray(r2.data)?r2.data:[]).map(x=>x.event_id)));
-      }).catch(()=>{
-        setApplyError('データ取得に失敗しました');
+      }).catch(e => {
+        if (!/unauthorized/.test(e.message)) setApplyError('データ取得に失敗しました');
       }).finally(()=>setApplyLoading(false));
     }
   },[activeTab]);
@@ -268,9 +286,9 @@ export default function AdminDashboard() {
     if (activeTab === 'apply') {
       (async () => {
         try {
-          const myres = await apiFetch('/api/applications?username=admin');
+          const myres = await safeApiFetch('/api/applications?username=admin', {}, nav);
           if (myres.ok && Array.isArray(myres.data)) {
-            setMyAppliedEventIds(new Set(myres.data.map(a=>a.event_id)));
+            setMyApplyEventIds(new Set(myres.data.map(a=>a.event_id)));
           }
         } catch {}
       })();
@@ -511,7 +529,7 @@ export default function AdminDashboard() {
   useEffect(()=>{
     if(activeTab==="notifications"){ (async()=>{
       try {
-        const r = await apiFetch("/api?path=notifications");
+        const r = await safeApiFetch("/api?path=notifications", {}, nav);
         if(r.ok&&Array.isArray(r.data)) setNotifications(r.data);
       }catch{}
     })(); }
@@ -524,11 +542,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     if(activeTab === 'notifications'){
       setNotifLoading(true); setNotifError("");
-      apiFetch('/api?path=notifications').then(r=>{
-        setNotifications(Array.isArray(r.data)?r.data:[]);
-      }).catch(()=>{
-        setNotifError('通知の取得に失敗しました');
-      }).finally(()=>setNotifLoading(false));
+      safeApiFetch('/api?path=notifications', {}, nav)
+        .then(r=>{ setNotifications(Array.isArray(r.data)?r.data:[]); })
+        .catch(e => { if(!/unauthorized/.test(e.message)) setNotifError('通知の取得に失敗しました'); })
+        .finally(()=>setNotifLoading(false));
     }
   },[activeTab]);
 
