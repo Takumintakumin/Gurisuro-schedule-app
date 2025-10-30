@@ -31,7 +31,7 @@ export default function AdminUsers() {
   const [list, setList] = useState([]);
 
   // 表示強化用UI状態
-  const [q, setQ] = useState("");                 // 検索
+  const [q, setQ] = useState("");                 // 検索（空なら一覧は表示しない）
   const [famFilter, setFamFilter] = useState("all"); // familiar/unfamiliar/unknown/all
 
   // （任意）追加・削除が元々ある想定
@@ -117,6 +117,23 @@ export default function AdminUsers() {
 
   // 通知を取得
   const [notifications, setNotifications] = useState([]);
+  // 履歴モーダル
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyKind, setHistoryKind] = useState("all"); // all/driver/attendant
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
+  const [historyTarget, setHistoryTarget] = useState("");
+
+  const openHistory = async (username) => {
+    try {
+      const r = await apiFetch(`/api/applications?username=${encodeURIComponent(username)}`);
+      setHistory(Array.isArray(r.data) ? r.data : []);
+      setHistoryOpen(true);
+    } catch (e) {
+      alert("履歴の取得に失敗しました");
+    }
+  };
   
   useEffect(() => {
     const role = localStorage.getItem("userRole");
@@ -204,33 +221,52 @@ export default function AdminUsers() {
           </div>
         </div>
 
-        {/* 一覧（モバイル優先カードUI） */}
-        {filtered.length === 0 ? (
+        {/* 一覧（検索開始まで表示しない） */}
+        {q.trim() === "" ? (
+          <p className="text-sm text-gray-500">上部の検索に文字を入力するとユーザーが表示されます。</p>
+        ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-500">該当するユーザーがいません。</p>
         ) : (
           <ul className="space-y-2">
             {filtered.map((u) => (
               <li key={u.id} className="border rounded p-3 bg-white">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{u.username}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      役割: {u.role || "user"}
+                    <div className="text-xs text-gray-500 mt-0.5">役割: {u.role || "user"}</div>
+                    {/* 表示名の編集 */}
+                    <div className="mt-2 flex gap-2 items-center">
+                      <input
+                        className="border rounded p-1 text-xs w-40"
+                        defaultValue={u.display_name || ""}
+                        placeholder="表示名"
+                        onBlur={async (e) => {
+                          try {
+                            const r = await apiFetch("/api/users", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ username: u.username, display_name: e.target.value || null }),
+                            });
+                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                          } catch (err) {
+                            alert(`更新に失敗しました: ${err.message}`);
+                          }
+                        }}
+                      />
+                      <span className="text-xs text-gray-400">フォーカス外しで保存</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-end gap-2">
+                    {/* 役割変更 */}
                     <select
                       className="border rounded p-1 text-xs"
-                      value={u.familiar || u.familiarity || "unknown"}
+                      defaultValue={u.role || "user"}
                       onChange={async (e) => {
                         try {
                           const r = await apiFetch("/api/users", {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              username: u.username,
-                              familiar: e.target.value === "unknown" ? null : e.target.value,
-                            }),
+                            body: JSON.stringify({ username: u.username, role: e.target.value }),
                           });
                           if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                           await refresh();
@@ -239,17 +275,90 @@ export default function AdminUsers() {
                         }
                       }}
                     >
-                      <option value="unknown">不明</option>
-                      <option value="familiar">詳しい</option>
-                      <option value="unfamiliar">詳しくない</option>
+                      <option value="user">一般</option>
+                      <option value="admin">管理者</option>
                     </select>
-                    <FamBadge value={u.familiar || u.familiarity || "unknown"} />
-                    <button
-                      className="px-3 py-1 rounded bg-red-600 text-white text-xs"
-                      onClick={() => handleDelete(u.id)}
-                    >
-                      削除
-                    </button>
+
+                    {/* 応募適性（既存） */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="border rounded p-1 text-xs"
+                        value={u.familiar || u.familiarity || "unknown"}
+                        onChange={async (e) => {
+                          try {
+                            const r = await apiFetch("/api/users", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ username: u.username, familiar: e.target.value === "unknown" ? null : e.target.value }),
+                            });
+                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                            await refresh();
+                          } catch (err) {
+                            alert(`更新に失敗しました: ${err.message}`);
+                          }
+                        }}
+                      >
+                        <option value="unknown">不明</option>
+                        <option value="familiar">詳しい</option>
+                        <option value="unfamiliar">詳しくない</option>
+                      </select>
+                      <FamBadge value={u.familiar || u.familiarity || "unknown"} />
+                    </div>
+
+                    {/* 便利アクション */}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="px-2 py-1 rounded bg-indigo-600 text-white text-xs"
+                        onClick={async () => {
+                          // 履歴モーダルを開く（下で定義）
+                          setHistoryTarget(u.username);
+                          await openHistory(u.username);
+                        }}
+                      >
+                        履歴
+                      </button>
+                      <button
+                        className="px-2 py-1 rounded bg-amber-500 text-white text-xs"
+                        onClick={async () => {
+                          const newPw = prompt("一時パスワードを入力");
+                          if (!newPw) return;
+                          try {
+                            const r = await apiFetch("/api/users", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ username: u.username, password: newPw }),
+                            });
+                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                            alert("一時パスワードを設定しました");
+                          } catch (err) {
+                            alert(`設定に失敗しました: ${err.message}`);
+                          }
+                        }}
+                      >
+                        一時PW
+                      </button>
+                      <button
+                        className="px-2 py-1 rounded bg-gray-200 text-gray-800 text-xs"
+                        onClick={async () => {
+                          if (!confirm("このユーザーを強制ログアウトしますか？")) return;
+                          try {
+                            const r = await apiFetch(`/api?path=logout_user&username=${encodeURIComponent(u.username)}`, { method: "POST" });
+                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                            alert("強制ログアウトしました");
+                          } catch (err) {
+                            alert("対応していない環境です（管理者にAPI追加が必要）");
+                          }
+                        }}
+                      >
+                        強制ログアウト
+                      </button>
+                      <button
+                        className="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                        onClick={() => handleDelete(u.id)}
+                      >
+                        削除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </li>
@@ -302,6 +411,42 @@ export default function AdminUsers() {
     </div>
     
     {/* 固定タブバー */}
+    {/* 履歴モーダル */}
+    {historyOpen && (
+      <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
+        <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold">{historyTarget} の応募履歴</h3>
+            <button onClick={() => setHistoryOpen(false)} className="text-gray-500">✕</button>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3 text-sm">
+            <select className="border rounded p-1" value={historyKind} onChange={(e)=>setHistoryKind(e.target.value)}>
+              <option value="all">すべて</option>
+              <option value="driver">運転手</option>
+              <option value="attendant">添乗員</option>
+            </select>
+            <input type="date" className="border rounded p-1" value={historyFrom} onChange={(e)=>setHistoryFrom(e.target.value)} />
+            <input type="date" className="border rounded p-1" value={historyTo} onChange={(e)=>setHistoryTo(e.target.value)} />
+          </div>
+          <ul className="space-y-2 text-sm">
+            {history
+              .filter(h => historyKind === 'all' || h.kind === historyKind)
+              .filter(h => !historyFrom || (h.date && h.date >= historyFrom))
+              .filter(h => !historyTo || (h.date && h.date <= historyTo))
+              .map((h, idx) => (
+                <li key={idx} className="border rounded p-2">
+                  <div className="flex justify-between"><span>{h.date || h.created_at?.slice(0,10) || '-'}</span><span className="text-gray-500">{h.kind}</span></div>
+                  <div className="text-gray-600">{h.label || `イベントID:${h.event_id}`}</div>
+                  {h.status && <div className="text-xs text-gray-500">{h.status}</div>}
+                </li>
+            ))}
+            {history.length === 0 && (
+              <li className="text-gray-500">履歴がありません。</li>
+            )}
+          </ul>
+        </div>
+      </div>
+    )}
     <div 
       id="admin-users-tab-bar"
       style={{ 
