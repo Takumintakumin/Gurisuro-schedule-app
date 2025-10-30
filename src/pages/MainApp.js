@@ -6,7 +6,12 @@ import { toLocalYMD } from "../lib/date.js";
 
 // JSON/text どちらも耐える fetch
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, { credentials: "include", ...options });
+  const res = await fetch(url, {
+    credentials: "include",
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache", ...(options.headers || {}) },
+    ...options,
+  });
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch {}
@@ -89,6 +94,23 @@ export default function MainApp() {
   }, [userName]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // リアルタイム性向上: フォアグラウンド復帰/一定間隔で再取得
+  useEffect(() => {
+    const handleWake = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", handleWake);
+    window.addEventListener("focus", handleWake);
+    const timer = setInterval(() => {
+      refresh();
+    }, 20000); // 20秒ごとに更新
+    return () => {
+      document.removeEventListener("visibilitychange", handleWake);
+      window.removeEventListener("focus", handleWake);
+      clearInterval(timer);
+    };
+  }, [refresh]);
 
   // ---- 通知一覧取得 ----
   const refreshNotifications = useCallback(async () => {
@@ -351,6 +373,36 @@ export default function MainApp() {
       setDecidedMembersByEventId(allDecidedByEventId);
     })();
   }, [events, selectedDate, userName, myApps]);
+
+  // すべてのイベントについて確定状況をバックグラウンドで取得し、カレンダーの色がタップ前に反映されるようにする
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      if (!Array.isArray(events) || events.length === 0) {
+        setDecidedMembersByEventId({});
+        return;
+      }
+      const map = {};
+      const tasks = events.map(async (ev) => {
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+          if (dec.ok && dec.data) {
+            map[ev.id] = {
+              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+            };
+          } else {
+            map[ev.id] = { driver: [], attendant: [] };
+          }
+        } catch {
+          map[ev.id] = { driver: [], attendant: [] };
+        }
+      });
+      await Promise.all(tasks);
+      if (!aborted) setDecidedMembersByEventId(map);
+    })();
+    return () => { aborted = true; };
+  }, [events]);
 
   const hasApplied = (eventId, kind) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
