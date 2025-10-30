@@ -144,8 +144,12 @@ export default function AdminDashboard() {
   };
 
   // イベント取得
+  const [applyTabError, setApplyTabError] = useState("");
+
+  // refresh時try-catchでapplyTabErrorセット
   const refresh = async () => {
     setLoading(true);
+    setApplyTabError("");
     try {
       const r = await apiFetch("/api/events");
       const evs = Array.isArray(r.data) ? r.data : [];
@@ -221,7 +225,7 @@ export default function AdminDashboard() {
         }
       } catch {}
     } catch (e) {
-      console.error("fetch events error:", e);
+      setApplyTabError("データの取得に失敗しました。");
     } finally {
       setLoading(false);
     }
@@ -231,6 +235,7 @@ export default function AdminDashboard() {
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
   const renderApplyTab = () => {
+    if (applyTabError) return <div className="text-red-600 p-4">{applyTabError} <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={refresh}>再取得</button></div>;
     // 今日以降＋登録済みイベントのみ
     const sortedEvents = [...events]
       .filter(ev => ev.date && ev.date >= todayYMD)
