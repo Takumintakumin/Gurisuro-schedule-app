@@ -513,6 +513,25 @@ export default function AdminDashboard() {
     return notifications.filter(n => !n.read_at).length;
   }, [notifications]);
 
+  // Android 専用: ホームアイコンにバッジ表示（対応ブラウザのみ）
+  useEffect(() => {
+    try {
+      const ua = navigator.userAgent || "";
+      const isAndroid = /Android/i.test(ua);
+      const canBadge = typeof navigator !== "undefined" && ("setAppBadge" in navigator || "setExperimentalAppBadge" in navigator);
+      if (!isAndroid || !canBadge) return;
+
+      const setBadge = navigator.setAppBadge || navigator.setExperimentalAppBadge;
+      const clearBadge = navigator.clearAppBadge || navigator.clearExperimentalAppBadge || (() => Promise.resolve());
+
+      if (unreadCount > 0) {
+        Promise.resolve(setBadge.call(navigator, unreadCount)).catch(() => {});
+      } else {
+        Promise.resolve(clearBadge.call(navigator)).catch(() => {});
+      }
+    } catch {}
+  }, [unreadCount]);
+
   // 通知タブの内容
   const renderNotificationsTab = () => (
     <div>
