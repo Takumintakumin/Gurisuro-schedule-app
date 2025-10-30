@@ -961,8 +961,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === "apply" && renderApplyTab()}
-        {activeTab === "notifications" && renderNotificationsTab()}
+        {/* apply/notifications は calendar ブロックの外に配置する */}
 
         {/* イベント編集モーダル */}
         {editOpen && editingEvent && (
@@ -1126,6 +1125,9 @@ export default function AdminDashboard() {
         )}
         </>
         )}
+
+        {activeTab === "apply" && renderApplyTab()}
+        {activeTab === "notifications" && renderNotificationsTab()}
       </div>
     </div>
 
