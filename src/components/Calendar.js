@@ -311,10 +311,38 @@ export default function Calendar({
           )}
         </div>
 
-        {/* コンパクト時は時間やラベルを出さず、マークのみ。通常時はバッジ表示 */}
-        {isCompact
-          ? null
-          : ((dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags))}
+        {/* コンパクト時: アイコンのみを1つ表示（なければマークのみ）。通常時: バッジ表示 */}
+        {isCompact ? (
+          (() => {
+            const iconEvents = (dayEvents || []).filter(ev => ev && ev.icon);
+            if (iconEvents.length > 0) {
+              const first = iconEvents[0];
+              const overflow = Math.max(iconEvents.length - 1, 0);
+              return (
+                <div className="mt-1.5 flex items-center" style={{ gap: '4px' }}>
+                  <img
+                    src={first.icon}
+                    alt={first.label || "event"}
+                    title={first.label || ""}
+                    className="h-5 w-5 object-contain rounded-sm shadow-sm"
+                    style={{ border: '1px solid rgba(0,0,0,0.1)' }}
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                  {overflow > 0 && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100/90 border border-amber-300">
+                      +{overflow}
+                    </span>
+                  )}
+                </div>
+              );
+            }
+            // アイコンがない場合はマークのみ
+            return null;
+          })()
+        ) : (
+          (dayEvents.length > 0 || hasTags) && renderBadges(dayEvents, tags)
+        )}
       </div>
     );
   };
