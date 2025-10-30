@@ -35,13 +35,13 @@ export default function AdminDashboard() {
   // タブ管理（URLパラメータから取得、デフォルトはcalendar）
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
-    return tab && ["calendar", "apply", "notifications"].includes(tab) ? tab : "calendar";
+    return tab && ["calendar", "apply", "notifications", "users"].includes(tab) ? tab : "calendar";
   });
 
   // URLパラメータの変更を監視
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab && ["calendar", "apply", "notifications"].includes(tab)) {
+    if (tab && ["calendar", "apply", "notifications", "users"].includes(tab)) {
       setActiveTab(tab);
     } else {
       setActiveTab("calendar");
@@ -1160,141 +1160,34 @@ export default function AdminDashboard() {
         margin: '0 auto', 
         display: 'grid', 
         WebkitDisplay: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr', 
-        WebkitGridTemplateColumns: '1fr 1fr 1fr',
+        gridTemplateColumns: 'repeat(4, 1fr)', 
+        WebkitGridTemplateColumns: 'repeat(4, 1fr)',
         width: '100%', 
         height: '100%', 
         minHeight: '64px' 
       }}>
-        <button
-          onClick={() => {
-            setActiveTab("calendar");
-            nav("/admin/dashboard?tab=calendar", { replace: true });
-          }}
-          style={{
-            display: 'flex',
-            WebkitDisplay: 'flex',
-            flexDirection: 'column',
-            WebkitFlexDirection: 'column',
-            alignItems: 'center',
-            WebkitAlignItems: 'center',
-            justifyContent: 'center',
-            WebkitJustifyContent: 'center',
-            marginBottom: '4px',
-            padding: '12px 16px',
-            backgroundColor: activeTab === "calendar" ? '#dbeafe' : 'transparent',
-            color: activeTab === "calendar" ? '#2563eb' : '#4b5563',
-            fontWeight: activeTab === "calendar" ? '600' : '400',
-            border: 'none',
-            cursor: 'pointer',
-            WebkitTransition: 'all 0.2s',
-            transition: 'all 0.2s'
-          }}
-        >
-          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("apply")}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '4px',
-            padding: '12px 16px',
-            backgroundColor: activeTab === "apply" ? '#dbeafe' : 'transparent',
-            color: activeTab === "apply" ? '#2563eb' : '#4b5563',
-            fontWeight: activeTab === "apply" ? '600' : '400',
-            border: 'none',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-          }}
-        >
-          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>応募状況</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("notifications");
-            nav("/admin/dashboard?tab=notifications", { replace: true });
-          }}
-          style={{
-            display: 'flex',
-            WebkitDisplay: 'flex',
-            flexDirection: 'column',
-            WebkitFlexDirection: 'column',
-            alignItems: 'center',
-            WebkitAlignItems: 'center',
-            justifyContent: 'center',
-            WebkitJustifyContent: 'center',
-            marginBottom: '4px',
-            padding: '12px 16px',
-            backgroundColor: activeTab === "notifications" ? '#dbeafe' : 'transparent',
-            color: activeTab === "notifications" ? '#2563eb' : '#4b5563',
-            fontWeight: activeTab === "notifications" ? '600' : '400',
-            border: 'none',
-            cursor: 'pointer',
-            WebkitTransition: 'all 0.2s',
-            transition: 'all 0.2s',
-            position: 'relative'
-          }}
-        >
-          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>通知</span>
-          {unreadCount > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: '4px',
-              right: '8px',
-              backgroundColor: '#ef4444',
-              color: '#ffffff',
-              fontSize: '10px',
-              borderRadius: '10px',
-              width: '20px',
-              height: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: '600'
-            }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => nav("/admin/users")}
-          style={{
-            display: 'flex',
-            WebkitDisplay: 'flex',
-            flexDirection: 'column',
-            WebkitFlexDirection: 'column',
-            alignItems: 'center',
-            WebkitAlignItems: 'center',
-            justifyContent: 'center',
-            WebkitJustifyContent: 'center',
-            marginBottom: '4px',
-            padding: '12px 16px',
-            backgroundColor: activeTab === "users" ? '#dbeafe' : 'transparent',
-            color: activeTab === "users" ? '#2563eb' : '#4b5563',
-            fontWeight: activeTab === "users" ? '600' : '400',
-            border: 'none',
-            cursor: 'pointer',
-            WebkitTransition: 'all 0.2s',
-            transition: 'all 0.2s'
-          }}
-        >
-          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>ユーザー管理</span>
-        </button>
+        {tabList.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => {
+              setActiveTab(tab.key);
+              // 通知&カレンダー&応募状況はdashboardルート、ユーザー管理だけ別ページ遷移
+              if (tab.key !== "users") nav(tab.route, { replace: true });
+              else nav(tab.route);
+            }}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '4px', padding: '12px 16px', backgroundColor: activeTab === tab.key ? '#dbeafe' : 'transparent', color: activeTab === tab.key ? '#2563eb' : '#4b5563', fontWeight: activeTab === tab.key ? '600' : '400', border: 'none', cursor: 'pointer', transition: 'all 0.2s', position: tab.key === 'notifications' ? 'relative' : 'static'
+            }}
+          >
+            {tab.icon}
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>{tab.label}</span>
+            {tab.key === 'notifications' && unreadCount > 0 && (
+              <span style={{ position: 'absolute', top: '4px', right: '8px', backgroundColor: '#ef4444', color: '#ffffff', fontSize: '10px', borderRadius: '10px', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600' }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
     </div>
     </>
