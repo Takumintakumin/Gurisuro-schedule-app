@@ -258,6 +258,7 @@ export default function AdminDashboard() {
               <div className="flex flex-col gap-2 ml-2">
                 <button className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm" onClick={() => openFairness(ev.id)}>応募状況</button>
                 <button className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm" onClick={() => handleEdit(ev)}>編集</button>
+                <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
               </div>
             </div>
           </li>
