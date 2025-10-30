@@ -51,6 +51,12 @@ export default function AdminDashboard() {
     // eslint-disable-next-line
   }, [window.location.search]);
 
+  useEffect(() => {
+    if (activeTab === 'apply') {
+      refresh();
+    }
+  }, [activeTab]);
+
   // カレンダー & データ
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
