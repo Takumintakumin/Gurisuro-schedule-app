@@ -242,35 +242,26 @@ export default function AdminDashboard() {
   const todayYMD = toLocalYMD(new Date());
 
   // --- state追加
-  const [applyTabApplications, setApplyTabApplications] = useState({});
-  const [applyTabAppLoading, setApplyTabAppLoading] = useState(false);
-  const [applyTabAppError, setApplyTabAppError] = useState("");
-  const [myAppliedEventIds, setMyAppliedEventIds] = useState(new Set());
-  const [showOnlyMyApps, setShowOnlyMyApps] = useState(false);
+  const [applyEvents, setApplyEvents] = useState([]);
+  const [myApplyEventIds, setMyApplyEventIds] = useState(new Set());
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState("");
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
 
-  // --- useEffectでactiveTabが'apply'のとき全イベント分応募履歴取得
   useEffect(() => {
-    if (activeTab === 'apply' && events.length > 0) {
-      setApplyTabAppLoading(true);
-      setApplyTabAppError("");
-      Promise.all(
-        events.map(ev => apiFetch(`/api/applications?event_id=${encodeURIComponent(ev.id)}`))
-      ).then(results => {
-        const appMap = {};
-        events.forEach((ev, idx) => {
-          const r = results[idx];
-          if (r.ok && Array.isArray(r.data)) {
-            appMap[ev.id] = r.data;
-          } else {
-            appMap[ev.id] = [];
-          }
-        });
-        setApplyTabApplications(appMap);
-      }).catch(e => {
-        setApplyTabAppError("応募状況の取得に失敗しました");
-      }).finally(() => setApplyTabAppLoading(false));
+    if (activeTab === 'apply') {
+      setApplyLoading(true); setApplyError("");
+      Promise.all([
+        apiFetch('/api/events'),
+        apiFetch('/api/applications?username=admin'),
+      ]).then(([r1, r2]) => {
+        setApplyEvents(Array.isArray(r1.data)?r1.data:[]);
+        setMyApplyEventIds(new Set((Array.isArray(r2.data)?r2.data:[]).map(x=>x.event_id)));
+      }).catch(()=>{
+        setApplyError('データ取得に失敗しました');
+      }).finally(()=>setApplyLoading(false));
     }
-  }, [activeTab, events]);
+  },[activeTab]);
 
   // activeTab/apply時に自分の応募取得
   useEffect(() => {
@@ -286,33 +277,25 @@ export default function AdminDashboard() {
     }
   }, [activeTab]);
 
-  // タブlabelをイベント一覧に
   const renderApplyTab = () => {
-    if (applyTabError) return <div className="text-red-600 p-4">{applyTabError} <button className="ml-2 px-2 py-1 bg-gray-200 rounded" onClick={refresh}>再取得</button></div>;
-    if (applyTabAppLoading) return <div className="p-6">応募状況読み込み中...</div>;
-    if (applyTabAppError) return <div className="text-red-600 p-4">{applyTabAppError}</div>;
-
-    const todayYMD = toLocalYMD(new Date());
-    let filtered = [...events].filter(ev => ev.date && ev.date >= todayYMD);
-    if (showOnlyMyApps) filtered = filtered.filter(ev=>myAppliedEventIds.has(ev.id));
+    if (applyLoading) return <div className="p-6">読み込み中…</div>;
+    if (applyError) return <div className="text-red-600 p-4">{applyError}</div>;
+    let filtered = applyEvents.filter(ev=>ev.date);
+    if (showOnlyMine) filtered = filtered.filter(ev=>myApplyEventIds.has(ev.id));
+    filtered.sort((a,b)=>a.date.localeCompare(b.date)||(a.start_time||"").localeCompare(b.start_time||""));
     return (
       <div>
-        <h2>イベント一覧</h2>
-        <div>
-          <button onClick={()=>setShowOnlyMyApps(false)} style={{fontWeight:!showOnlyMyApps?'bold':'normal'}}>すべて</button>
-          <button onClick={()=>setShowOnlyMyApps(true)} style={{fontWeight:showOnlyMyApps?'bold':'normal'}}>自分が応募したイベント</button>
-        </div>
+        <h2 className="font-semibold mb-4">イベント一覧</h2>
+        <div className="mb-2"><button onClick={()=>setShowOnlyMine(false)} style={{fontWeight:!showOnlyMine?'bold':'normal'}}>すべて</button> / <button onClick={()=>setShowOnlyMine(true)} style={{fontWeight:showOnlyMine?'bold':'normal'}}>自分が応募したイベント</button></div>
         <ul className="space-y-2">
-          {filtered.length === 0 && (
-            <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
-          )}
+          {filtered.length === 0 && (<li className="text-gray-500 text-sm">イベントはありません。</li>)}
           {filtered.map(ev=>(
             <li key={ev.id} className="border rounded p-3 flex items-center gap-3">
               {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{ev.label}</div>
                 <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                {myAppliedEventIds.has(ev.id) && <span className="text-emerald-600 font-bold ml-2">応募済み</span>}
+                {myApplyEventIds.has(ev.id)&&<span className="text-emerald-600 font-bold ml-2">応募済み</span>}
               </div>
               <button className="px-3 py-1 rounded bg-indigo-600 text-white text-sm" onClick={()=>openFairness(ev.id)}>詳細</button>
             </li>
@@ -535,15 +518,31 @@ export default function AdminDashboard() {
   },[activeTab]);
 
   // 通知タブの内容
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState("");
+
+  useEffect(() => {
+    if(activeTab === 'notifications'){
+      setNotifLoading(true); setNotifError("");
+      apiFetch('/api?path=notifications').then(r=>{
+        setNotifications(Array.isArray(r.data)?r.data:[]);
+      }).catch(()=>{
+        setNotifError('通知の取得に失敗しました');
+      }).finally(()=>setNotifLoading(false));
+    }
+  },[activeTab]);
+
   const renderNotificationsTab = () => (
     <div>
       <h2 className="font-semibold mb-4">通知一覧</h2>
-      {notifications.length === 0 ? (
+      {notifLoading && <div className="p-3">通知読み込み中…</div>}
+      {notifError && <div className="text-red-600 p-4">{notifError}</div>}
+      {!notifLoading && !notifError && notifications.length === 0 && (
         <p className="text-sm text-gray-500">通知はありません。</p>
-      ) : (
+      )}
+      {!notifLoading && !notifError && notifications.length > 0 && (
         <ul className="space-y-2">
           {notifications.map((notif) => {
-            // 通知からイベントの日付を取得
             const eventForNotification = events.find(e => e.id === notif.event_id);
             const handleNotificationClick = () => {
               if (eventForNotification && eventForNotification.date) {
@@ -555,39 +554,28 @@ export default function AdminDashboard() {
                 }
               }
             };
-            
             return (
-              <li 
-                key={notif.id} 
-                className={`border rounded p-3 ${notif.read_at ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'} ${eventForNotification ? 'cursor-pointer hover:bg-gray-50' : ''}`}
-                onClick={handleNotificationClick}
-              >
+              <li key={notif.id} className={`border rounded p-3 ${notif.read_at ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'} ${eventForNotification ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={handleNotificationClick}>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <p className="text-sm">{notif.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(notif.created_at).toLocaleString('ja-JP')}
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{new Date(notif.created_at).toLocaleString('ja-JP')}</p>
                   </div>
                   {!notif.read_at && (
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await apiFetch("/api?path=notifications", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ id: notif.id }),
-                          });
-                          await refresh();
-                        } catch (e) {
-                          alert("既読にするのに失敗しました");
-                        }
-                      }}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                    >
-                      既読
-                    </button>
+                    <button onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await apiFetch("/api?path=notifications", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: notif.id }),
+                        });
+                        setNotifLoading(true); // 強制再fetch
+                        await new Promise(res=>setTimeout(res,250));
+                        setNotifLoading(false);
+                      } catch {}
+                    }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">既読</button>
                   )}
                 </div>
               </li>
