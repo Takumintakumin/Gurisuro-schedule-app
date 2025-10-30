@@ -220,7 +220,12 @@ export default function AdminDashboard() {
         for (const ev of evs.slice(0, 60)) {
           try {
             const d = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
-            if (d.ok && d.data && ((Array.isArray(d.data.driver) && d.data.driver.length) || (Array.isArray(d.data.attendant) && d.data.attendant.length))) {
+            // 管理者一覧の「確定済み」判定: 両役（運転手・添乗員）が揃っているときのみ
+            if (
+              d.ok && d.data &&
+              Array.isArray(d.data.driver) && d.data.driver.length > 0 &&
+              Array.isArray(d.data.attendant) && d.data.attendant.length > 0
+            ) {
               ids.add(ev.id);
             }
           } catch {}
