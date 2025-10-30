@@ -64,6 +64,14 @@ export default function AdminDashboard() {
   // 通知
   const [notifications, setNotifications] = useState([]);
 
+  // タブ切替時のデータ確保（特に直接 /admin/dashboard?tab=apply に来た場合）
+  useEffect(() => {
+    if (activeTab === "apply" && events.length === 0 && !loading) {
+      // イベントが未取得なら取得
+      refresh();
+    }
+  }, [activeTab, events.length, loading]);
+
   // 募集作成フォーム
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [customLabel, setCustomLabel] = useState("");
@@ -252,8 +260,11 @@ export default function AdminDashboard() {
     return (
       <div>
         <h2 className="font-semibold mb-4">登録イベント一覧</h2>
+        {loading && (
+          <p className="text-sm text-gray-500">読み込み中…</p>
+        )}
         <ul className="space-y-2">
-          {sortedEvents.length === 0 && (
+          {!loading && sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
           {sortedEvents.map(ev => {
