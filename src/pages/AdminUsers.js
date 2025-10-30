@@ -335,8 +335,8 @@ export default function AdminUsers() {
         margin: '0 auto', 
         display: 'grid', 
         WebkitDisplay: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr', 
-        WebkitGridTemplateColumns: '1fr 1fr 1fr',
+        gridTemplateColumns: 'repeat(4, 1fr)', 
+        WebkitGridTemplateColumns: 'repeat(4, 1fr)',
         width: '100%', 
         height: '100%', 
         minHeight: '64px' 
@@ -369,7 +369,34 @@ export default function AdminUsers() {
           <span style={{ fontSize: '12px', fontWeight: '500' }}>カレンダー</span>
         </button>
         <button
-          onClick={() => nav("/admin/dashboard?tab=calendar")}
+          onClick={() => nav("/admin/dashboard?tab=apply")}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            color: '#4b5563',
+            fontWeight: '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>イベント一覧</span>
+        </button>
+        <button
+          onClick={() => nav("/admin/dashboard?tab=notifications")}
           style={{
             display: 'flex',
             WebkitDisplay: 'flex',

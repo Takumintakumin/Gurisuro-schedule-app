@@ -81,6 +81,7 @@ export default function AdminDashboard() {
   const [customLabel, setCustomLabel] = useState("");
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
+  const [createOpen, setCreateOpen] = useState(false);
 
   // 応募状況モーダル
   const [fairOpen, setFairOpen] = useState(false);
@@ -242,10 +243,6 @@ export default function AdminDashboard() {
             <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
           )}
         {sortedEvents.map((ev) => {
-          // サマリー用: 管理者一覧では即時に確定情報は取得しないためサマリ表現は簡易
-          const statusLabel = (ev.status === '要確定' ? '要確定' : '確定済み');
-          const statusColor = (ev.status === '要確定' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' : 'bg-green-50 text-green-700 border-green-200');
-          // UI例: 運転手 x 名/添乗員 y 名は ev には未集計のため、“応募状況”押下で詳細確認できる。
           return (
             <li key={ev.id} className="border rounded-lg p-3 bg-white">
               <div className="flex items-center gap-3">
@@ -259,8 +256,6 @@ export default function AdminDashboard() {
                     <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
                   </div>
                   <div className="text-xs text-gray-600 truncate">{ev.date || '-'} {ev.start_time || ''}〜{ev.end_time || ''}</div>
-                  {/* サマリラベル（仮置き、確定時は緑帯・要確定/キャンセル等は黄色） */}
-                  <div className={`inline-block mt-1 px-2 py-0.5 rounded border text-xs font-bold ${statusColor}`}>{statusLabel}</div>
                 </div>
               <div className="flex flex-col gap-2 ml-2">
                 <button
@@ -617,9 +612,25 @@ export default function AdminDashboard() {
               cancelledDates={cancelledDates}
             />
 
-        {/* 募集作成フォーム（UI据え置き） */}
-        <form onSubmit={handleSubmit} className="mt-5 bg-gray-50 p-4 rounded-lg border">
-          <h2 className="font-semibold mb-3">{ymd} の募集を作成</h2>
+        {/* 募集作成：常時表示をやめ、ボタンで開く */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="px-3 py-2 rounded bg-blue-600 text-white text-sm"
+          >
+            ＋ 募集を作成
+          </button>
+        </div>
+
+        {createOpen && (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="font-semibold">{ymd} の募集を作成</h2>
+                <button onClick={() => setCreateOpen(false)} className="text-gray-500">✕</button>
+              </div>
+              <form onSubmit={async (e) => { await handleSubmit(e); setCreateOpen(false); }} className="space-y-3">
 
           {/* 画像選択 */}
           <div className="mb-3">
@@ -678,7 +689,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* 自由記入（優先） */}
-          <div className="mb-3">
+          <div className="mb-1">
             <input
               type="text"
               placeholder="自由記入（任意）"
@@ -690,7 +701,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* 時間・枠数 */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-1">
             <label className="text-sm">
               開始
               <input
@@ -711,11 +722,14 @@ export default function AdminDashboard() {
             </label>
           </div>
 
-
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-            登録する
-          </button>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => setCreateOpen(false)} className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm">キャンセル</button>
+            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">登録する</button>
+          </div>
         </form>
+            </div>
+          </div>
+        )}
 
         {/* 当日の登録済みイベント一覧 */}
         <div className="mt-6">
