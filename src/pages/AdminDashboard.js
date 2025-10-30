@@ -71,6 +71,9 @@ export default function AdminDashboard() {
       setDidFetchOnce(true);
       refresh();
     }
+    if (activeTab !== "apply" && didFetchOnce) {
+      setDidFetchOnce(false);
+    }
   }, [activeTab, didFetchOnce]);
 
   // 募集作成フォーム
