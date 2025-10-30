@@ -265,6 +265,9 @@ export default function AdminDashboard() {
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyError, setApplyError] = useState("");
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [eventPage, setEventPage] = useState(0); // 追加: 14日単位で移動
+  const [showMonthModal, setShowMonthModal] = useState(false); // 追加: モーダル表示state
+  const [modalMonth, setModalMonth] = useState(""); // 追加: モーダル対象年月
 
   useEffect(() => {
     if (activeTab === 'apply') {
@@ -298,27 +301,90 @@ export default function AdminDashboard() {
   const renderApplyTab = () => {
     if (applyLoading) return <div className="p-6">読み込み中…</div>;
     if (applyError) return <div className="text-red-600 p-4">{applyError}</div>;
-    let filtered = applyEvents.filter(ev=>ev.date);
-    if (showOnlyMine) filtered = filtered.filter(ev=>myApplyEventIds.has(ev.id));
-    filtered.sort((a,b)=>a.date.localeCompare(b.date)||(a.start_time||"").localeCompare(b.start_time||""));
+    let filtered = applyEvents.filter(ev => ev.date);
+    if (showOnlyMine) filtered = filtered.filter(ev => myApplyEventIds.has(ev.id));
+    // 日付昇順
+    filtered.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || "").localeCompare(b.start_time || ""));
+
+    // 14日ごとの区切り
+    const eventsBy14 = [];
+    let idx = 0;
+    while (idx < filtered.length) {
+      eventsBy14.push(filtered.slice(idx, idx + 14));
+      idx += 14;
+    }
+    const totalPages = eventsBy14.length;
+    const nowPage = Math.max(0, Math.min(eventPage, totalPages - 1));
+    const pageEvents = eventsBy14[nowPage] || [];
+    let periodStart = pageEvents[0]?.date;
+    let periodEnd = pageEvents[pageEvents.length - 1]?.date;
+
+    // 月別モーダル表示用
+    let monthEvents = [];
+    if (showMonthModal && modalMonth) {
+      monthEvents = filtered.filter(ev => ev.date && ev.date.startsWith(modalMonth));
+      monthEvents.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
     return (
       <div>
         <h2 className="font-semibold mb-4">イベント一覧</h2>
-        <div className="mb-2"><button onClick={()=>setShowOnlyMine(false)} style={{fontWeight:!showOnlyMine?'bold':'normal'}}>すべて</button> / <button onClick={()=>setShowOnlyMine(true)} style={{fontWeight:showOnlyMine?'bold':'normal'}}>自分が応募したイベント</button></div>
+        <div className="mb-2">
+          <button onClick={() => setShowOnlyMine(false)} style={{ fontWeight: !showOnlyMine ? 'bold' : 'normal' }}>すべて</button>
+          {' / '}
+          <button onClick={() => setShowOnlyMine(true)} style={{ fontWeight: showOnlyMine ? 'bold' : 'normal' }}>自分が応募したイベント</button>
+        </div>
+        <div className="flex items-center gap-4 mb-2">
+          <button 
+            disabled={nowPage <= 0} 
+            onClick={() => setEventPage(p => Math.max(0, p - 1))}
+            className={`px-3 py-1 rounded ${nowPage <= 0 ? 'bg-gray-200 text-gray-400' : 'bg-gray-600 text-white'}`}
+          >← 前へ</button>
+          <span className="text-sm">{periodStart || '---'} ～ {periodEnd || '---'} （{nowPage + 1} / {totalPages}ページ）</span>
+          <button 
+            disabled={nowPage >= totalPages - 1} 
+            onClick={() => setEventPage(p => Math.min(totalPages - 1, p + 1))}
+            className={`px-3 py-1 rounded ${nowPage >= totalPages - 1 ? 'bg-gray-200 text-gray-400' : 'bg-gray-600 text-white'}`}
+          >次へ →</button>
+        </div>
         <ul className="space-y-2">
-          {filtered.length === 0 && (<li className="text-gray-500 text-sm">イベントはありません。</li>)}
-          {filtered.map(ev=>(
-            <li key={ev.id} className="border rounded p-3 flex items-center gap-3">
-              {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{ev.label}</div>
-                <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
-                {myApplyEventIds.has(ev.id)&&<span className="text-emerald-600 font-bold ml-2">応募済み</span>}
-              </div>
-              <button className="px-3 py-1 rounded bg-indigo-600 text-white text-sm" onClick={()=>openFairness(ev.id)}>詳細</button>
-            </li>
-          ))}
+          {pageEvents.length === 0 && (<li className="text-gray-500 text-sm">イベントはありません。</li>)}
+          {pageEvents.map(ev => {
+            const ym = ev.date ? ev.date.slice(0, 7) : '';
+            return (
+              <li key={ev.id} className="border rounded p-3 flex items-center gap-3">
+                {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{ev.label}</div>
+                  <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
+                  {myApplyEventIds.has(ev.id) && <span className="text-emerald-600 font-bold ml-2">応募済み</span>}
+                </div>
+                <button 
+                  className="px-3 py-1 rounded bg-indigo-600 text-white text-sm"
+                  onClick={() => { setShowMonthModal(true); setModalMonth(ym); }}
+                >詳細（月一覧）</button>
+              </li>
+            );
+          })}
         </ul>
+        {showMonthModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-xl p-6 relative">
+              <button onClick={() => setShowMonthModal(false)} className="absolute top-2 right-3 text-2xl">×</button>
+              <h3 className="font-semibold mb-2">{modalMonth.replace('-', '年')}月のイベント一覧</h3>
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {monthEvents.length === 0 && <li className="text-sm text-gray-500">該当月のイベントはありません。</li>}
+                {monthEvents.map(ev => (
+                  <li key={ev.id} className="border rounded p-2 flex items-center gap-2">
+                    {ev.icon && <img src={ev.icon} alt="" className="w-6 h-6" />}
+                    <span className="font-medium">{ev.label}</span>
+                    <span className="text-xs text-gray-600">{ev.date} {ev.start_time}〜{ev.end_time}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
