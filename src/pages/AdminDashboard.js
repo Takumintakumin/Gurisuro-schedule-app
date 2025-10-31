@@ -110,6 +110,9 @@ export default function AdminDashboard() {
   const [selectedUsername, setSelectedUsername] = useState("");
   const [selectedKind, setSelectedKind] = useState("driver");
 
+  // イベント一・覧の表示開始日（デフォルトは今日）
+  const [eventListStartDate, setEventListStartDate] = useState(() => toLocalYMD(new Date()));
+
   // 管理者認証
   useEffect(() => {
     const role = localStorage.getItem("userRole");
@@ -245,22 +248,86 @@ export default function AdminDashboard() {
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
+  
+  // 1ヶ月前の日付を計算する関数
+  const getOneMonthAgo = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    date.setMonth(date.getMonth() - 1);
+    return toLocalYMD(date);
+  };
+  
+  // 1ヶ月後の日付を計算する関数
+  const getOneMonthLater = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    date.setMonth(date.getMonth() + 1);
+    return toLocalYMD(date);
+  };
+  
   const renderApplyTab = () => {
-  const sortedEvents = [...events]
-    .filter(ev => ev && typeof ev === 'object')
-    .sort((a, b) => {
-      if (!a.date || !b.date) return 0;
-      return a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '');
-    });
+    // 表示開始日から1ヶ月後の日付を計算
+    const endDate = getOneMonthLater(eventListStartDate);
+    const isShowingFuture = eventListStartDate >= todayYMD;
+    
+    const filteredEvents = events
+      .filter(ev => {
+        if (!ev || typeof ev !== 'object' || !ev.date) return false;
+        // 開始日以上、終了日未満のイベントを表示
+        return ev.date >= eventListStartDate && ev.date < endDate;
+      });
+      
+    const sortedEvents = [...filteredEvents]
+      .sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '');
+      });
+    
+    // 表示期間の文字列を作成
+    const startDateObj = new Date(eventListStartDate + 'T00:00:00');
+    const endDateObj = new Date(endDate + 'T00:00:00');
+    const periodStr = `${startDateObj.getFullYear()}年${startDateObj.getMonth() + 1}月${startDateObj.getDate()}日 〜 ${endDateObj.getFullYear()}年${endDateObj.getMonth() + 1}月${endDateObj.getDate()}日`;
+    
     return (
       <div>
-      <h2 className="font-semibold mb-4">登録イベント一覧</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold">登録イベント一覧</h2>
+          <div className="flex gap-2 items-center">
+            {!isShowingFuture && (
+              <button
+                onClick={() => {
+                  const oneMonthLater = getOneMonthLater(eventListStartDate);
+                  setEventListStartDate(oneMonthLater);
+                }}
+                className="px-2 py-1 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+              >
+                ▶ 1ヶ月後
+              </button>
+            )}
+            <button
+              onClick={() => {
+                const oneMonthAgo = getOneMonthAgo(eventListStartDate);
+                setEventListStartDate(oneMonthAgo);
+              }}
+              className="px-2 py-1 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+            >
+              ◀ 1ヶ月前
+            </button>
+            {!isShowingFuture && (
+              <button
+                onClick={() => setEventListStartDate(todayYMD)}
+                className="px-2 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
+              >
+                今日以降に戻る
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">{periodStr}</p>
         {loading && (
           <p className="text-sm text-gray-500">読み込み中…</p>
         )}
         <ul className="space-y-2">
           {!loading && sortedEvents.length === 0 && (
-            <li className="text-gray-500 text-sm">現時点でイベントはありません。</li>
+            <li className="text-gray-500 text-sm">この期間にはイベントはありません。</li>
           )}
         {sortedEvents.map((ev) => {
           const isDecided = decidedEventIds.has(ev.id);
