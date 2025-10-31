@@ -691,10 +691,13 @@ export default async function handler(req, res) {
           appl AS (
             SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
                    COALESCE(dc.times, 0) AS times,
-                   dc.last_at
+                   dc.last_at,
+                   COALESCE(u.familiar, 'unknown') AS familiar
             FROM applications a
             LEFT JOIN decided_count dc
               ON dc.username = a.username AND dc.kind = a.kind
+            LEFT JOIN users u
+              ON u.username = a.username
             WHERE a.event_id = $1
           ),
           ranked AS (
@@ -713,27 +716,73 @@ export default async function handler(req, res) {
       } catch (e) {
         // フォールバック：応募順
         r = await query(
-          `SELECT id, event_id, username, kind, created_at,
-                 0 AS times, NULL AS last_at
-           FROM applications
-           WHERE event_id = $1
+          `SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
+                 0 AS times, NULL AS last_at,
+                 COALESCE(u.familiar, 'unknown') AS familiar
+           FROM applications a
+           LEFT JOIN users u ON u.username = a.username
+           WHERE a.event_id = $1
            ORDER BY kind, created_at ASC`,
           [eventId]
         );
-        // ランクを付与
+        // ランクを付与（familiar情報も保持）
         const driverRows = r.rows.filter((x) => x.kind === "driver");
         const attendantRows = r.rows.filter((x) => x.kind === "attendant");
-        driverRows.forEach((row, idx) => { row.rnk = idx + 1; });
-        attendantRows.forEach((row, idx) => { row.rnk = idx + 1; });
+        driverRows.forEach((row, idx) => { 
+          row.rnk = idx + 1;
+          row.familiar = row.familiar || 'unknown';
+        });
+        attendantRows.forEach((row, idx) => { 
+          row.rnk = idx + 1;
+          row.familiar = row.familiar || 'unknown';
+        });
         r.rows = [...driverRows, ...attendantRows];
       }
       
       const driverRank = r.rows.filter((x) => x.kind === "driver").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
       const attendantRank = r.rows.filter((x) => x.kind === "attendant").sort((a,b)=>(a.rnk||999)-(b.rnk||999));
 
-      // 定員がnullの場合は全員選出、0の場合は0人、正の数の場合はその数まで
-      const pickedDriver = capD == null ? driverRank.map((x) => x.username) : driverRank.slice(0, Math.max(0, capD)).map((x) => x.username);
-      const pickedAttendant = capA == null ? attendantRank.map((x) => x.username) : attendantRank.slice(0, Math.max(0, capA)).map((x) => x.username);
+      // 定員に合わせて選出（詳しくない人同士の組み合わせを避ける）
+      const pickedDriver = [];
+      const pickedAttendant = [];
+      
+      // 運転手を公平ランキング順に選出
+      const driverCandidates = capD == null ? driverRank : driverRank.slice(0, Math.max(0, capD));
+      for (const driver of driverCandidates) {
+        pickedDriver.push(driver.username);
+      }
+      
+      // 添乗員を公平ランキング順に選出（ただし詳しくない人同士の組み合わせを避ける）
+      const maxAttendants = capA == null ? attendantRank.length : capA;
+      const driverFamiliarMap = Object.fromEntries(
+        driverCandidates.map(d => [d.username, d.familiar === 'familiar'])
+      );
+      
+      for (const attendant of attendantRank) {
+        if (pickedAttendant.length >= maxAttendants) break;
+        
+        // 選出された運転手と組み合わせた時に、両方"unfamiliar"にならないかチェック
+        const attendantIsFamiliar = attendant.familiar === 'familiar';
+        
+        // 運転手が選出されている場合
+        if (pickedDriver.length > 0) {
+          // 少なくとも1人の運転手が詳しい、またはこの添乗員が詳しい場合はOK
+          const hasFamiliarDriver = pickedDriver.some(driverUsername => 
+            driverFamiliarMap[driverUsername] === true
+          );
+          
+          if (hasFamiliarDriver || attendantIsFamiliar) {
+            // 組み合わせ可能
+            pickedAttendant.push(attendant.username);
+          } else if (pickedAttendant.length < maxAttendants) {
+            // 全員詳しくない場合でも、定員に満たない場合は最小限許容
+            pickedAttendant.push(attendant.username);
+          }
+        } else {
+          // 運転手が選出されていない場合は、そのまま選出
+          pickedAttendant.push(attendant.username);
+        }
+      }
       
       // デバッグ情報（開発時に確認用）
       console.log(`[decide_auto] event_id: ${eventId}, capD: ${capD}, capA: ${capA}, driver応募者: ${driverRank.length}, attendant応募者: ${attendantRank.length}, 選出: driver=${pickedDriver.length}, attendant=${pickedAttendant.length}`);
