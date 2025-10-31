@@ -445,6 +445,37 @@ export default function MainApp() {
   const hasApplied = (eventId, kind) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
 
+  // カレンダーに渡すpropsをメモ化（再レンダリングを防ぐ）
+  const calendarDecidedMembersByDate = useMemo(() => {
+    return { _byEventId: decidedMembersByEventId };
+  }, [decidedMembersByEventId]);
+
+  // decidedDatesとcancelledDatesをメモ化（内容が同じ場合は同じインスタンスを返す）
+  const decidedDatesKey = useMemo(() => {
+    return Array.from(decidedDates).sort().join(',');
+  }, [decidedDates]);
+  
+  const cancelledDatesKey = useMemo(() => {
+    return Array.from(cancelledDates).sort().join(',');
+  }, [cancelledDates]);
+
+  const memoizedDecidedDates = useMemo(() => {
+    return decidedDates;
+  }, [decidedDatesKey]);
+
+  const memoizedCancelledDates = useMemo(() => {
+    return cancelledDates;
+  }, [cancelledDatesKey]);
+
+  // myAppliedEventIdsをメモ化
+  const myAppsKey = useMemo(() => {
+    return myApps.map(a => `${a.event_id}`).sort().join(',');
+  }, [myApps]);
+  
+  const memoizedMyAppliedEventIds = useMemo(() => {
+    return new Set(myApps.map(a => a.event_id));
+  }, [myAppsKey]);
+
   const apply = async (ev, kind) => {
     if (!userName) {
       alert("先にログインしてください。");
@@ -882,10 +913,10 @@ export default function MainApp() {
               }}
               onDateSelect={setSelectedDate}
               events={events}
-              decidedDates={decidedDates}
-              cancelledDates={cancelledDates}
-              decidedMembersByDate={{ _byEventId: decidedMembersByEventId }}
-              myAppliedEventIds={new Set(myApps.map(a => a.event_id))}
+              decidedDates={memoizedDecidedDates}
+              cancelledDates={memoizedCancelledDates}
+              decidedMembersByDate={calendarDecidedMembersByDate}
+              myAppliedEventIds={memoizedMyAppliedEventIds}
               compact={true}
             />
 

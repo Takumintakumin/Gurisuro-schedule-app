@@ -45,6 +45,10 @@ export default function Calendar({
 }) {
   // 追加: 月/週 表示トグル
   const [viewMode, setViewMode] = React.useState("month");
+  
+  // 横スワイプ用の状態
+  const [touchStart, setTouchStart] = React.useState(null);
+  const [touchEnd, setTouchEnd] = React.useState(null);
 
   // 画面幅による自動コンパクト判定（初期）
   const [isCompact, setIsCompact] = React.useState(() => {
@@ -71,6 +75,13 @@ export default function Calendar({
     }
     return map;
   }, [events]);
+
+  // 今日の日付をメモ化（1日の間は同じ値を返す）
+  const todayDate = React.useMemo(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return t;
+  }, [currentYear, currentMonth]); // 月が変わるたびに更新
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0:日〜6:土
@@ -150,6 +161,11 @@ export default function Calendar({
   };
 
   const renderDayCell = (i) => {
+    // iがnullの場合は空セルを返す（週表示で月をまたぐ場合）
+    if (i === null) {
+      return <div key={`empty-week-${Math.random()}`} className="border rounded-lg min-h-[80px] sm:min-h-[88px] bg-gray-50"></div>;
+    }
+    
     const date = new Date(currentYear, currentMonth, i);
     const key = toKey(date);
     const isSel =
@@ -167,11 +183,9 @@ export default function Calendar({
     const decidedMembersByEventId = decidedMembersByDate?._byEventId || {}; // 管理者用: イベントIDごとの確定済みメンバー情報
 
     // 1週間前以内かどうかを判定（イベントがある場合のみ）
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const eventDate = new Date(date);
     eventDate.setHours(0, 0, 0, 0);
-    const daysDiff = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.floor((eventDate - todayDate) / (1000 * 60 * 60 * 24));
     const isWithinOneWeek = daysDiff >= 0 && daysDiff <= 7;
     
     // 管理者用/ユーザー用: 運転手と添乗員が確定済みか、定員不足かチェック
@@ -394,19 +408,86 @@ export default function Calendar({
   for (let i = 1; i <= daysInMonth; i++) {
     totalDays.push(i);
   }
-  // weekMode時、選択中日が含まれる週だけ抜き出す
+  // 週移動の関数
+  const handleWeekChange = (delta) => {
+    if (!selectedDate) return;
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + (delta * 7));
+    onDateSelect?.(newDate);
+    // 月が変わった場合は親に通知
+    if (newDate.getMonth() !== currentMonth || newDate.getFullYear() !== currentYear) {
+      onMonthChange?.(newDate.getMonth() - currentMonth);
+    }
+  };
+
+  // 横スワイプ処理
+  const minSwipeDistance = 50;
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe) {
+      // 左スワイプ（次の月/週へ）
+      if (viewMode === "week") {
+        handleWeekChange(1);
+      } else {
+        onMonthChange?.(1);
+      }
+    }
+    if (isRightSwipe) {
+      // 右スワイプ（前の月/週へ）
+      if (viewMode === "week") {
+        handleWeekChange(-1);
+      } else {
+        onMonthChange?.(-1);
+      }
+    }
+  };
+
+  // weekMode時、選択中日が含まれる週だけ抜き出す（月をまたぐ場合も対応）
   let visibleCells = [];
   if (viewMode === "week" && selectedDate) {
-    const idx = firstDayOfMonth + selectedDate.getDate() - 1;
-    const startIdx = Math.floor(idx / 7) * 7;
-    visibleCells = totalDays.slice(startIdx, startIdx+7);
-    while (visibleCells.length < 7) visibleCells.push(null);
+    // 選択された日の週の開始日（日曜日）を計算
+    const weekStart = new Date(selectedDate);
+    const dayOfWeek = weekStart.getDay();
+    weekStart.setDate(weekStart.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+    
+    // 週の7日間を生成（月をまたぐ場合も含む）
+    visibleCells = [];
+    for (let i = 0; i < 7; i++) {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(dayDate.getDate() + i);
+      
+      // 現在表示中の月と同じ月かどうかで判定
+      if (dayDate.getMonth() === currentMonth && dayDate.getFullYear() === currentYear) {
+        visibleCells.push(dayDate.getDate());
+      } else {
+        // 別の月の日付は null として扱う（表示は空セル）
+        visibleCells.push(null);
+      }
+    }
   } else {
     visibleCells = totalDays;
   }
 
   return (
-    <div className="mb-0 w-full bg-white" style={{ boxShadow: 'none', border: 'none', borderRadius: 0, maxWidth: '100%', margin: 0 }}>
+    <div 
+      className="mb-0 w-full bg-white" 
+      style={{ boxShadow: 'none', border: 'none', borderRadius: 0, maxWidth: '100%', margin: 0 }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       {/* ヘッダー（デカめ・押しやすい） */}
       <div className="flex items-center justify-between px-0 py-2 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10" style={{margin:0}}>
         <button
@@ -417,7 +498,13 @@ export default function Calendar({
             WebkitTransform: 'translateZ(0)',
             transform: 'translateZ(0)'
           }}
-          onClick={() => onMonthChange?.(-1)}
+          onClick={() => {
+            if (viewMode === "week") {
+              handleWeekChange(-1);
+            } else {
+              onMonthChange?.(-1);
+            }
+          }}
           onTouchStart={(e) => {
             e.currentTarget.style.WebkitTransform = 'scale(0.98) translateZ(0)';
             e.currentTarget.style.transform = 'scale(0.98) translateZ(0)';
@@ -434,7 +521,22 @@ export default function Calendar({
         </button>
 
         <h2 className="text-lg sm:text-xl font-extrabold tracking-wide text-gray-800">
-          {currentYear}年 {monthNames[currentMonth]}
+          {viewMode === "week" && selectedDate ? (() => {
+            // 週表示の場合は週の範囲を表示
+            const weekStart = new Date(selectedDate);
+            const dayOfWeek = weekStart.getDay();
+            weekStart.setDate(weekStart.getDate() - dayOfWeek);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            
+            // 同じ月の場合は "X月 Y日〜Z日"
+            // 月をまたぐ場合は "X月 Y日〜Z月 W日"
+            if (weekStart.getMonth() === weekEnd.getMonth()) {
+              return `${weekStart.getFullYear()}年 ${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getDate()}日`;
+            } else {
+              return `${weekStart.getFullYear()}年 ${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getMonth() + 1}月 ${weekEnd.getDate()}日`;
+            }
+          })() : `${currentYear}年 ${monthNames[currentMonth]}`}
         </h2>
 
         <button
@@ -445,7 +547,13 @@ export default function Calendar({
             WebkitTransform: 'translateZ(0)',
             transform: 'translateZ(0)'
           }}
-          onClick={() => onMonthChange?.(1)}
+          onClick={() => {
+            if (viewMode === "week") {
+              handleWeekChange(1);
+            } else {
+              onMonthChange?.(1);
+            }
+          }}
           onTouchStart={(e) => {
             e.currentTarget.style.WebkitTransform = 'scale(0.98) translateZ(0)';
             e.currentTarget.style.transform = 'scale(0.98) translateZ(0)';

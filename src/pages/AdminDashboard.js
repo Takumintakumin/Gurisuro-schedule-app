@@ -282,6 +282,28 @@ export default function AdminDashboard() {
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
   const todayYMD = toLocalYMD(new Date());
+
+  // カレンダーに渡すpropsをメモ化（再レンダリングを防ぐ）
+  const calendarDecidedMembersByDate = useMemo(() => {
+    return { ...decidedMembersByDate, _byEventId: decidedMembersByEventId };
+  }, [decidedMembersByDate, decidedMembersByEventId]);
+
+  // decidedDatesとcancelledDatesをメモ化（内容が同じ場合は同じインスタンスを返す）
+  const decidedDatesKey = useMemo(() => {
+    return Array.from(decidedDates).sort().join(',');
+  }, [decidedDates]);
+  
+  const cancelledDatesKey = useMemo(() => {
+    return Array.from(cancelledDates).sort().join(',');
+  }, [cancelledDates]);
+
+  const memoizedDecidedDates = useMemo(() => {
+    return decidedDates;
+  }, [decidedDatesKey]);
+
+  const memoizedCancelledDates = useMemo(() => {
+    return cancelledDates;
+  }, [cancelledDatesKey]);
   
   // 1ヶ月前の日付を計算する関数
   const getOneMonthAgo = (dateStr) => {
@@ -795,9 +817,9 @@ export default function AdminDashboard() {
               }}
               onDateSelect={(d) => setSelectedDate(d)}
               events={events}
-              decidedDates={decidedDates}
-              decidedMembersByDate={{ ...decidedMembersByDate, _byEventId: decidedMembersByEventId }}
-              cancelledDates={cancelledDates}
+              decidedDates={memoizedDecidedDates}
+              decidedMembersByDate={calendarDecidedMembersByDate}
+              cancelledDates={memoizedCancelledDates}
             />
 
         {/* 募集作成：常時表示をやめ、ボタンで開く */}
