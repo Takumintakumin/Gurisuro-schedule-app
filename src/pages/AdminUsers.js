@@ -136,10 +136,18 @@ export default function AdminUsers() {
   };
   
   useEffect(() => {
+    // ログアウト直後の場合はログインページへ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      nav("/admin");
+      return;
+    }
+    
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
       alert("管理者のみアクセス可能です。");
-      nav("/");
+      nav("/admin");
       return;
     }
     refresh();

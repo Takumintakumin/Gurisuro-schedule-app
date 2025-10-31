@@ -115,10 +115,18 @@ export default function AdminDashboard() {
 
   // 管理者認証
   useEffect(() => {
+    // ログアウト直後の場合はログインページへ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      nav("/admin");
+      return;
+    }
+    
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
       alert("管理者のみアクセス可能です");
-      nav("/");
+      nav("/admin");
       return;
     }
     // 表示用: 現在のログインユーザー名

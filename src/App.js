@@ -67,6 +67,12 @@ const ProtectedRoute = ({ children }) => {
 
 // 管理者のみ
 const AdminOnlyRoute = ({ children }) => {
+  // ログアウト直後の場合はログインページへ
+  const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+  if (justLoggedOut === "true") {
+    return <Navigate to="/admin" replace />;
+  }
+  
   const role = localStorage.getItem("userRole");
   if (!role || role !== "admin") {
     return <Navigate to="/admin" replace />;

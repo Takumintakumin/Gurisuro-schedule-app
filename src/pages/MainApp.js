@@ -396,8 +396,12 @@ export default function MainApp() {
         }
       }
       
+      // decidedステートには当日のデータとallDecidedByEventIdをマージして設定
+      // （イベント一覧タブでも確定状況を表示するため）
+      const mergedDecided = { ...allDecidedByEventId, ...decOut };
+      
       setCounts(out);
-      setDecided(decOut);
+      setDecided(mergedDecided);
       setDecidedDates(decDateSet);
       setCancelledDates(userCancelledDateSet);
       setDecidedMembersByEventId(allDecidedByEventId);
@@ -429,7 +433,11 @@ export default function MainApp() {
         }
       });
       await Promise.all(tasks);
-      if (!aborted) setDecidedMembersByEventId(map);
+      if (!aborted) {
+        setDecidedMembersByEventId(map);
+        // イベント一覧タブでも確定状況を表示するため、decidedステートにも反映
+        setDecided(prev => ({ ...prev, ...map }));
+      }
     })();
     return () => { aborted = true; };
   }, [events]);
