@@ -103,15 +103,15 @@ const WeekView = ({
 
   return (
     <div 
-      className="flex flex-col"
-      style={{ minHeight: '600px' }}
+      className="flex flex-col w-full"
+      style={{ minHeight: '600px', width: '100%' }}
       onTouchStart={onSwipeTouchStart}
       onTouchMove={onSwipeTouchMove}
       onTouchEnd={onSwipeTouchEnd}
     >
-      {/* 曜日ヘッダー */}
-      <div className="grid grid-cols-8 border-b border-gray-300 bg-gray-50" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-        <div className="border-r border-gray-300"></div>
+      {/* 曜日ヘッダー - より大きく見やすく */}
+      <div className="grid grid-cols-8 border-b-2 border-gray-400 bg-gradient-to-b from-gray-50 to-gray-100 sticky top-0 z-20" style={{ gridTemplateColumns: '70px repeat(7, 1fr)' }}>
+        <div className="border-r-2 border-gray-400"></div>
         {weekDays.map((day, idx) => {
           const key = toKey(day);
           const isTodayDay = isToday(day);
@@ -119,17 +119,17 @@ const WeekView = ({
           return (
             <div 
               key={key}
-              className={`text-center py-2 border-r border-gray-300 ${isTodayDay ? 'bg-blue-100' : ''}`}
+              className={`text-center py-3 px-1 border-r-2 border-gray-300 cursor-pointer transition-colors ${isTodayDay ? 'bg-blue-200 font-bold' : 'hover:bg-gray-200'}`}
               onClick={() => onDateSelect?.(day)}
             >
-              <div className="text-xs text-gray-500">
+              <div className="text-sm font-semibold text-gray-600 mb-1">
                 {["日","月","火","水","木","金","土"][day.getDay()]}
               </div>
-              <div className={`text-lg font-bold ${dayColor}`}>
+              <div className={`text-2xl font-extrabold ${dayColor} mb-1`}>
                 {day.getDate()}
               </div>
-              <div className="text-xs text-gray-500">
-                {day.getMonth() + 1}/{day.getDate()}
+              <div className="text-xs text-gray-500 font-medium">
+                {day.getMonth() + 1}月
               </div>
             </div>
           );
@@ -137,14 +137,14 @@ const WeekView = ({
       </div>
 
       {/* 時間軸とイベント表示 */}
-      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-        <div className="grid grid-cols-8 relative" style={{ gridTemplateColumns: '80px repeat(7, 1fr)', minHeight: '960px' }}>
-          {/* 時間軸 */}
-          <div className="border-r border-gray-200">
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+        <div className="grid grid-cols-8 relative" style={{ gridTemplateColumns: '70px repeat(7, 1fr)', minHeight: '960px' }}>
+          {/* 時間軸 - より大きく見やすく */}
+          <div className="border-r-2 border-gray-300 bg-gray-50 sticky left-0 z-10">
             {timeSlots.map((slot, idx) => (
               <div 
                 key={`time-${idx}`}
-                className="border-b border-gray-100 text-xs text-gray-500 pr-2 text-right"
+                className={`border-b border-gray-200 text-sm font-medium text-gray-700 pr-2 text-right ${slot.minutes === 0 ? 'border-gray-300' : ''}`}
                 style={{ height: '30px', lineHeight: '30px' }}
               >
                 {slot.minutes === 0 ? `${slot.hour}:00` : ''}
@@ -152,7 +152,7 @@ const WeekView = ({
             ))}
           </div>
 
-          {/* 各日の列 */}
+          {/* 各日の列 - より大きく */}
           {weekDays.map((day, dayIdx) => {
             const key = toKey(day);
             const dayEvents = eventsByDate[key] || [];
@@ -163,19 +163,19 @@ const WeekView = ({
             return (
               <div 
                 key={key}
-                className={`relative border-r border-gray-200 ${isTodayDay ? 'bg-blue-50' : ''}`}
+                className={`relative border-r-2 border-gray-200 cursor-pointer ${isTodayDay ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
                 onClick={() => onDateSelect?.(day)}
               >
                 {/* 時間グリッド */}
                 {timeSlots.map((slot, slotIdx) => (
                   <div 
                     key={`grid-${dayIdx}-${slotIdx}`}
-                    className={`border-b border-gray-100 ${slot.minutes === 0 ? 'border-gray-200' : ''}`}
+                    className={`border-b ${slot.minutes === 0 ? 'border-gray-300' : 'border-gray-100'}`}
                     style={{ height: '30px' }}
                   />
                 ))}
                 
-                {/* イベント */}
+                {/* イベント - より大きく見やすく */}
                 {dayEvents.map((event) => {
                   const pos = getEventPosition(event);
                   const eventIcon = getEventIcon(event.label, event.icon);
@@ -187,15 +187,15 @@ const WeekView = ({
                   return (
                     <div
                       key={event.id}
-                      className={`absolute left-1 right-1 rounded px-2 py-1 text-xs cursor-pointer shadow-sm z-10 ${
-                        isFullyDecided ? 'bg-emerald-500 text-white' :
-                        isDecided || isCancelled ? 'bg-rose-200' :
-                        'bg-amber-100 border border-amber-300'
+                      className={`absolute left-1 right-1 rounded-md px-2.5 py-1.5 text-xs cursor-pointer shadow-md z-10 transition-all hover:shadow-lg ${
+                        isFullyDecided ? 'bg-emerald-500 text-white border-2 border-emerald-600' :
+                        isDecided || isCancelled ? 'bg-rose-200 border-2 border-rose-400' :
+                        'bg-amber-100 border-2 border-amber-400 text-gray-800'
                       }`}
                       style={{
                         top: `${pos.topPercent}%`,
                         height: `${Math.max(pos.heightPercent, 2)}%`,
-                        minHeight: '24px'
+                        minHeight: '32px'
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -203,18 +203,18 @@ const WeekView = ({
                       }}
                       title={`${event.label || 'イベント'} ${event.start_time || ''}〜${event.end_time || ''}`}
                     >
-                      <div className="flex items-center gap-1 truncate">
+                      <div className="flex items-center gap-1.5 truncate mb-0.5">
                         {eventIcon && (
                           <img 
                             src={eventIcon} 
                             alt="" 
-                            className="w-4 h-4 object-contain flex-shrink-0"
+                            className="w-5 h-5 object-contain flex-shrink-0"
                           />
                         )}
-                        <span className="font-semibold truncate">{event.label || 'イベント'}</span>
+                        <span className="font-bold text-sm truncate">{event.label || 'イベント'}</span>
                       </div>
                       {(event.start_time || event.end_time) && (
-                        <div className="text-[10px] opacity-90 truncate">
+                        <div className={`text-[11px] font-medium truncate ${isFullyDecided ? 'text-white' : 'text-gray-600'}`}>
                           {event.start_time || ''}{event.end_time ? `〜${event.end_time}` : ''}
                         </div>
                       )}
@@ -714,10 +714,22 @@ export default function Calendar({
     visibleCells = totalDays;
   }
 
+  // 週表示の場合は全幅、月表示の場合は通常幅
+  const containerClass = viewMode === "week" 
+    ? "mb-0 w-full bg-white" 
+    : "mb-0 w-full bg-white";
+
   return (
     <div 
-      className="mb-0 w-full bg-white" 
-      style={{ boxShadow: 'none', border: 'none', borderRadius: 0, maxWidth: '100%', margin: 0 }}
+      className={containerClass}
+      style={{ 
+        boxShadow: 'none', 
+        border: 'none', 
+        borderRadius: 0, 
+        maxWidth: viewMode === "week" ? '100%' : '100%', 
+        margin: 0,
+        width: '100%'
+      }}
     >
       {/* ヘッダー（デカめ・押しやすい） */}
       <div className="flex items-center justify-between px-0 py-2 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10" style={{margin:0}}>
