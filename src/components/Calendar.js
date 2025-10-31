@@ -101,6 +101,9 @@ const WeekView = ({
     );
   };
 
+  // グリッドの列定義を統一（1回だけ定義）
+  const gridColsStyle = { gridTemplateColumns: '70px repeat(7, 1fr)' };
+
   return (
     <div 
       className="flex flex-col w-full"
@@ -110,7 +113,10 @@ const WeekView = ({
       onTouchEnd={onSwipeTouchEnd}
     >
       {/* 曜日ヘッダー - より大きく見やすく */}
-      <div className="grid grid-cols-8 border-b-2 border-gray-400 bg-gradient-to-b from-gray-50 to-gray-100 sticky top-0 z-20" style={{ gridTemplateColumns: '70px repeat(7, 1fr)' }}>
+      <div 
+        className="grid border-b-2 border-gray-400 bg-gradient-to-b from-gray-50 to-gray-100 sticky top-0 z-20" 
+        style={gridColsStyle}
+      >
         <div className="border-r-2 border-gray-400"></div>
         {weekDays.map((day, idx) => {
           const key = toKey(day);
@@ -137,8 +143,8 @@ const WeekView = ({
       </div>
 
       {/* 時間軸とイベント表示 */}
-      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
-        <div className="grid grid-cols-8 relative" style={{ gridTemplateColumns: '70px repeat(7, 1fr)', minHeight: '960px' }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+        <div className="grid relative" style={{ ...gridColsStyle, minHeight: '960px' }}>
           {/* 時間軸 - より大きく見やすく */}
           <div className="border-r-2 border-gray-300 bg-gray-50 sticky left-0 z-10">
             {timeSlots.map((slot, idx) => (
