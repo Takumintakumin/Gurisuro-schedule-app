@@ -499,13 +499,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "event_id が必要です" });
 
       const sql = `
-        WITH appl AS (
+        WITH decided_count AS (
+          SELECT
+            username,
+            kind,
+            COUNT(*) AS times,
+            MAX(decided_at) AS last_at
+          FROM selections
+          GROUP BY username, kind
+        ),
+        appl AS (
           SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
-                 COALESCE(v.times, 0) AS times,
-                 v.last_at
+                 COALESCE(dc.times, 0) AS times,
+                 dc.last_at
           FROM applications a
-          LEFT JOIN v_participation v
-            ON v.username = a.username AND v.kind = a.kind
+          LEFT JOIN decided_count dc
+            ON dc.username = a.username AND dc.kind = a.kind
           WHERE a.event_id = $1
         ),
         ranked AS (
@@ -666,17 +675,26 @@ export default async function handler(req, res) {
       const capD = er.rows[0].capacity_driver != null ? Number(er.rows[0].capacity_driver) : 1;
       const capA = er.rows[0].capacity_attendant != null ? Number(er.rows[0].capacity_attendant) : 1;
 
-      // 公平ランキングを取得（v_participationがあれば使用、なければ応募順）
+      // 公平ランキングを取得（確定回数（selections）で計算）
       let r;
       try {
         const sql = `
-          WITH appl AS (
+          WITH decided_count AS (
+            SELECT
+              username,
+              kind,
+              COUNT(*) AS times,
+              MAX(decided_at) AS last_at
+            FROM selections
+            GROUP BY username, kind
+          ),
+          appl AS (
             SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
-                   COALESCE(v.times, 0) AS times,
-                   v.last_at
+                   COALESCE(dc.times, 0) AS times,
+                   dc.last_at
             FROM applications a
-            LEFT JOIN v_participation v
-              ON v.username = a.username AND v.kind = a.kind
+            LEFT JOIN decided_count dc
+              ON dc.username = a.username AND dc.kind = a.kind
             WHERE a.event_id = $1
           ),
           ranked AS (
@@ -693,7 +711,7 @@ export default async function handler(req, res) {
         `;
         r = await query(sql, [eventId]);
       } catch (e) {
-        // v_participationがない場合のフォールバック：応募順
+        // フォールバック：応募順
         r = await query(
           `SELECT id, event_id, username, kind, created_at,
                  0 AS times, NULL AS last_at
@@ -801,16 +819,12 @@ export default async function handler(req, res) {
       }
       const ev = eventInfo.rows[0];
 
-      // キャンセル実行（確定から削除 + 応募も削除）
+      // キャンセル実行（確定から削除のみ。応募は残すため再投票可能）
       await query(
         `DELETE FROM selections WHERE event_id = $1 AND username = $2 AND kind = $3`,
         [eventId, session.username, kind]
       );
-      // 応募も削除（確定済みをキャンセルした場合は応募も取消）
-      await query(
-        `DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = $3`,
-        [eventId, session.username, kind]
-      );
+      // 応募は削除しない（確定後のキャンセルでも再投票できるようにする）
 
       // 管理者への通知を作成
       await query(`
@@ -852,17 +866,26 @@ export default async function handler(req, res) {
         
         // 定員に満たない場合は通常の応募者から自動繰り上げ選出
         if (currentCount < capacity) {
-          // 通常の応募者（確定されていない）を取得（公平ランキング順）
+          // 通常の応募者（確定されていない）を取得（確定回数で公平ランキング順）
           let applicantQuery;
           try {
             applicantQuery = await query(`
-              WITH appl AS (
+              WITH decided_count AS (
+                SELECT
+                  username,
+                  kind,
+                  COUNT(*) AS times,
+                  MAX(decided_at) AS last_at
+                FROM selections
+                GROUP BY username, kind
+              ),
+              appl AS (
                 SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
-                       COALESCE(v.times, 0) AS times,
-                       v.last_at
+                       COALESCE(dc.times, 0) AS times,
+                       dc.last_at
                 FROM applications a
-                LEFT JOIN v_participation v
-                  ON v.username = a.username AND v.kind = a.kind
+                LEFT JOIN decided_count dc
+                  ON dc.username = a.username AND dc.kind = a.kind
                 WHERE a.event_id = $1 AND a.kind = $2
                   AND NOT EXISTS (
                     SELECT 1 FROM selections s 
@@ -885,7 +908,7 @@ export default async function handler(req, res) {
               LIMIT $3
             `, [eventId, kind, capacity - currentCount]);
           } catch {
-            // v_participationがない場合は応募順
+            // フォールバック：応募順
             applicantQuery = await query(
               `SELECT a.username, a.created_at, 
                       ROW_NUMBER() OVER (ORDER BY a.created_at ASC) AS rank, 

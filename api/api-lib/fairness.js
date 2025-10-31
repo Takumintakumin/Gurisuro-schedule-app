@@ -15,26 +15,26 @@ export default async function handler(req, res) {
     const eventId = url.searchParams.get("event_id");
     if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
 
-    // 応募者（該当イベント）の行に、過去参加回数・最終参加日時を結合
-    // v_participation を使わず、applications 自身を集計して LEFT JOIN
+    // 応募者（該当イベント）の行に、過去確定回数・最終確定日時を結合
+    // 確定回数（selectionsテーブル）で計算
     const sql = `
-      WITH part AS (
+      WITH decided_count AS (
         SELECT
           username,
           kind,
           COUNT(*) AS times,
-          MAX(created_at) AS last_at
-        FROM applications
+          MAX(decided_at) AS last_at
+        FROM selections
         GROUP BY username, kind
       ),
       appl AS (
         SELECT a.id, a.event_id, a.username, a.kind, a.created_at,
-               COALESCE(p.times, 0) AS times,
-               p.last_at
+               COALESCE(dc.times, 0) AS times,
+               dc.last_at
         FROM applications a
-        LEFT JOIN part p
-          ON p.username = a.username
-         AND p.kind     = a.kind
+        LEFT JOIN decided_count dc
+          ON dc.username = a.username
+         AND dc.kind     = a.kind
         WHERE a.event_id = $1
       ),
       ranked AS (
@@ -42,8 +42,8 @@ export default async function handler(req, res) {
                ROW_NUMBER() OVER (
                  PARTITION BY kind
                  ORDER BY
-                   times ASC,                         -- 参加回数が少ない人を優先
-                   COALESCE(last_at, 'epoch') ASC,    -- 直近が古い人を優先
+                   times ASC,                         -- 確定回数が少ない人を優先
+                   COALESCE(last_at, 'epoch') ASC,    -- 直近確定が古い人を優先
                    created_at ASC                     -- 応募が早い人を優先
                ) AS rnk
         FROM appl
