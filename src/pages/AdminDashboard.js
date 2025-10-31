@@ -728,8 +728,8 @@ export default function AdminDashboard() {
         </div>
 
         {createOpen && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: 'calc(120px + env(safe-area-inset-bottom))' }}>
-            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center" style={{ zIndex: 100000, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-140px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">{ymd} の募集を作成</h2>
                 <button onClick={() => setCreateOpen(false)} className="text-gray-500">✕</button>
@@ -886,8 +886,8 @@ export default function AdminDashboard() {
 
         {/* 応募状況モーダル */}
         {fairOpen && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
-            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center" style={{ zIndex: 100000, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-140px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold">
                   応募状況{fairEventInfo ? `（${fairEventInfo.date} ${fairEventInfo.dayName} ${fairEventInfo.label}）` : `（イベントID: ${fairData.event_id}）`}
@@ -1110,8 +1110,8 @@ export default function AdminDashboard() {
 
         {/* イベント編集モーダル */}
         {editOpen && editingEvent && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
-            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center" style={{ zIndex: 100000, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-140px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold">イベント編集（ID: {editingEvent.id}）</h3>
                 <button onClick={() => setEditOpen(false)} className="text-gray-500">✕</button>
@@ -1216,8 +1216,8 @@ export default function AdminDashboard() {
 
         {/* 手動応募モーダル */}
         {manualApplyOpen && (
-          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" style={{ paddingBottom: '80px' }}>
-            <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center" style={{ zIndex: 100000, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-140px)] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold">手動で応募する</h3>
                 <button onClick={() => setManualApplyOpen(false)} className="text-gray-500">✕</button>

@@ -785,7 +785,15 @@ export default async function handler(req, res) {
       }
       
       // デバッグ情報（開発時に確認用）
+      const familiarInfo = {
+        driver: driverCandidates.map(d => ({ username: d.username, familiar: d.familiar })),
+        attendant: pickedAttendant.map(attUsername => {
+          const att = attendantRank.find(a => a.username === attUsername);
+          return att ? { username: att.username, familiar: att.familiar } : null;
+        }).filter(Boolean)
+      };
       console.log(`[decide_auto] event_id: ${eventId}, capD: ${capD}, capA: ${capA}, driver応募者: ${driverRank.length}, attendant応募者: ${attendantRank.length}, 選出: driver=${pickedDriver.length}, attendant=${pickedAttendant.length}`);
+      console.log(`[decide_auto] familiar情報:`, JSON.stringify(familiarInfo, null, 2));
 
       // 自動選出は保存しない（手動確定のみ）。選出結果だけを返す
 
