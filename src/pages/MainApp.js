@@ -2,25 +2,43 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
+import Toast from "../components/Toast.js";
+import ConfirmDialog from "../components/ConfirmDialog.js";
+import { useToast } from "../hooks/useToast.js";
+import { useConfirmDialog } from "../hooks/useConfirmDialog.js";
 import { toLocalYMD } from "../lib/date.js";
 
-// JSON/text どちらも耐える fetch
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    credentials: "include",
-    cache: "no-store",
-    headers: { "Cache-Control": "no-cache", ...(options.headers || {}) },
-    ...options,
-  });
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch {}
-  return { ok: res.ok, status: res.status, data, text };
+// JSON/text どちらも耐える fetch（ネットワークエラー検知付き）
+async function apiFetch(url, options = {}, onNetworkError) {
+  try {
+    const res = await fetch(url, {
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", ...(options.headers || {}) },
+      ...options,
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch {}
+    return { ok: res.ok, status: res.status, data, text };
+  } catch (error) {
+    // ネットワークエラーの場合
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      if (onNetworkError) {
+        onNetworkError();
+      }
+      throw new Error('ネットワークエラーが発生しました。インターネット接続を確認してください。');
+    }
+    throw error;
+  }
 }
 
 export default function MainApp() {
   const nav = useNavigate();
+  const { toast, showToast, hideToast } = useToast();
+  const { dialog, showConfirm, hideConfirm } = useConfirmDialog();
   const [userName, setUserName] = useState("");
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const userRolePref = localStorage.getItem("userRolePref") || "両方"; // 任意（運転手/添乗員/両方）
   
   // ページロード時にクッキーからセッションを復元
@@ -43,7 +61,7 @@ export default function MainApp() {
       
       // localStorageにない場合、クッキーから復元
       try {
-        const { ok, data } = await apiFetch("/api?path=me");
+        const { ok, data } = await apiFetch("/api?path=me", {}, handleNetworkError);
         if (ok && data.username) {
           localStorage.setItem("userRole", data.role || "user");
           localStorage.setItem("userName", data.username);
@@ -72,9 +90,43 @@ export default function MainApp() {
     notifications_enabled: true,
   });
 
+  // ネットワーク状態の監視
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showToast('インターネット接続が復旧しました', 'success');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast('インターネット接続が切断されました', 'warning', 5000);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [showToast]);
+
+  // ネットワークエラー時のハンドラー
+  const handleNetworkError = useCallback(() => {
+    if (!isOnline) {
+      showToast('オフラインです。インターネット接続を確認してください。', 'error', 5000);
+    }
+  }, [isOnline, showToast]);
+
   // ---- ログアウト ----
   const handleLogout = async () => {
-    if (!window.confirm("ログアウトしますか？")) return;
+    const confirmed = await showConfirm({
+      title: 'ログアウト',
+      message: 'ログアウトしますか？',
+      confirmText: 'ログアウト',
+      cancelText: 'キャンセル',
+      type: 'info',
+    });
+    if (!confirmed) return;
     
     // ログアウトフラグを設定（自動ログインを防ぐ）
     sessionStorage.setItem("justLoggedOut", "true");
@@ -98,16 +150,16 @@ export default function MainApp() {
 
   // ---- イベント一覧 + 自分の応募一覧取得 ----
   const refresh = useCallback(async () => {
-    const ev = await apiFetch("/api/events");
+    const ev = await apiFetch("/api/events", {}, handleNetworkError);
     setEvents(Array.isArray(ev.data) ? ev.data : []);
 
     if (userName) {
-      const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+      const me = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`, {}, handleNetworkError);
       setMyApps(Array.isArray(me.data) ? me.data : []);
     } else {
       setMyApps([]);
     }
-  }, [userName]);
+  }, [userName, handleNetworkError]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -131,7 +183,7 @@ export default function MainApp() {
   // ---- 通知一覧取得 ----
   const refreshNotifications = useCallback(async () => {
     if (!userName) return;
-    const r = await apiFetch(`/api?path=notifications`);
+    const r = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
     if (r.ok && Array.isArray(r.data)) {
       // 新しい順にソートして最新MAX_NOTIFS件のみ保持
       const sorted = [...r.data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
@@ -141,24 +193,24 @@ export default function MainApp() {
       const older = sorted.slice(MAX_NOTIFS).filter(n => !n.read_at);
       older.slice(0, 20).forEach(n => markAsRead(n.id)); // 一度に叩きすぎない
     }
-  }, [userName]);
+  }, [userName, handleNetworkError]);
 
   useEffect(() => {
     if (activeTab === "notifications") {
       (async () => {
-        const r = await apiFetch(`/api?path=notifications`);
+        const r = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
         if (r.ok && Array.isArray(r.data)) {
           const sorted = [...r.data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
           setNotifications(sorted.slice(0, MAX_NOTIFS));
         }
       })();
     }
-  }, [activeTab]);
+  }, [activeTab, handleNetworkError]);
 
   // ---- ユーザー設定取得 ----
   const refreshUserSettings = useCallback(async () => {
     if (!userName) return;
-    const r = await apiFetch(`/api?path=user-settings`);
+    const r = await apiFetch(`/api?path=user-settings`, {}, handleNetworkError);
     if (r.ok && r.data) {
       setUserSettings({
         notifications_enabled: r.data.notifications_enabled !== false,
@@ -174,14 +226,14 @@ export default function MainApp() {
     }
     try {
       // 応募一覧を取得
-      const appsRes = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`);
+      const appsRes = await apiFetch(`/api/applications?username=${encodeURIComponent(userName)}`, {}, handleNetworkError);
       if (!appsRes.ok || !Array.isArray(appsRes.data)) {
         setApplicationHistory([]);
         return;
       }
 
       // イベント情報を取得
-      const eventsRes = await apiFetch("/api/events");
+      const eventsRes = await apiFetch("/api/events", {}, handleNetworkError);
       const allEvents = Array.isArray(eventsRes.data) ? eventsRes.data : [];
       const eventsMap = {};
       for (const ev of allEvents) {
@@ -194,7 +246,7 @@ export default function MainApp() {
           const ev = eventsMap[app.event_id];
           let isDecided = false;
           try {
-            const decRes = await apiFetch(`/api?path=decide&event_id=${app.event_id}`);
+            const decRes = await apiFetch(`/api?path=decide&event_id=${app.event_id}`, {}, handleNetworkError);
             if (decRes.ok && decRes.data) {
               const decidedList = decRes.data[app.kind] || [];
               isDecided = decidedList.includes(userName);
@@ -223,7 +275,7 @@ export default function MainApp() {
       console.error("application history fetch error:", e);
       setApplicationHistory([]);
     }
-  }, [userName]);
+  }, [userName, handleNetworkError]);
 
   useEffect(() => {
     if (activeTab === "mypage") {
@@ -240,7 +292,7 @@ export default function MainApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
-      });
+      }, handleNetworkError);
       await refreshNotifications();
     } catch (e) {
       console.error("既読処理エラー:", e);
@@ -254,10 +306,10 @@ export default function MainApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(userSettings),
-      });
-      alert("設定を保存しました");
+      }, handleNetworkError);
+      showToast("設定を保存しました", 'success');
     } catch (e) {
-      alert(`設定の保存に失敗しました: ${e.message}`);
+      showToast(`設定の保存に失敗しました: ${e.message}`, 'error');
     }
   };
 
@@ -292,8 +344,8 @@ export default function MainApp() {
       for (const ev of todays) {
         // 応募数と確定済みメンバーを並列取得
         const [appsRes, decRes] = await Promise.all([
-          apiFetch(`/api/applications?event_id=${ev.id}`).catch(() => ({ ok: false, data: [] })),
-          apiFetch(`/api?path=decide&event_id=${ev.id}`).catch(() => ({ ok: false, data: null }))
+          apiFetch(`/api/applications?event_id=${ev.id}`, {}, handleNetworkError).catch(() => ({ ok: false, data: [] })),
+          apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError).catch(() => ({ ok: false, data: null }))
         ]);
         
         // 応募数
@@ -335,7 +387,7 @@ export default function MainApp() {
           if (!ev) return null;
           
           try {
-            const dec = await apiFetch(`/api?path=decide&event_id=${eventId}`);
+            const dec = await apiFetch(`/api?path=decide&event_id=${eventId}`, {}, handleNetworkError);
             if (dec.ok && dec.data) {
               // イベントごとの確定状況を保存
               allDecidedByEventId[eventId] = {
@@ -364,7 +416,7 @@ export default function MainApp() {
       
       // キャンセル通知をチェック（自分が応募したイベントでキャンセルが出た場合）
       try {
-        const notifsRes = await apiFetch(`/api?path=notifications`);
+        const notifsRes = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
         if (notifsRes.ok && Array.isArray(notifsRes.data)) {
           for (const notif of notifsRes.data) {
             // キャンセル通知で、自分が応募しているイベントの場合
@@ -404,7 +456,7 @@ export default function MainApp() {
       setCancelledDates(userCancelledDateSet);
       setDecidedMembersByEventId(allDecidedByEventId);
     })();
-  }, [events, selectedDate, userName, myApps]);
+  }, [events, selectedDate, userName, myApps, handleNetworkError]);
 
 
   // すべてのイベントについて確定状況をバックグラウンドで取得し、カレンダーの色がタップ前に反映されるようにする
@@ -418,7 +470,7 @@ export default function MainApp() {
       const map = {};
       const tasks = events.map(async (ev) => {
         try {
-          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError);
           if (dec.ok && dec.data) {
             map[ev.id] = {
               driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
@@ -439,7 +491,7 @@ export default function MainApp() {
       }
     })();
     return () => { aborted = true; };
-  }, [events]);
+  }, [events, handleNetworkError]);
 
   const hasApplied = (eventId, kind) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
@@ -477,7 +529,7 @@ export default function MainApp() {
 
   const apply = async (ev, kind) => {
     if (!userName) {
-      alert("先にログインしてください。");
+      showToast("先にログインしてください。", 'error');
       return;
     }
     
@@ -486,7 +538,7 @@ export default function MainApp() {
     const isDecided = (kind === "driver" ? dec.driver : dec.attendant).includes(userName);
     if (isDecided) {
       const kindLabel = kind === "driver" ? "運転手" : "添乗員";
-      alert(`このイベントの${kindLabel}として既に確定済みです。確定済みの役割の応募は変更できません。`);
+      showToast(`このイベントの${kindLabel}として既に確定済みです。確定済みの役割の応募は変更できません。`, 'warning');
       return;
     }
     
@@ -497,7 +549,7 @@ export default function MainApp() {
     if (hasAppliedOtherKind) {
       const otherKind = myApps.find(a => a.event_id === ev.id && a.kind !== kind)?.kind;
       const otherKindLabel = otherKind === "driver" ? "運転手" : "添乗員";
-      alert(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`);
+      showToast(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`, 'warning');
       return;
     }
 
@@ -524,7 +576,7 @@ export default function MainApp() {
       return overlapsTime(ev2, { start_time: targetStart, end_time: targetEnd });
     });
     if (hasTimeConflict) {
-      alert("同じ時間帯に既に応募済みです。別の時間帯を選択してください。");
+      showToast("同じ時間帯に既に応募済みです。別の時間帯を選択してください。", 'warning');
       return;
     }
     
@@ -534,18 +586,18 @@ export default function MainApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_id: ev.id, username: userName, kind }),
-      });
+      }, handleNetworkError);
       if (!ok) {
         throw new Error(data?.error || `HTTP ${status}`);
       }
       await refresh();
       if (data?.auto_switched && data?.switched_to === "attendant") {
-        alert("運転手で応募されましたが運転手が満杯のため、添乗員として登録されました。");
+        showToast("運転手で応募されましたが運転手が満杯のため、添乗員として登録されました。", 'info');
       } else {
-        alert("応募しました！");
+        showToast("応募しました！", 'success');
       }
     } catch (e) {
-      alert(`応募に失敗しました: ${e.message}`);
+      showToast(`応募に失敗しました: ${e.message}`, 'error');
     } finally {
       setApplying(false);
     }
@@ -554,14 +606,21 @@ export default function MainApp() {
   // 確定後のキャンセル
   const cancelDecided = async (ev, kind) => {
     if (!userName) return;
-    if (!window.confirm("確定済みのシフトをキャンセルしますか？通常の応募者から自動で繰り上げで確定される可能性があります。")) return;
+    const confirmed = await showConfirm({
+      title: '確定済みシフトのキャンセル',
+      message: '確定済みのシフトをキャンセルしますか？通常の応募者から自動で繰り上げで確定される可能性があります。',
+      confirmText: 'キャンセルする',
+      cancelText: '戻る',
+      type: 'warning',
+    });
+    if (!confirmed) return;
     setApplying(true);
     try {
       const { ok, status, data } = await apiFetch("/api?path=cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_id: ev.id, kind }),
-      });
+      }, handleNetworkError);
       if (!ok) {
         throw new Error(data?.error || `HTTP ${status}`);
       }
@@ -575,9 +634,9 @@ export default function MainApp() {
           refresh();
         }, 100);
       }
-      alert("キャンセルが完了しました。");
+      showToast("キャンセルが完了しました。", 'success');
     } catch (e) {
-      alert(`キャンセルに失敗しました: ${e.message}`);
+      showToast(`キャンセルに失敗しました: ${e.message}`, 'error');
     } finally {
       setApplying(false);
     }
@@ -585,16 +644,23 @@ export default function MainApp() {
 
   const cancel = async (ev, kind) => {
     if (!userName) return;
-    if (!window.confirm("応募を取り消しますか？")) return;
+    const confirmed = await showConfirm({
+      title: '応募の取り消し',
+      message: '応募を取り消しますか？',
+      confirmText: '取り消す',
+      cancelText: 'キャンセル',
+      type: 'info',
+    });
+    if (!confirmed) return;
     setApplying(true);
     try {
       const url = `/api/applications?event_id=${encodeURIComponent(ev.id)}&username=${encodeURIComponent(userName)}&kind=${encodeURIComponent(kind)}`;
-      const { ok, status, data } = await apiFetch(url, { method: "DELETE" });
+      const { ok, status, data } = await apiFetch(url, { method: "DELETE" }, handleNetworkError);
       if (!ok) throw new Error(data?.error || `HTTP ${status}`);
       await refresh();
-      alert("応募を取り消しました。");
+      showToast("応募を取り消しました。", 'success');
     } catch (e) {
-      alert(`取り消しに失敗しました: ${e.message}`);
+      showToast(`取り消しに失敗しました: ${e.message}`, 'error');
     } finally {
       setApplying(false);
     }
@@ -1244,6 +1310,27 @@ export default function MainApp() {
           </button>
         </div>
       </div>
+      
+      {/* トースト通知 */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onClose={hideToast}
+        duration={toast.duration}
+      />
+      
+      {/* 確認ダイアログ */}
+      <ConfirmDialog
+        visible={dialog.visible}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        type={dialog.type}
+        onConfirm={dialog.onConfirm}
+        onCancel={dialog.onCancel}
+      />
     </>
   );
 }

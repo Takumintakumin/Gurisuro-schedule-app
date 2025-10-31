@@ -1,14 +1,29 @@
 // src/pages/AdminUsers.js
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import Toast from "../components/Toast.js";
+import ConfirmDialog from "../components/ConfirmDialog.js";
+import { useToast } from "../hooks/useToast.js";
+import { useConfirmDialog } from "../hooks/useConfirmDialog.js";
 
-// 500エラー時のHTMLにも耐える軽量fetch
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, { credentials: "include", ...options });
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch {}
-  return { ok: res.ok, status: res.status, data, text };
+// 500エラー時のHTMLにも耐える軽量fetch（ネットワークエラー検知付き）
+async function apiFetch(url, options = {}, onNetworkError) {
+  try {
+    const res = await fetch(url, { credentials: "include", ...options });
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch {}
+    return { ok: res.ok, status: res.status, data, text };
+  } catch (error) {
+    // ネットワークエラーの場合
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      if (onNetworkError) {
+        onNetworkError();
+      }
+      throw new Error('ネットワークエラーが発生しました。インターネット接続を確認してください。');
+    }
+    throw error;
+  }
 }
 
 function FamBadge({ value }) {
@@ -27,6 +42,9 @@ function FamBadge({ value }) {
 
 export default function AdminUsers() {
   const nav = useNavigate();
+  const { toast, showToast, hideToast } = useToast();
+  const { dialog, showConfirm, hideConfirm } = useConfirmDialog();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [loading, setLoading] = useState(true);
   const [list, setList] = useState([]);
 
@@ -52,7 +70,7 @@ export default function AdminUsers() {
     }
     setLoading(true);
     try {
-      const r = await apiFetch("/api/users");
+      const r = await apiFetch("/api/users", {}, handleNetworkError);
       setList(Array.isArray(r.data) ? r.data : []);
     } catch (e) {
       console.error(e);
@@ -94,7 +112,7 @@ export default function AdminUsers() {
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!newName || !newPw) {
-      alert("ユーザー名とパスワードを入力してください");
+      showToast("ユーザー名とパスワードを入力してください", 'warning');
       return;
     }
     try {
@@ -107,25 +125,34 @@ export default function AdminUsers() {
           role: newRole,
           familiarity: newFam,
         }),
-      });
+      }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
       setNewName(""); setNewPw("");
       setNewRole("user"); setNewFam("unknown");
+      showToast("ユーザーを追加しました", 'success');
       await refresh();
     } catch (e) {
-      alert(`追加に失敗しました: ${e.message}`);
+      showToast(`追加に失敗しました: ${e.message}`, 'error');
     }
   };
 
   // 削除（既存のまま）
   const handleDelete = async (id) => {
-    if (!window.confirm("このユーザーを削除しますか？")) return;
+    const confirmed = await showConfirm({
+      title: 'ユーザーの削除',
+      message: 'このユーザーを削除しますか？',
+      confirmText: '削除する',
+      cancelText: 'キャンセル',
+      type: 'danger',
+    });
+    if (!confirmed) return;
     try {
-      const r = await apiFetch(`/api/users?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const r = await apiFetch(`/api/users?id=${encodeURIComponent(id)}`, { method: "DELETE" }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+      showToast("ユーザーを削除しました", 'success');
       await refresh();
     } catch (e) {
-      alert(`削除に失敗しました: ${e.message}`);
+      showToast(`削除に失敗しました: ${e.message}`, 'error');
     }
   };
 
@@ -139,13 +166,40 @@ export default function AdminUsers() {
   const [historyTo, setHistoryTo] = useState("");
   const [historyTarget, setHistoryTarget] = useState("");
 
+  // ネットワーク状態の監視
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showToast('インターネット接続が復旧しました', 'success');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast('インターネット接続が切断されました', 'warning', 5000);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [showToast]);
+
+  // ネットワークエラー時のハンドラー
+  const handleNetworkError = useCallback(() => {
+    if (!isOnline) {
+      showToast('オフラインです。インターネット接続を確認してください。', 'error', 5000);
+    }
+  }, [isOnline, showToast]);
+
   const openHistory = async (username) => {
     try {
-      const r = await apiFetch(`/api/applications?username=${encodeURIComponent(username)}`);
+      const r = await apiFetch(`/api/applications?username=${encodeURIComponent(username)}`, {}, handleNetworkError);
       setHistory(Array.isArray(r.data) ? r.data : []);
       setHistoryOpen(true);
     } catch (e) {
-      alert("履歴の取得に失敗しました");
+      showToast("履歴の取得に失敗しました", 'error');
     }
   };
   
@@ -160,7 +214,7 @@ export default function AdminUsers() {
     
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
-      alert("管理者のみアクセス可能です。");
+      showToast("管理者のみアクセス可能です。", 'error');
       nav("/admin");
       return;
     }
@@ -168,7 +222,7 @@ export default function AdminUsers() {
     // 通知を取得
     (async () => {
       try {
-        const notifs = await apiFetch("/api?path=notifications");
+        const notifs = await apiFetch("/api?path=notifications", {}, handleNetworkError);
         if (notifs.ok && Array.isArray(notifs.data)) {
           setNotifications(notifs.data);
         }
@@ -205,7 +259,7 @@ export default function AdminUsers() {
                 
                 // ログアウトAPIを呼び出してクッキーを削除
                 try {
-                  await apiFetch("/api?path=logout", { method: "POST" });
+                  await apiFetch("/api?path=logout", { method: "POST" }, handleNetworkError);
                 } catch (e) {
                   console.error("Logout API error:", e);
                 }
@@ -300,10 +354,11 @@ export default function AdminUsers() {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ username: u.username, display_name: e.target.value || null }),
-                              });
+                              }, handleNetworkError);
                               if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                              showToast("表示名を更新しました", 'success');
                             } catch (err) {
-                              alert(`更新に失敗しました: ${err.message}`);
+                              showToast(`更新に失敗しました: ${err.message}`, 'error');
                             }
                           }}
                         />
@@ -325,11 +380,12 @@ export default function AdminUsers() {
                               method: "PATCH",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ username: u.username, role: e.target.value }),
-                            });
+                            }, handleNetworkError);
                             if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                            showToast("役割を更新しました", 'success');
                             await refresh();
                           } catch (err) {
-                            alert(`更新に失敗しました: ${err.message}`);
+                            showToast(`更新に失敗しました: ${err.message}`, 'error');
                           }
                         }}
                       >
@@ -352,11 +408,12 @@ export default function AdminUsers() {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ username: u.username, familiar: e.target.value === "unknown" ? null : e.target.value }),
-                              });
+                              }, handleNetworkError);
                               if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                              showToast("応募適性を更新しました", 'success');
                               await refresh();
                             } catch (err) {
-                              alert(`更新に失敗しました: ${err.message}`);
+                              showToast(`更新に失敗しました: ${err.message}`, 'error');
                             }
                           }}
                         >
@@ -382,6 +439,7 @@ export default function AdminUsers() {
                         <button
                           className="px-3 py-1.5 rounded bg-amber-500 text-white text-sm"
                           onClick={async () => {
+                            // 簡易的にpromptを利用（今後、専用の入力ダイアログに置き換え可能）
                             const newPw = prompt("一時パスワードを入力");
                             if (!newPw) return;
                             try {
@@ -389,11 +447,11 @@ export default function AdminUsers() {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ username: u.username, password: newPw }),
-                              });
+                              }, handleNetworkError);
                               if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                              alert("一時パスワードを設定しました");
+                              showToast("一時パスワードを設定しました", 'success');
                             } catch (err) {
-                              alert(`設定に失敗しました: ${err.message}`);
+                              showToast(`設定に失敗しました: ${err.message}`, 'error');
                             }
                           }}
                         >
@@ -402,13 +460,20 @@ export default function AdminUsers() {
                         <button
                           className="px-3 py-1.5 rounded bg-gray-200 text-gray-800 text-sm"
                           onClick={async () => {
-                            if (!confirm("このユーザーを強制ログアウトしますか？")) return;
+                            const confirmed = await showConfirm({
+                              title: '強制ログアウト',
+                              message: 'このユーザーを強制ログアウトしますか？',
+                              confirmText: 'ログアウトする',
+                              cancelText: 'キャンセル',
+                              type: 'warning',
+                            });
+                            if (!confirmed) return;
                             try {
-                              const r = await apiFetch(`/api?path=logout_user&username=${encodeURIComponent(u.username)}`, { method: "POST" });
+                              const r = await apiFetch(`/api?path=logout_user&username=${encodeURIComponent(u.username)}`, { method: "POST" }, handleNetworkError);
                               if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                              alert("強制ログアウトしました");
+                              showToast("強制ログアウトしました", 'success');
                             } catch (err) {
-                              alert("対応していない環境です（管理者にAPI追加が必要）");
+                              showToast("対応していない環境です（管理者にAPI追加が必要）", 'error');
                             }
                           }}
                         >
@@ -686,6 +751,27 @@ export default function AdminUsers() {
         </button>
       </div>
     </div>
+    
+    {/* トースト通知 */}
+    <Toast
+      message={toast.message}
+      type={toast.type}
+      visible={toast.visible}
+      onClose={hideToast}
+      duration={toast.duration}
+    />
+    
+    {/* 確認ダイアログ */}
+    <ConfirmDialog
+      visible={dialog.visible}
+      title={dialog.title}
+      message={dialog.message}
+      confirmText={dialog.confirmText}
+      cancelText={dialog.cancelText}
+      type={dialog.type}
+      onConfirm={dialog.onConfirm}
+      onCancel={dialog.onCancel}
+    />
     </>
   );
 }

@@ -2,20 +2,35 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
+import Toast from "../components/Toast.js";
+import ConfirmDialog from "../components/ConfirmDialog.js";
+import { useToast } from "../hooks/useToast.js";
+import { useConfirmDialog } from "../hooks/useConfirmDialog.js";
 import { toLocalYMD } from "../lib/date.js";
 
-// 500/HTMLにも耐える軽量 fetch
-async function apiFetch(url, options = {}) {
-  const res = await fetch(url, { credentials: "include", ...options });
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) {
-    let data = {};
-    try { data = await res.json(); } catch {}
-    return { ok: res.ok, status: res.status, data, text: "" };
+// 500/HTMLにも耐える軽量 fetch（ネットワークエラー検知付き）
+async function apiFetch(url, options = {}, onNetworkError) {
+  try {
+    const res = await fetch(url, { credentials: "include", ...options });
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      let data = {};
+      try { data = await res.json(); } catch {}
+      return { ok: res.ok, status: res.status, data, text: "" };
+    }
+    let text = "";
+    try { text = await res.text(); } catch {}
+    return { ok: res.ok, status: res.status, data: {}, text };
+  } catch (error) {
+    // ネットワークエラーの場合
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      if (onNetworkError) {
+        onNetworkError();
+      }
+      throw new Error('ネットワークエラーが発生しました。インターネット接続を確認してください。');
+    }
+    throw error;
   }
-  let text = "";
-  try { text = await res.text(); } catch {}
-  return { ok: res.ok, status: res.status, data: {}, text };
 }
 
 // 固定イベント（画像は public/icons 配下）
@@ -44,7 +59,10 @@ const getEventIcon = (label, icon) => {
 export default function AdminDashboard() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
+  const { toast, showToast, hideToast } = useToast();
+  const { dialog, showConfirm, hideConfirm } = useConfirmDialog();
   const [userName, setUserName] = useState("");
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // タブ管理（URLパラメータから取得、デフォルトはcalendar）
   const [activeTab, setActiveTab] = useState(() => {
@@ -146,6 +164,33 @@ export default function AdminDashboard() {
     notifications_enabled: true,
   });
 
+  // ネットワーク状態の監視
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showToast('インターネット接続が復旧しました', 'success');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast('インターネット接続が切断されました', 'warning', 5000);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [showToast]);
+
+  // ネットワークエラー時のハンドラー
+  const handleNetworkError = useCallback(() => {
+    if (!isOnline) {
+      showToast('オフラインです。インターネット接続を確認してください。', 'error', 5000);
+    }
+  }, [isOnline, showToast]);
+
   // 管理者認証
   useEffect(() => {
     // ログアウト直後の場合はログインページへ
@@ -158,7 +203,7 @@ export default function AdminDashboard() {
     
     const role = localStorage.getItem("userRole");
     if (role !== "admin") {
-      alert("管理者のみアクセス可能です");
+      showToast("管理者のみアクセス可能です", 'error');
       nav("/admin");
       return;
     }
@@ -168,7 +213,7 @@ export default function AdminDashboard() {
     // 念のためサーバで確認
     (async () => {
       try {
-        const r = await apiFetch("/api?path=me");
+        const r = await apiFetch("/api?path=me", {}, handleNetworkError);
         if (r.ok && r.data?.username) {
           setUserName(r.data.username);
           if (!storedName) localStorage.setItem("userName", r.data.username);
@@ -177,12 +222,12 @@ export default function AdminDashboard() {
     })();
     refresh();
     refreshUserSettings();
-  }, [nav]);
+  }, [nav, handleNetworkError]);
 
   // ユーザー設定の取得
   const refreshUserSettings = async () => {
     try {
-      const res = await apiFetch('/api?path=user-settings');
+      const res = await apiFetch('/api?path=user-settings', {}, handleNetworkError);
       if (res.ok && res.data) {
         setUserSettings({
           notifications_enabled: res.data.notifications_enabled !== false,
@@ -201,10 +246,10 @@ export default function AdminDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(userSettings),
-      });
-      alert("設定を保存しました");
+      }, handleNetworkError);
+      showToast("設定を保存しました", 'success');
     } catch (e) {
-      alert(`設定の保存に失敗しました: ${e.message}`);
+      showToast(`設定の保存に失敗しました: ${e.message}`, 'error');
     }
   };
 
@@ -222,7 +267,7 @@ export default function AdminDashboard() {
   // 手動応募
   const handleManualApply = async () => {
     if (!selectedUsername || !fairData.event_id) {
-      alert("ユーザーを選択してください");
+      showToast("ユーザーを選択してください", 'warning');
       return;
     }
     try {
@@ -234,15 +279,15 @@ export default function AdminDashboard() {
           username: selectedUsername,
           kind: selectedKind,
         }),
-      });
+      }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-      alert("応募を登録しました");
+      showToast("応募を登録しました", 'success');
       setManualApplyOpen(false);
       setSelectedUsername("");
       await openFairness(fairData.event_id);
       await refresh();
     } catch (e) {
-      alert(`応募の登録に失敗しました: ${e.message}`);
+      showToast(`応募の登録に失敗しました: ${e.message}`, 'error');
     }
   };
 
@@ -255,7 +300,7 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       // 1) まずイベントだけ取得して即描画
-      const r = await apiFetch("/api/events");
+      const r = await apiFetch("/api/events", {}, handleNetworkError);
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
       setLoading(false); // ここで即座にローディング解除
@@ -278,7 +323,7 @@ export default function AdminDashboard() {
       // 通知一覧を取得してキャンセル情報と通知一覧の両方を更新（1回のAPI呼び出し）
       (async () => {
         try {
-          const notifs = await apiFetch("/api?path=notifications");
+          const notifs = await apiFetch("/api?path=notifications", {}, handleNetworkError);
           if (notifs.ok && Array.isArray(notifs.data)) {
             // 通知一覧をセット
             setNotifications(notifs.data);
@@ -560,11 +605,11 @@ export default function AdminDashboard() {
     e.preventDefault();
     const label = (customLabel || "").trim() || (selectedEvent?.label || "").trim();
     if (!label) {
-      alert("イベント名を入力するか、画像からイベント種類を選択してください。");
+      showToast("イベント名を入力するか、画像からイベント種類を選択してください。", 'warning');
       return;
     }
     if (!start || !end) {
-      alert("開始/終了時間を入力してください。");
+      showToast("開始/終了時間を入力してください。", 'warning');
       return;
     }
 
@@ -594,15 +639,15 @@ export default function AdminDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
+      }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
 
-      alert("イベントを登録しました");
+      showToast("イベントを登録しました", 'success');
       setCustomLabel("");
       await refresh();
     } catch (err) {
       console.error("create event error:", err);
-      alert(`登録に失敗しました: ${err.message}`);
+      showToast(`登録に失敗しました: ${err.message}`, 'error');
     }
   };
 
@@ -645,30 +690,38 @@ export default function AdminDashboard() {
           end_time: editEnd || null,
           date: editDate || null,
         }),
-      });
+      }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
       setEditOpen(false);
       setEditingEvent(null);
       await refresh();
-      alert("イベントを更新しました");
+      showToast("イベントを更新しました", 'success');
     } catch (err) {
-      alert(`更新に失敗しました: ${err.message}`);
+      showToast(`更新に失敗しました: ${err.message}`, 'error');
     }
   };
 
   // イベント削除
   const handleDelete = async (id) => {
-    if (!window.confirm("このイベントを削除しますか？")) return;
+    const confirmed = await showConfirm({
+      title: 'イベントの削除',
+      message: 'このイベントを削除しますか？',
+      confirmText: '削除する',
+      cancelText: 'キャンセル',
+      type: 'danger',
+    });
+    if (!confirmed) return;
     // スクロール位置を保存
     if (activeTab === "apply" && eventListContainerRef.current) {
       eventListScrollPositionRef.current = eventListContainerRef.current.scrollTop;
     }
     try {
-      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" }, handleNetworkError);
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+      showToast("イベントを削除しました", 'success');
       await refresh();
     } catch (err) {
-      alert(`削除に失敗しました: ${err.message}`);
+      showToast(`削除に失敗しました: ${err.message}`, 'error');
     }
   };
 
@@ -897,7 +950,7 @@ export default function AdminDashboard() {
                           });
                           await refresh();
                         } catch (e) {
-                          alert("既読にするのに失敗しました");
+                          showToast("既読にするのに失敗しました", 'error');
                         }
                       }}
                       className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -1299,22 +1352,29 @@ export default function AdminDashboard() {
                 <button
                   className="px-3 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
                   onClick={async () => {
-                    if (!window.confirm("定員に合わせて自動選出しますか？（確定は保存されません。確定を保存ボタンで保存してください）")) return;
+                    const confirmed = await showConfirm({
+                      title: '自動選出',
+                      message: '定員に合わせて自動選出しますか？（確定は保存されません。確定を保存ボタンで保存してください）',
+                      confirmText: '自動選出する',
+                      cancelText: 'キャンセル',
+                      type: 'info',
+                    });
+                    if (!confirmed) return;
                     try {
                       const r = await apiFetch(`/api?path=decide_auto`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ event_id: fairData.event_id }),
-                      });
+                      }, handleNetworkError);
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       const autoDrivers = Array.isArray(r.data.driver) ? r.data.driver : [];
                       const autoAttendants = Array.isArray(r.data.attendant) ? r.data.attendant : [];
                       // 自動選出は選択済みとして設定（確定済みではない）
                       setSelDriver(autoDrivers);
                       setSelAttendant(autoAttendants);
-                      alert(`自動選出が完了しました。\n運転手: ${autoDrivers.length}人、添乗員: ${autoAttendants.length}人\n※「確定を保存」ボタンで保存してください。`);
+                      showToast(`自動選出が完了しました。運転手: ${autoDrivers.length}人、添乗員: ${autoAttendants.length}人。※「確定を保存」ボタンで保存してください。`, 'success', 5000);
                     } catch (err) {
-                      alert(`自動選出に失敗しました: ${err.message}`);
+                      showToast(`自動選出に失敗しました: ${err.message}`, 'error');
                     }
                   }}
                 >
@@ -1333,16 +1393,16 @@ export default function AdminDashboard() {
                           driver: selDriver,
                           attendant: selAttendant,
                         }),
-                      });
+                      }, handleNetworkError);
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       // 選択済みを確定済みに反映
                       setConfirmedDriver(selDriver);
                       setConfirmedAttendant(selAttendant);
-                      alert("確定を保存しました");
+                      showToast("確定を保存しました", 'success');
                       // カレンダーも更新
                       await refresh();
                     } catch (err) {
-                      alert(`保存に失敗しました: ${err.message}`);
+                      showToast(`保存に失敗しました: ${err.message}`, 'error');
                     }
                   }}
                 >
@@ -1353,17 +1413,17 @@ export default function AdminDashboard() {
                   className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm"
                   onClick={async () => {
                     try {
-                      const r = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(fairData.event_id)}`, { method: "DELETE" });
+                      const r = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(fairData.event_id)}`, { method: "DELETE" }, handleNetworkError);
                       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                       setSelDriver([]);
                       setSelAttendant([]);
                       setConfirmedDriver([]);
                       setConfirmedAttendant([]);
-                      alert("確定を解除しました");
+                      showToast("確定を解除しました", 'success');
                       // カレンダーも更新
                       await refresh();
                     } catch (err) {
-                      alert(`解除に失敗しました: ${err.message}`);
+                      showToast(`解除に失敗しました: ${err.message}`, 'error');
                     }
                   }}
                 >
@@ -1836,6 +1896,27 @@ export default function AdminDashboard() {
         </button>
       </div>
     </div>
+    
+    {/* トースト通知 */}
+    <Toast
+      message={toast.message}
+      type={toast.type}
+      visible={toast.visible}
+      onClose={hideToast}
+      duration={toast.duration}
+    />
+    
+    {/* 確認ダイアログ */}
+    <ConfirmDialog
+      visible={dialog.visible}
+      title={dialog.title}
+      message={dialog.message}
+      confirmText={dialog.confirmText}
+      cancelText={dialog.cancelText}
+      type={dialog.type}
+      onConfirm={dialog.onConfirm}
+      onCancel={dialog.onCancel}
+    />
     </>
   );
 }
