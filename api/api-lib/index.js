@@ -884,29 +884,43 @@ export default async function handler(req, res) {
       // 応募は削除しない（確定後のキャンセルでも再投票できるようにする）
 
       // 管理者への通知を作成
-      await query(`
-        CREATE TABLE IF NOT EXISTS notifications (
-          id BIGSERIAL PRIMARY KEY,
-          username TEXT NOT NULL,
-          event_id BIGINT NOT NULL,
-          kind TEXT NOT NULL,
-          message TEXT NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT now(),
-          read_at TIMESTAMPTZ
-        )
-      `);
+      try {
+        await query(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id BIGSERIAL PRIMARY KEY,
+            username TEXT NOT NULL,
+            event_id BIGINT NOT NULL,
+            kind TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            read_at TIMESTAMPTZ
+          )
+        `);
 
-      // 管理者ユーザーを取得
-      const adminUsers = await query(`SELECT username FROM users WHERE role = 'admin'`);
-      const kindLabels = { driver: "運転手", attendant: "添乗員" };
-      
-      for (const adminRow of adminUsers.rows) {
-        const adminUsername = adminRow.username;
-        const message = `${session.username}さんが${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}をキャンセルしました。`;
-        await query(
-          `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
-          [adminUsername, eventId, `cancel_${kind}`, message]
-        );
+        // 管理者ユーザーを取得
+        const adminUsers = await query(`SELECT username FROM users WHERE role = 'admin'`);
+        const kindLabels = { driver: "運転手", attendant: "添乗員" };
+        
+        // 管理者全員に通知を送信
+        const notificationPromises = adminUsers.rows.map(async (adminRow) => {
+          const adminUsername = adminRow.username;
+          const message = `${session.username}さんが${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabels[kind]}をキャンセルしました。`;
+          try {
+            await query(
+              `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+              [adminUsername, eventId, `cancel_${kind}`, message]
+            );
+          } catch (notifErr) {
+            console.error(`[cancel] 通知作成エラー (${adminUsername}):`, notifErr);
+            // 通知エラーは続行（キャンセル処理自体は成功させる）
+          }
+        });
+        
+        await Promise.all(notificationPromises);
+        console.log(`[cancel] 管理者通知送信完了: ${adminUsers.rows.length}人`);
+      } catch (notifError) {
+        console.error("[cancel] 通知処理エラー:", notifError);
+        // 通知エラーは続行（キャンセル処理自体は成功させる）
       }
 
       // 繰り上げ確定: キャンセル待ちから次の人を自動選出

@@ -752,6 +752,8 @@ export default function MainApp() {
             const dec = decided?.[ev.id] || { driver: [], attendant: [] };
             // 自分がどちらかで“確定”済みか調べる
             const isConfirmed = (dec.driver.includes(userName) || dec.attendant.includes(userName));
+            const isDecidedDriver = dec.driver.includes(userName);
+            const isDecidedAttendant = dec.attendant.includes(userName);
             return (
               <li key={ev.id} className={"border rounded p-3 bg-white flex items-center gap-3 " + (isConfirmed ? "bg-green-50 border-green-300" : "") }>
                 {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
@@ -759,24 +761,48 @@ export default function MainApp() {
                   <div className="font-medium truncate">{ev.label}</div>
                   <div className="text-xs text-gray-600 truncate">{ev.date} {ev.start_time}〜{ev.end_time}</div>
                   <div className="text-xs text-gray-500 mt-1">運転手: {c.driver}人 / 添乗員: {c.attendant}人</div>
+                  {isDecidedDriver && <div className="text-xs text-green-600 mt-1">✓ あなたが運転手として確定済み</div>}
+                  {isDecidedAttendant && <div className="text-xs text-green-600 mt-1">✓ あなたが添乗員として確定済み</div>}
                 </div>
                 <div className="flex flex-col gap-2 items-end text-xs min-w-[128px]">
-                  <button
-                    style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                    className={appliedDriver ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-blue-600 text-white px-4 py-2 rounded text-base hover:bg-blue-700"}
-                    disabled={applying}
-                    onClick={() => appliedDriver ? cancel(ev, "driver") : apply(ev, "driver")}
-                  >
-                    {appliedDriver ? "運転手 応募取消" : "運転手で応募"}
-                  </button>
-                  <button
-                    style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                    className={appliedAtt ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-emerald-600 text-white px-4 py-2 rounded text-base hover:bg-emerald-700"}
-                    disabled={applying}
-                    onClick={() => appliedAtt ? cancel(ev, "attendant") : apply(ev, "attendant")}
-                  >
-                    {appliedAtt ? "添乗員 応募取消" : "添乗員で応募"}
-                  </button>
+                  {isDecidedDriver ? (
+                    <button
+                      style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
+                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700"
+                      disabled={applying}
+                      onClick={() => cancelDecided(ev, "driver")}
+                    >
+                      キャンセル（運転手）
+                    </button>
+                  ) : (
+                    <button
+                      style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
+                      className={appliedDriver ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-blue-600 text-white px-4 py-2 rounded text-base hover:bg-blue-700"}
+                      disabled={applying}
+                      onClick={() => appliedDriver ? cancel(ev, "driver") : apply(ev, "driver")}
+                    >
+                      {appliedDriver ? "運転手 応募取消" : "運転手で応募"}
+                    </button>
+                  )}
+                  {isDecidedAttendant ? (
+                    <button
+                      style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
+                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700"
+                      disabled={applying}
+                      onClick={() => cancelDecided(ev, "attendant")}
+                    >
+                      キャンセル（添乗員）
+                    </button>
+                  ) : (
+                    <button
+                      style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
+                      className={appliedAtt ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-emerald-600 text-white px-4 py-2 rounded text-base hover:bg-emerald-700"}
+                      disabled={applying}
+                      onClick={() => appliedAtt ? cancel(ev, "attendant") : apply(ev, "attendant")}
+                    >
+                      {appliedAtt ? "添乗員 応募取消" : "添乗員で応募"}
+                    </button>
+                  )}
                 </div>
               </li>
             );
