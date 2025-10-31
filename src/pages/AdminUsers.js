@@ -1,5 +1,5 @@
 // src/pages/AdminUsers.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 // 500エラー時のHTMLにも耐える軽量fetch
@@ -41,8 +41,15 @@ export default function AdminUsers() {
   const [newRole, setNewRole] = useState("user");
   const [newFam, setNewFam] = useState("unknown");
 
+  // スクロール位置保持用
+  const listContainerRef = useRef(null);
+  const scrollPositionRef = useRef(0);
 
   const refresh = async () => {
+    // スクロール位置を保存
+    if (listContainerRef.current) {
+      scrollPositionRef.current = listContainerRef.current.scrollTop;
+    }
     setLoading(true);
     try {
       const r = await apiFetch("/api/users");
@@ -51,6 +58,12 @@ export default function AdminUsers() {
       console.error(e);
     } finally {
       setLoading(false);
+      // スクロール位置を復元
+      requestAnimationFrame(() => {
+        if (listContainerRef.current) {
+          listContainerRef.current.scrollTop = scrollPositionRef.current;
+        }
+      });
     }
   };
 
@@ -263,7 +276,12 @@ export default function AdminUsers() {
           filtered.length === 0 ? (
             <p className="p-4 text-sm text-gray-500">該当するユーザーがいません。</p>
           ) : (
-          <ul className="space-y-3 p-4">
+          <div 
+            ref={listContainerRef}
+            className="overflow-y-auto"
+            style={{ maxHeight: 'calc(100vh - 400px)' }}
+          >
+            <ul className="space-y-3 p-4">
             {filtered.map((u) => (
               <li key={u.id} className="border rounded-lg p-3 bg-white shadow-sm">
                 <div className="grid grid-cols-1 gap-3">
@@ -298,6 +316,10 @@ export default function AdminUsers() {
                       className="border rounded p-2 text-sm"
                       defaultValue={u.role || "user"}
                       onChange={async (e) => {
+                        // スクロール位置を保存
+                        if (listContainerRef.current) {
+                          scrollPositionRef.current = listContainerRef.current.scrollTop;
+                        }
                         try {
                           const r = await apiFetch("/api/users", {
                             method: "PATCH",
@@ -321,6 +343,10 @@ export default function AdminUsers() {
                         className="border rounded p-2 text-sm"
                         value={u.familiar || u.familiarity || "unknown"}
                         onChange={async (e) => {
+                          // スクロール位置を保存
+                          if (listContainerRef.current) {
+                            scrollPositionRef.current = listContainerRef.current.scrollTop;
+                          }
                           try {
                             const r = await apiFetch("/api/users", {
                               method: "PATCH",
@@ -399,7 +425,8 @@ export default function AdminUsers() {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
         ) : (
           <div className="p-4 text-center">
             <p className="text-sm text-gray-500 mb-3">「全員表示」ボタンをクリックしてユーザー一覧を表示します。</p>

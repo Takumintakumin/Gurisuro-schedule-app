@@ -1,5 +1,5 @@
 // src/pages/AdminDashboard.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
@@ -113,6 +113,10 @@ export default function AdminDashboard() {
   // イベント一・覧の表示開始日（デフォルトは今日）
   const [eventListStartDate, setEventListStartDate] = useState(() => toLocalYMD(new Date()));
 
+  // スクロール位置保持用（イベント一覧用）
+  const eventListContainerRef = useRef(null);
+  const eventListScrollPositionRef = useRef(0);
+
   // 管理者認証
   useEffect(() => {
     // ログアウト直後の場合はログインページへ
@@ -184,6 +188,10 @@ export default function AdminDashboard() {
 
   // イベント取得
   const refresh = async () => {
+    // スクロール位置を保存（イベント一覧タブが表示されている場合）
+    if (activeTab === "apply" && eventListContainerRef.current) {
+      eventListScrollPositionRef.current = eventListContainerRef.current.scrollTop;
+    }
     setLoading(true);
     try {
       // 1) まずイベントだけ取得して即描画
@@ -191,6 +199,15 @@ export default function AdminDashboard() {
       const evs = Array.isArray(r.data) ? r.data : [];
       setEvents(evs);
       setLoading(false); // ここで即座にローディング解除
+      
+      // スクロール位置を復元（イベント一覧タブが表示されている場合）
+      if (activeTab === "apply") {
+        requestAnimationFrame(() => {
+          if (eventListContainerRef.current) {
+            eventListContainerRef.current.scrollTop = eventListScrollPositionRef.current;
+          }
+        });
+      }
 
       // 2) 以降はバックグラウンド更新（描画はブロックしない）
       // 確定済み情報の大量リクエストは省略（必要時にモーダルで取得）
@@ -329,7 +346,12 @@ export default function AdminDashboard() {
         {loading && (
           <p className="text-sm text-gray-500">読み込み中…</p>
         )}
-        <ul className="space-y-2">
+        <div 
+          ref={eventListContainerRef}
+          className="overflow-y-auto"
+          style={{ maxHeight: 'calc(100vh - 400px)' }}
+        >
+          <ul className="space-y-2">
           {!loading && sortedEvents.length === 0 && (
             <li className="text-gray-500 text-sm">この期間にはイベントはありません。</li>
           )}
@@ -377,7 +399,8 @@ export default function AdminDashboard() {
             </li>
           );
         })}
-        </ul>
+          </ul>
+        </div>
       </div>
     );
   };
@@ -393,6 +416,11 @@ export default function AdminDashboard() {
     if (!start || !end) {
       alert("開始/終了時間を入力してください。");
       return;
+    }
+
+    // スクロール位置を保存（イベント一覧が表示されている場合）
+    if (activeTab === "apply" && eventListContainerRef.current) {
+      eventListScrollPositionRef.current = eventListContainerRef.current.scrollTop;
     }
 
     try {
@@ -438,6 +466,11 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!editingEvent) return;
 
+    // スクロール位置を保存
+    if (activeTab === "apply" && eventListContainerRef.current) {
+      eventListScrollPositionRef.current = eventListContainerRef.current.scrollTop;
+    }
+
     try {
       const r = await apiFetch("/api/events", {
         method: "PATCH",
@@ -464,6 +497,10 @@ export default function AdminDashboard() {
   // イベント削除
   const handleDelete = async (id) => {
     if (!window.confirm("このイベントを削除しますか？")) return;
+    // スクロール位置を保存
+    if (activeTab === "apply" && eventListContainerRef.current) {
+      eventListScrollPositionRef.current = eventListContainerRef.current.scrollTop;
+    }
     try {
       const r = await apiFetch(`/api/events?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
