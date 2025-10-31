@@ -28,6 +28,19 @@ const FIXED_EVENTS = [
   { key: "chorus",    label: "コーラス",       icon: "/icons/chorus.png" },
 ];
 
+// フリー運行・循環運行のアイコンを取得するヘルパー関数
+const getEventIcon = (label, icon) => {
+  if (!label) return icon || "";
+  
+  // フリー運行または循環運行の場合、専用アイコンを返す
+  if (label.includes("フリー運行") || label.includes("循環運行")) {
+    return "/icons/app-icon-180.png";
+  }
+  
+  // それ以外の場合は既存のiconを返す
+  return icon || "";
+};
+
 export default function AdminDashboard() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -361,11 +374,14 @@ export default function AdminDashboard() {
           return (
             <li key={ev.id} className={liCls}>
               <div className="flex items-center gap-3">
-                {ev.icon ? (
-                  <img src={ev.icon} alt="" className="w-10 h-10 object-contain" />
-                ) : (
-                  <div className="w-10 h-10 rounded bg-gray-100" />
-                )}
+                {(() => {
+                  const eventIcon = getEventIcon(ev.label, ev.icon);
+                  return eventIcon ? (
+                    <img src={eventIcon} alt="" className="w-10 h-10 object-contain" />
+                  ) : (
+                    <div className="w-10 h-10 rounded bg-gray-100" />
+                  );
+                })()}
                 <div className="flex-1 min-w-0">
                   <div className="flex gap-2 items-center">
                     <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
@@ -424,10 +440,16 @@ export default function AdminDashboard() {
     }
 
     try {
+      // フリー運行・循環運行の場合は専用アイコンを設定
+      let eventIcon = selectedEvent?.icon || "";
+      if (label.includes("フリー運行") || label.includes("循環運行")) {
+        eventIcon = "/icons/app-icon-180.png";
+      }
+      
       const body = {
         date: ymd,
         label,
-        icon: selectedEvent?.icon || "",
+        icon: eventIcon,
         start_time: start,
         end_time: end,
         capacity_driver: 1, // 確定で一人ずつ
@@ -472,13 +494,19 @@ export default function AdminDashboard() {
     }
 
     try {
+      // フリー運行・循環運行の場合は専用アイコンを設定
+      let eventIcon = editIcon || "";
+      if (editLabel && (editLabel.includes("フリー運行") || editLabel.includes("循環運行"))) {
+        eventIcon = "/icons/app-icon-180.png";
+      }
+      
       const r = await apiFetch("/api/events", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: editingEvent.id,
           label: editLabel || null,
-          icon: editIcon || "",
+          icon: eventIcon,
           start_time: editStart || null,
           end_time: editEnd || null,
           date: editDate || null,
@@ -901,7 +929,10 @@ export default function AdminDashboard() {
               {todays.map((ev) => (
                 <li key={ev.id} className="border rounded p-3 flex items-center justify-between bg-white">
                   <div className="flex items-center gap-3">
-                    {ev.icon ? <img src={ev.icon} alt="" className="w-6 h-6" /> : null}
+                    {(() => {
+                      const eventIcon = getEventIcon(ev.label, ev.icon);
+                      return eventIcon ? <img src={eventIcon} alt="" className="w-6 h-6" /> : null;
+                    })()}
                     <div>
                       <div className="font-medium">{ev.label}</div>
                       <div className="text-xs text-gray-500">

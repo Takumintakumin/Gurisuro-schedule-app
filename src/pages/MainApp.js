@@ -938,7 +938,14 @@ export default function MainApp() {
                     return (
                       <li key={ev.id} className="border rounded p-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          {ev.icon ? <img src={ev.icon} alt="" className="w-6 h-6" /> : null}
+                          {(() => {
+                            // フリー運行・循環運行のアイコンを取得
+                            let eventIcon = ev.icon || "";
+                            if (ev.label && (ev.label.includes("フリー運行") || ev.label.includes("循環運行"))) {
+                              eventIcon = "/icons/app-icon-180.png";
+                            }
+                            return eventIcon ? <img src={eventIcon} alt="" className="w-6 h-6" /> : null;
+                          })()}
                           <div>
                             <div className="font-medium">{ev.label}</div>
                             <div className="text-xs text-gray-500">

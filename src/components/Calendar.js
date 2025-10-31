@@ -1,6 +1,19 @@
 // src/components/Calendar.js
 import React from "react";
 
+// フリー運行・循環運行のアイコンを取得するヘルパー関数
+const getEventIcon = (label, icon) => {
+  if (!label) return icon || "";
+  
+  // フリー運行または循環運行の場合、専用アイコンを返す
+  if (label.includes("フリー運行") || label.includes("循環運行")) {
+    return "/icons/app-icon-180.png";
+  }
+  
+  // それ以外の場合は既存のiconを返す
+  return icon || "";
+};
+
 const monthNames = [
   "1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"
 ];
@@ -76,9 +89,12 @@ export default function Calendar({
 
     // コンパクト時はイベント優先、タグは省略
     const eventBadges = (dayEvents || []).map((ev) =>
-      ev && ev.icon
-        ? { type: "icon", icon: ev.icon, label: ev.label, start: ev.start_time }
-        : { type: "text", label: ev?.label || "" }
+      (() => {
+        const eventIcon = getEventIcon(ev?.label, ev?.icon);
+        return eventIcon
+          ? { type: "icon", icon: eventIcon, label: ev?.label || "", start: ev?.start_time }
+          : { type: "text", label: ev?.label || "" };
+      })()
     );
 
     const tagBadges = isCompact ? [] : (tags || []).map((t) => ({
@@ -317,7 +333,12 @@ export default function Calendar({
         {/* コンパクト時: アイコンのみを1つ表示（なければマークのみ）。通常時: バッジ表示 */}
         {isCompact ? (
           (() => {
-            const iconEvents = (dayEvents || []).filter(ev => ev && ev.icon);
+            const iconEvents = (dayEvents || [])
+              .map(ev => {
+                const eventIcon = getEventIcon(ev?.label, ev?.icon);
+                return eventIcon ? { ...ev, icon: eventIcon } : null;
+              })
+              .filter(ev => ev !== null);
             if (iconEvents.length > 0) {
               const first = iconEvents[0];
               const overflow = Math.max(iconEvents.length - 1, 0);
