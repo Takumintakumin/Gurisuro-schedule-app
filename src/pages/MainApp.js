@@ -322,6 +322,7 @@ export default function MainApp() {
         notifications_enabled: r.data.notifications_enabled !== false,
         google_calendar_enabled: r.data.google_calendar_enabled === true,
         google_calendar_id: r.data.google_calendar_id || null,
+        has_google_token: r.data.has_google_token || false,
       });
     }
   }, [userName]);
@@ -392,6 +393,27 @@ export default function MainApp() {
     }
   }, [activeTab, refreshUserSettings, refreshApplicationHistory]);
 
+  // Google OAuthコールバック処理
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthSuccess = params.get('google_oauth_success');
+    const oauthError = params.get('error');
+    
+    if (oauthSuccess === 'true') {
+      alert('Googleアカウントの連携が完了しました！');
+      // URLからパラメータを削除
+      window.history.replaceState({}, '', window.location.pathname);
+      refreshUserSettings();
+    } else if (oauthError) {
+      let errorMsg = 'Google認証に失敗しました';
+      if (oauthError === 'oauth_failed') errorMsg = 'Google認証が中断されました';
+      else if (oauthError === 'token_exchange_failed') errorMsg = 'トークンの取得に失敗しました';
+      alert(errorMsg);
+      // URLからパラメータを削除
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [refreshUserSettings]);
+
   // ---- 通知を既読にする ----
   const markAsRead = async (id) => {
     try {
@@ -436,12 +458,19 @@ export default function MainApp() {
       });
       
       if (res.ok) {
-        if (res.data?.synced > 0) {
-          // 成功時は通知のみ（コンソールログ）
-          console.log(`[Google Calendar Sync] ${res.data.synced}件のイベントを同期しました`);
-          
-          // 手動同期時のみICSファイルをダウンロード
-          if (downloadICS && res.data?.ics) {
+        if (res.data?.needsAuth) {
+          // Google認証が必要
+          alert(res.data.message || 'Google認証が必要です。マイページでGoogleアカウントを連携してください。');
+          return;
+        }
+
+        if (res.data?.synced > 0 || res.data?.googleSynced > 0) {
+          const syncedCount = res.data.googleSynced || res.data.synced;
+          // 成功時は通知
+          if (res.data.googleSynced > 0) {
+            alert(`${syncedCount}件のイベントをGoogleカレンダーに同期しました！`);
+          } else if (downloadICS && res.data?.ics) {
+            // フォールバック：ICSファイルをダウンロード
             const blob = new Blob([res.data.ics], { type: 'text/calendar;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -452,7 +481,11 @@ export default function MainApp() {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
+            alert('ICSファイルをダウンロードしました。Googleカレンダーにインポートしてください。');
           }
+          console.log(`[Google Calendar Sync] ${syncedCount}件のイベントを同期しました`);
+        } else {
+          console.log('[Google Calendar Sync] 同期するイベントがありませんでした');
         }
       }
     } catch (e) {
@@ -950,12 +983,69 @@ export default function MainApp() {
               <p className="text-xs text-gray-500 mt-1">
                 自動同期: 予定が確定すると自動的にGoogleカレンダーに同期されます。
               </p>
+              
+              {/* Google認証ステータス */}
+              {!userSettings.has_google_token && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                  <p className="text-yellow-800 mb-2">
+                    Google認証が必要です。下のボタンからGoogleアカウントを連携してください。
+                  </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await apiFetch('/api?path=google-oauth');
+                        if (res.ok && res.data?.authUrl) {
+                          // 新しいウィンドウで認証
+                          window.location.href = res.data.authUrl;
+                        } else {
+                          alert('認証URLの取得に失敗しました');
+                        }
+                      } catch (e) {
+                        alert(`認証エラー: ${e.message}`);
+                      }
+                    }}
+                    className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Googleアカウントを連携
+                  </button>
+                </div>
+              )}
+
+              {userSettings.has_google_token && (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <span className="text-green-600">✓ Google認証済み</span>
+                  <button
+                    onClick={async () => {
+                      if (confirm('Google認証を解除しますか？')) {
+                        try {
+                          const res = await apiFetch('/api?path=google-oauth', {
+                            method: 'POST',
+                          });
+                          if (res.ok) {
+                            alert('Google認証を解除しました');
+                            refreshUserSettings();
+                          } else {
+                            alert('認証解除に失敗しました');
+                          }
+                        } catch (e) {
+                          alert(`エラー: ${e.message}`);
+                        }
+                      }
+                    }}
+                    className="px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs"
+                  >
+                    認証解除
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => triggerGoogleCalendarSync(true)}
-                disabled={!userName}
+                disabled={!userName || !userSettings.has_google_token}
                 className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                title={!userSettings.has_google_token ? 'Google認証が必要です' : 'Googleカレンダーに直接同期'}
               >
-                今すぐ同期してダウンロード
+                今すぐ同期
               </button>
             </div>
           )}

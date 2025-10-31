@@ -1141,20 +1141,37 @@ export default async function handler(req, res) {
       const session = await getSession(req);
       if (!session?.username) return res.status(401).json({ error: "認証が必要です" });
 
-      // テーブルを保証
+      // テーブルを保証（Google OAuthトークン用カラムを追加）
       await query(`
         CREATE TABLE IF NOT EXISTS user_settings (
           username TEXT PRIMARY KEY,
           notifications_enabled BOOLEAN DEFAULT true,
           google_calendar_enabled BOOLEAN DEFAULT false,
           google_calendar_id TEXT,
+          google_access_token TEXT,
+          google_refresh_token TEXT,
+          google_token_expires_at TIMESTAMPTZ,
           updated_at TIMESTAMPTZ DEFAULT now()
         )
       `);
+      
+      // 既存のテーブルにカラムを追加（存在しない場合のみ）
+      try {
+        await query(`
+          ALTER TABLE user_settings 
+          ADD COLUMN IF NOT EXISTS google_access_token TEXT,
+          ADD COLUMN IF NOT EXISTS google_refresh_token TEXT,
+          ADD COLUMN IF NOT EXISTS google_token_expires_at TIMESTAMPTZ
+        `);
+      } catch (e) {
+        // カラムが既に存在する場合は無視
+        console.log('Columns may already exist:', e.message);
+      }
 
       if (req.method === "GET") {
         const r = await query(
-          `SELECT notifications_enabled, google_calendar_enabled, google_calendar_id 
+          `SELECT notifications_enabled, google_calendar_enabled, google_calendar_id,
+                  google_access_token IS NOT NULL AS has_google_token
            FROM user_settings 
            WHERE username = $1`,
           [session.username]
@@ -1163,8 +1180,15 @@ export default async function handler(req, res) {
           notifications_enabled: true,
           google_calendar_enabled: false,
           google_calendar_id: null,
+          has_google_token: false,
         };
-        return res.status(200).json(settings);
+        // トークンは送信しない（セキュリティ）
+        return res.status(200).json({
+          notifications_enabled: settings.notifications_enabled,
+          google_calendar_enabled: settings.google_calendar_enabled,
+          google_calendar_id: settings.google_calendar_id,
+          has_google_token: settings.has_google_token || false,
+        });
       }
 
       if (req.method === "POST") {
@@ -1190,6 +1214,111 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method Not Allowed" });
     }
 
+    // ---- /api/google-oauth ---- Google OAuth認証
+    if (sub === "google-oauth") {
+      const session = await getSession(req);
+      if (!session?.username) return res.status(401).json({ error: "認証が必要です" });
+
+      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+      const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+      const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `${req.headers.origin || 'http://localhost:3000'}/api?path=google-oauth-callback`;
+
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+        return res.status(500).json({ error: "Google OAuth設定が完了していません。GOOGLE_CLIENT_IDとGOOGLE_CLIENT_SECRETを環境変数に設定してください。" });
+      }
+
+      if (req.method === "GET") {
+        // OAuth認証URLを生成
+        const state = base64url(crypto.randomBytes(32).toString('hex') + session.username);
+        const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar');
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${GOOGLE_CLIENT_ID}&` +
+          `redirect_uri=${encodeURIComponent(REDIRECT_URI)}&` +
+          `response_type=code&` +
+          `scope=${scope}&` +
+          `access_type=offline&` +
+          `prompt=consent&` +
+          `state=${state}`;
+        
+        return res.status(200).json({ authUrl, state });
+      }
+
+      if (req.method === "POST") {
+        // トークン削除（認証解除）
+        await query(
+          `UPDATE user_settings 
+           SET google_access_token = NULL, 
+               google_refresh_token = NULL, 
+               google_token_expires_at = NULL
+           WHERE username = $1`,
+          [session.username]
+        );
+        return res.status(200).json({ ok: true, message: "Google認証を解除しました" });
+      }
+
+      return res.status(405).json({ error: "Method Not Allowed" });
+    }
+
+    // ---- /api/google-oauth-callback ---- Google OAuth コールバック
+    if (sub === "google-oauth-callback") {
+      const code = q.get("code");
+      const state = q.get("state");
+      
+      if (!code || !state) {
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_failed`);
+      }
+
+      // stateからusernameを取得
+      const stateData = Buffer.from(state, 'base64url').toString('utf-8');
+      const username = stateData.slice(64); // 最初の64文字はランダム、以降がusername
+
+      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+      const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+      const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `${req.headers.origin || 'http://localhost:3000'}/api?path=google-oauth-callback`;
+
+      try {
+        // トークン交換
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_CLIENT_ID,
+            client_secret: GOOGLE_CLIENT_SECRET,
+            redirect_uri: REDIRECT_URI,
+            grant_type: 'authorization_code',
+          }),
+        });
+
+        const tokenData = await tokenResponse.json();
+        if (!tokenResponse.ok) {
+          console.error('Token exchange error:', tokenData);
+          return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=token_exchange_failed`);
+        }
+
+        const expiresAt = tokenData.expires_in 
+          ? new Date(Date.now() + tokenData.expires_in * 1000)
+          : null;
+
+        // トークンを保存
+        await query(
+          `INSERT INTO user_settings (username, google_access_token, google_refresh_token, google_token_expires_at, updated_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (username) DO UPDATE SET
+             google_access_token = $2,
+             google_refresh_token = $3,
+             google_token_expires_at = $4,
+             updated_at = now()`,
+          [username, tokenData.access_token, tokenData.refresh_token || null, expiresAt]
+        );
+
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?google_oauth_success=true`);
+      } catch (error) {
+        console.error('OAuth callback error:', error);
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_callback_error`);
+      }
+    }
+
     // ---- /api/google-calendar-sync ---- Googleカレンダー自動同期
     if (sub === "google-calendar-sync") {
       const session = await getSession(req);
@@ -1198,7 +1327,7 @@ export default async function handler(req, res) {
       if (req.method === "POST") {
         // ユーザー設定を確認
         const settingsRes = await query(
-          `SELECT google_calendar_enabled, google_calendar_id 
+          `SELECT google_calendar_enabled, google_calendar_id, google_access_token, google_refresh_token
            FROM user_settings 
            WHERE username = $1 AND google_calendar_enabled = true`,
           [session.username]
@@ -1206,6 +1335,17 @@ export default async function handler(req, res) {
 
         if (!settingsRes.rows?.[0]) {
           return res.status(200).json({ ok: true, message: "Googleカレンダー同期が有効になっていません" });
+        }
+
+        const settings = settingsRes.rows[0];
+
+        // Google OAuth認証が必要な場合
+        if (!settings.google_access_token && !settings.google_refresh_token) {
+          return res.status(200).json({ 
+            ok: false, 
+            needsAuth: true,
+            message: "Google認証が必要です。マイページでGoogleアカウントを連携してください。" 
+          });
         }
 
         // ユーザーが確定したイベントを取得
@@ -1330,15 +1470,107 @@ export default async function handler(req, res) {
 
         ics += 'END:VCALENDAR\r\n';
 
-        // ここで実際にGoogle Calendar APIに同期する処理を実装
-        // 現在はICSファイルの内容を返す（将来的にGoogle Calendar APIに拡張可能）
-        
-        return res.status(200).json({ 
-          ok: true, 
-          synced: syncedCount,
-          ics: ics,
-          message: `${syncedCount}件のイベントを同期しました`
-        });
+        // Google Calendar APIを使用して直接同期
+        let googleSyncedCount = 0;
+        let googleErrors = [];
+
+        try {
+          const accessToken = await getGoogleAccessToken(session.username);
+          if (!accessToken) {
+            return res.status(200).json({
+              ok: false,
+              needsAuth: true,
+              synced: 0,
+              ics: ics,
+              message: "Google認証が必要です。マイページでGoogleアカウントを連携してください。"
+            });
+          }
+
+          const calendarId = settings.google_calendar_id || 'primary';
+
+          // 管理者か一般ユーザーかを判定（管理者は全確定済みイベント、一般ユーザーは自分の確定済みイベント）
+          const userRole = await query(`SELECT role FROM users WHERE username = $1 LIMIT 1`, [session.username]);
+          const isAdmin = userRole.rows?.[0]?.role === 'admin';
+
+          if (isAdmin) {
+            // 管理者: 全確定済みイベントを同期
+            const allEventsRes = await query(`SELECT id, date, label, icon, start_time, end_time FROM events ORDER BY date ASC, start_time NULLS FIRST`);
+            
+            for (const ev of allEventsRes.rows) {
+              try {
+                const decideRes = await query(
+                  `SELECT username, kind FROM selections WHERE event_id = $1`,
+                  [ev.id]
+                );
+                
+                const driver = [];
+                const attendant = [];
+                for (const sel of decideRes.rows) {
+                  if (sel.kind === 'driver') driver.push(sel.username);
+                  else attendant.push(sel.username);
+                }
+                
+                // 運転手と添乗員が両方確定している場合のみ同期
+                if (driver.length > 0 && attendant.length > 0) {
+                  await syncEventToGoogleCalendar(
+                    accessToken,
+                    calendarId,
+                    ev,
+                    driver,
+                    attendant,
+                    null // 管理者は全イベントなのでmyRoleはnull
+                  );
+                  googleSyncedCount++;
+                }
+              } catch (error) {
+                console.error(`Failed to sync event ${ev.id}:`, error);
+                googleErrors.push({ eventId: ev.id, error: error.message });
+              }
+            }
+          } else {
+            // 一般ユーザー: 自分の確定済みイベントのみ同期
+            for (const ev of eventsDetail.rows) {
+              const decision = decisionsByEvent[ev.id] || { driver: [], attendant: [] };
+              const isDriver = decision.driver.includes(session.username);
+              const isAttendant = decision.attendant.includes(session.username);
+              if (!isDriver && !isAttendant) continue;
+
+              try {
+                await syncEventToGoogleCalendar(
+                  accessToken,
+                  calendarId,
+                  ev,
+                  decision.driver,
+                  decision.attendant,
+                  isDriver ? 'driver' : 'attendant'
+                );
+                googleSyncedCount++;
+              } catch (error) {
+                console.error(`Failed to sync event ${ev.id}:`, error);
+                googleErrors.push({ eventId: ev.id, error: error.message });
+              }
+            }
+          }
+
+          return res.status(200).json({
+            ok: true,
+            synced: googleSyncedCount,
+            googleSynced: googleSyncedCount,
+            ics: ics, // フォールバック用にICSも返す
+            errors: googleErrors.length > 0 ? googleErrors : undefined,
+            message: `${googleSyncedCount}件のイベントをGoogleカレンダーに同期しました`
+          });
+        } catch (error) {
+          console.error('Google Calendar sync error:', error);
+          // エラー時はICSファイルを返す（フォールバック）
+          return res.status(200).json({
+            ok: true,
+            synced: syncedCount,
+            ics: ics,
+            googleSynced: 0,
+            message: `Googleカレンダー同期に失敗しました。ICSファイルを使用してください: ${error.message}`
+          });
+        }
       }
 
       return res.status(405).json({ error: "Method Not Allowed" });
