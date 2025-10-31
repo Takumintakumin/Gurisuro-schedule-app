@@ -799,39 +799,39 @@ export default function MainApp() {
                   {isDecidedDriver ? (
                     <button
                       style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700"
+                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={applying}
                       onClick={() => cancelDecided(ev, "driver")}
                     >
-                      キャンセル（運転手）
+                      {applying ? "処理中..." : "キャンセル（運転手）"}
                     </button>
                   ) : (
                     <button
                       style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                      className={appliedDriver ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-blue-600 text-white px-4 py-2 rounded text-base hover:bg-blue-700"}
+                      className={appliedDriver ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base disabled:opacity-50 disabled:cursor-not-allowed" : "w-full bg-blue-600 text-white px-4 py-2 rounded text-base hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"}
                       disabled={applying}
                       onClick={() => appliedDriver ? cancel(ev, "driver") : apply(ev, "driver")}
                     >
-                      {appliedDriver ? "運転手 応募取消" : "運転手で応募"}
+                      {applying ? "処理中..." : (appliedDriver ? "運転手 応募取消" : "運転手で応募")}
                     </button>
                   )}
                   {isDecidedAttendant ? (
                     <button
                       style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700"
+                      className="w-full bg-red-600 text-white px-4 py-2 rounded text-base hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={applying}
                       onClick={() => cancelDecided(ev, "attendant")}
                     >
-                      キャンセル（添乗員）
+                      {applying ? "処理中..." : "キャンセル（添乗員）"}
                     </button>
                   ) : (
                     <button
                       style={{ fontSize: "1.1rem", fontWeight: 600, padding: "10px 0" }}
-                      className={appliedAtt ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base" : "w-full bg-emerald-600 text-white px-4 py-2 rounded text-base hover:bg-emerald-700"}
+                      className={appliedAtt ? "w-full bg-gray-300 text-gray-700 px-4 py-2 rounded text-base disabled:opacity-50 disabled:cursor-not-allowed" : "w-full bg-emerald-600 text-white px-4 py-2 rounded text-base hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"}
                       disabled={applying}
                       onClick={() => appliedAtt ? cancel(ev, "attendant") : apply(ev, "attendant")}
                     >
-                      {appliedAtt ? "添乗員 応募取消" : "添乗員で応募"}
+                      {applying ? "処理中..." : (appliedAtt ? "添乗員 応募取消" : "添乗員で応募")}
                     </button>
                   )}
                 </div>
@@ -979,56 +979,56 @@ export default function MainApp() {
                           {["運転手","両方"].includes(userRolePref) && (
                             isDecidedDriver ? (
                               <button
-                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying}
                                 onClick={() => cancelDecided(ev, "driver")}
                               >
-                                キャンセル（運転手）
+                                {applying ? "処理中..." : "キャンセル（運転手）"}
                               </button>
                             ) : appliedDriver ? (
                               <button
-                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300"
+                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying}
                                 onClick={() => cancel(ev, "driver")}
                               >
-                                応募取消（運転手）
+                                {applying ? "処理中..." : "応募取消（運転手）"}
                               </button>
                             ) : (
                               <button
-                                className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
+                                className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver || hasAnyTimeConflict}
                                 onClick={() => apply(ev, "driver")}
                                 title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
                               >
-                                運転手で応募
+                                {applying ? "処理中..." : "運転手で応募"}
                               </button>
                             )
                           )}
                           {["添乘員","両方"].includes(userRolePref) && (
                             isDecidedAttendant ? (
                               <button
-                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50"
+                                className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying}
                                 onClick={() => cancelDecided(ev, "attendant")}
                               >
-                                キャンセル（添乗員）
+                                {applying ? "処理中..." : "キャンセル（添乗員）"}
                               </button>
                             ) : appliedAtt ? (
                               <button
-                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300"
+                                className="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying}
                                 onClick={() => cancel(ev, "attendant")}
                               >
-                                応募取消（添乗員）
+                                {applying ? "処理中..." : "応募取消（添乗員）"}
                               </button>
                             ) : (
                               <button
-                                className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
+                                className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                 disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant || hasAnyTimeConflict}
                                 onClick={() => apply(ev, "attendant")}
                                 title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
                               >
-                                添乗員で応募
+                                {applying ? "処理中..." : "添乗員で応募"}
                               </button>
                             )
                           )}
