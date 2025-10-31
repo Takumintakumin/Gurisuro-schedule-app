@@ -1126,14 +1126,6 @@ export default function MainApp() {
           <div className="flex items-center gap-3 flex-wrap">
             {userName && <span className="text-sm text-gray-600">ログイン中：{userName}</span>}
             <button
-              onClick={handleExportToGoogleCalendar}
-              disabled={exportLoading || !userName}
-              className="px-3 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              title="自分が確定した予定をGoogleカレンダー形式（ICS）でエクスポート"
-            >
-              {exportLoading ? 'エクスポート中...' : '📅 Googleカレンダーにエクスポート'}
-            </button>
-            <button
               onClick={handleLogout}
               className="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600"
             >

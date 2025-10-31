@@ -1,5 +1,5 @@
 // src/pages/AdminDashboard.js
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Calendar from "../components/Calendar.js";
 import { toLocalYMD } from "../lib/date.js";
@@ -51,14 +51,14 @@ export default function AdminDashboard() {
     let tab = searchParams.get("tab");
     // 軽い入力ミスを許容（例: aaply, appl, applies など）
     if (tab && /^appl/i.test(tab)) tab = "apply";
-    return tab && ["calendar", "apply", "notifications"].includes(tab) ? tab : "calendar";
+    return tab && ["calendar", "apply", "notifications", "mypage"].includes(tab) ? tab : "calendar";
   });
 
   // URLパラメータの変更を監視
   useEffect(() => {
     let tab = searchParams.get("tab");
     if (tab && /^appl/i.test(tab)) tab = "apply";
-    if (tab && ["calendar", "apply", "notifications"].includes(tab)) {
+    if (tab && ["calendar", "apply", "notifications", "mypage"].includes(tab)) {
       setActiveTab(tab);
     } else {
       setActiveTab("calendar");
@@ -132,6 +132,13 @@ export default function AdminDashboard() {
 
   // Googleカレンダーエクスポート用
   const [exportLoading, setExportLoading] = useState(false);
+
+  // ユーザー設定（Googleカレンダー同期用）
+  const [userSettings, setUserSettings] = useState({
+    notifications_enabled: true,
+    google_calendar_enabled: false,
+    google_calendar_id: null,
+  });
 
   // 日付文字列をDateに変換（JST考慮）
   const parseDate = (dateStr, timeStr) => {
@@ -303,7 +310,101 @@ export default function AdminDashboard() {
       } catch {}
     })();
     refresh();
+    refreshUserSettings();
   }, [nav]);
+
+  // ユーザー設定の取得
+  const refreshUserSettings = async () => {
+    try {
+      const res = await apiFetch('/api?path=user-settings');
+      if (res.ok && res.data) {
+        setUserSettings({
+          notifications_enabled: res.data.notifications_enabled !== false,
+          google_calendar_enabled: res.data.google_calendar_enabled === true,
+          google_calendar_id: res.data.google_calendar_id || null,
+        });
+      }
+    } catch (e) {
+      console.error('ユーザー設定の取得エラー:', e);
+    }
+  };
+
+  // ユーザー設定を保存
+  const saveUserSettings = async () => {
+    try {
+      await apiFetch(`/api?path=user-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userSettings),
+      });
+      alert("設定を保存しました");
+      
+      // Googleカレンダー同期が有効になった場合、即座に同期を実行
+      if (userSettings.google_calendar_enabled) {
+        triggerGoogleCalendarSync();
+      }
+    } catch (e) {
+      alert(`設定の保存に失敗しました: ${e.message}`);
+    }
+  };
+
+  // Googleカレンダー自動同期（管理者用：全確定済みイベント）
+  const triggerGoogleCalendarSync = React.useCallback(async (downloadICS = false) => {
+    if (!userName || !userSettings.google_calendar_enabled) return;
+    
+    try {
+      // 管理者の場合は全確定済みイベントをエクスポート
+      const res = await apiFetch('/api/events');
+      if (!res.ok || !Array.isArray(res.data)) {
+        throw new Error('イベントの取得に失敗しました');
+      }
+
+      const eventsWithDecisions = [];
+      for (const event of res.data) {
+        try {
+          const decideRes = await apiFetch(`/api?path=decide&event_id=${event.id}`);
+          if (decideRes.ok && decideRes.data) {
+            const driver = Array.isArray(decideRes.data.driver) ? decideRes.data.driver : [];
+            const attendant = Array.isArray(decideRes.data.attendant) ? decideRes.data.attendant : [];
+            
+            if (driver.length > 0 && attendant.length > 0) {
+              eventsWithDecisions.push({
+                event,
+                driver,
+                attendant
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`Event ${event.id} decision fetch error:`, e);
+        }
+      }
+
+      if (eventsWithDecisions.length === 0) {
+        console.log('[Google Calendar Sync] 確定済みイベントがありません');
+        return;
+      }
+
+      const icsContent = generateICS(eventsWithDecisions);
+
+      if (downloadICS) {
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      console.log(`[Google Calendar Sync] ${eventsWithDecisions.length}件のイベントを同期しました`);
+    } catch (e) {
+      console.error("Googleカレンダー同期エラー:", e);
+    }
+  }, [userName, userSettings.google_calendar_enabled]);
 
   // ユーザーリスト取得
   const refreshUsers = async () => {
@@ -833,6 +934,92 @@ export default function AdminDashboard() {
     } catch {}
   }, [unreadCount]);
 
+  // マイページタブの内容
+  const renderMypageTab = () => (
+    <div>
+      <h2 className="font-semibold mb-4">マイページ</h2>
+      
+      {/* アカウント情報 */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-2">アカウント情報</h3>
+        <div className="border rounded p-3 bg-gray-50">
+          <div className="text-sm">
+            <div className="mb-2">
+              <span className="font-medium">ユーザー名:</span> {userName}
+            </div>
+            <div>
+              <span className="font-medium">役割:</span> 管理者
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 通知設定 */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-2">通知設定</h3>
+        <div className="border rounded p-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={userSettings.notifications_enabled}
+              onChange={(e) => setUserSettings({ ...userSettings, notifications_enabled: e.target.checked })}
+              className="w-4 h-4"
+            />
+            <span className="text-sm">確定通知を有効にする</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Googleカレンダー同期設定 */}
+      <div className="mb-6">
+        <h3 className="font-semibold mb-2">Googleカレンダー同期設定</h3>
+        <div className="border rounded p-3 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={userSettings.google_calendar_enabled}
+              onChange={(e) => setUserSettings({ ...userSettings, google_calendar_enabled: e.target.checked })}
+              className="w-4 h-4"
+            />
+            <span className="text-sm">Googleカレンダーと同期する（全確定済みイベント）</span>
+          </label>
+          {userSettings.google_calendar_enabled && (
+            <div>
+              <label className="block text-sm font-medium mb-1">カレンダーID（オプション）</label>
+              <input
+                type="text"
+                value={userSettings.google_calendar_id || ""}
+                onChange={(e) => setUserSettings({ ...userSettings, google_calendar_id: e.target.value })}
+                placeholder="your-calendar-id@group.calendar.google.com"
+                className="w-full border rounded p-2 text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                自動同期: 予定が確定すると自動的にGoogleカレンダーに同期されます（管理者は全確定済みイベントが対象）。
+              </p>
+              <button
+                onClick={() => triggerGoogleCalendarSync(true)}
+                disabled={!userName}
+                className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                今すぐ同期してダウンロード
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 設定保存ボタン */}
+      <div className="mb-6">
+        <button
+          onClick={saveUserSettings}
+          className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+        >
+          設定を保存
+        </button>
+      </div>
+    </div>
+  );
+
   // 通知タブの内容
   const renderNotificationsTab = () => (
     <div>
@@ -918,14 +1105,6 @@ export default function AdminDashboard() {
             {userName && (
               <span className="text-gray-600">ログイン中: <span className="font-semibold">{userName}</span></span>
             )}
-            <button
-              onClick={handleExportToGoogleCalendar}
-              disabled={exportLoading}
-              className="px-3 py-1.5 rounded bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              title="確定済みイベントをGoogleカレンダー形式（ICS）でエクスポート"
-            >
-              {exportLoading ? 'エクスポート中...' : '📅 Googleカレンダーにエクスポート'}
-            </button>
             <button
               onClick={async () => {
                 // ログアウトフラグを設定（自動ログインを防ぐ）
@@ -1533,6 +1712,7 @@ export default function AdminDashboard() {
 
         {activeTab === "apply" && renderApplyTab()}
         {activeTab === "notifications" && renderNotificationsTab()}
+        {activeTab === "mypage" && renderMypageTab()}
       </div>
     </div>
 
@@ -1572,8 +1752,8 @@ export default function AdminDashboard() {
         margin: '0 auto', 
         display: 'grid', 
         WebkitDisplay: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)', 
-        WebkitGridTemplateColumns: 'repeat(4, 1fr)',
+        gridTemplateColumns: 'repeat(5, 1fr)', 
+        WebkitGridTemplateColumns: 'repeat(5, 1fr)',
         width: '100%', 
         height: '100%', 
         minHeight: '72px' 
@@ -1684,6 +1864,36 @@ export default function AdminDashboard() {
           )}
         </button>
         <button
+          onClick={() => {
+            setActiveTab("mypage");
+            nav("/admin/dashboard?tab=mypage", { replace: true });
+          }}
+          style={{
+            display: 'flex',
+            WebkitDisplay: 'flex',
+            flexDirection: 'column',
+            WebkitFlexDirection: 'column',
+            alignItems: 'center',
+            WebkitAlignItems: 'center',
+            justifyContent: 'center',
+            WebkitJustifyContent: 'center',
+            marginBottom: '4px',
+            padding: '12px 16px',
+            backgroundColor: activeTab === "mypage" ? '#dbeafe' : 'transparent',
+            color: activeTab === "mypage" ? '#2563eb' : '#4b5563',
+            fontWeight: activeTab === "mypage" ? '600' : '400',
+            border: 'none',
+            cursor: 'pointer',
+            WebkitTransition: 'all 0.2s',
+            transition: 'all 0.2s'
+          }}
+        >
+          <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}>マイページ</span>
+        </button>
+        <button
           onClick={() => nav("/admin/users")}
           style={{
             display: 'flex',
@@ -1713,5 +1923,5 @@ export default function AdminDashboard() {
       </div>
     </div>
     </>
-    );
-  };
+  );
+}
