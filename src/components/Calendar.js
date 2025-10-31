@@ -817,10 +817,32 @@ export default function Calendar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
           </svg>
         </button>
-        {/* 右端に表示切替 */}
-        <div className="ml-3 flex gap-2">
-          <button onClick={()=>setViewMode("month")} style={{fontWeight: viewMode==="month"?'bold':'normal',background:viewMode==="month"?'#e0ffe9':'transparent'}} className="px-2 py-1 rounded">月</button>
-          <button onClick={()=>setViewMode("week")}  style={{fontWeight: viewMode==="week"?'bold':'normal',background:viewMode==="week"?'#e0ffe9':'transparent'}} className="px-2 py-1 rounded">週</button>
+        {/* 右端に表示切替 - より目立つように */}
+        <div className="ml-2 sm:ml-3 flex gap-1 sm:gap-2">
+          <button 
+            onClick={()=>setViewMode("month")} 
+            style={{
+              fontWeight: viewMode==="month"?'bold':'normal',
+              background: viewMode==="month"?'#e0ffe9':'transparent',
+              border: viewMode==="month"?'2px solid #10b981':'1px solid #d1d5db'
+            }} 
+            className="px-2 sm:px-3 py-1 rounded text-sm sm:text-base hover:bg-green-50 transition-colors"
+            title="月表示"
+          >
+            月
+          </button>
+          <button 
+            onClick={()=>setViewMode("week")}  
+            style={{
+              fontWeight: viewMode==="week"?'bold':'normal',
+              background: viewMode==="week"?'#e0ffe9':'transparent',
+              border: viewMode==="week"?'2px solid #10b981':'1px solid #d1d5db'
+            }} 
+            className="px-2 sm:px-3 py-1 rounded text-sm sm:text-base hover:bg-green-50 transition-colors"
+            title="週表示（時間軸付き）"
+          >
+            週
+          </button>
         </div>
       </div>
 

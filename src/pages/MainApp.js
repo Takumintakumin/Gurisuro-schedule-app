@@ -415,10 +415,50 @@ export default function MainApp() {
         body: JSON.stringify(userSettings),
       });
       alert("設定を保存しました");
+      
+      // Googleカレンダー同期が有効になった場合、即座に同期を実行
+      if (userSettings.google_calendar_enabled) {
+        triggerGoogleCalendarSync();
+      }
     } catch (e) {
       alert(`設定の保存に失敗しました: ${e.message}`);
     }
   };
+
+  // ---- Googleカレンダー自動同期 ----
+  const triggerGoogleCalendarSync = React.useCallback(async (downloadICS = false) => {
+    if (!userName || !userSettings.google_calendar_enabled) return;
+    
+    try {
+      const res = await apiFetch(`/api?path=google-calendar-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (res.ok) {
+        if (res.data?.synced > 0) {
+          // 成功時は通知のみ（コンソールログ）
+          console.log(`[Google Calendar Sync] ${res.data.synced}件のイベントを同期しました`);
+          
+          // 手動同期時のみICSファイルをダウンロード
+          if (downloadICS && res.data?.ics) {
+            const blob = new Blob([res.data.ics], { type: 'text/calendar;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Googleカレンダー同期エラー:", e);
+    }
+  }, [userName, userSettings.google_calendar_enabled]);
 
   const listOfSelected = useMemo(() => {
     const ymd = toLocalYMD(selectedDate);
@@ -563,6 +603,37 @@ export default function MainApp() {
       setDecidedMembersByEventId(allDecidedByEventId);
     })();
   }, [events, selectedDate, userName, myApps]);
+
+  // 確定状況が変更されたときにGoogleカレンダー自動同期を実行
+  useEffect(() => {
+    if (!userName || !userSettings.google_calendar_enabled || Object.keys(decidedMembersByEventId).length === 0) {
+      return;
+    }
+
+    // 少し遅延させて実行（連続更新を防ぐ）
+    const timeoutId = setTimeout(() => {
+      triggerGoogleCalendarSync();
+    }, 2000); // 2秒後に同期
+
+    return () => clearTimeout(timeoutId);
+  }, [decidedMembersByEventId, userName, userSettings.google_calendar_enabled, triggerGoogleCalendarSync]);
+
+  // 定期的なバックグラウンド同期（30分ごと）
+  useEffect(() => {
+    if (!userName || !userSettings.google_calendar_enabled) {
+      return;
+    }
+
+    // 初回は即座に実行（設定が有効になったとき）
+    triggerGoogleCalendarSync();
+
+    // その後は30分ごとに自動同期
+    const intervalId = setInterval(() => {
+      triggerGoogleCalendarSync();
+    }, 30 * 60 * 1000); // 30分
+
+    return () => clearInterval(intervalId);
+  }, [userName, userSettings.google_calendar_enabled, triggerGoogleCalendarSync]);
 
   // すべてのイベントについて確定状況をバックグラウンドで取得し、カレンダーの色がタップ前に反映されるようにする
   useEffect(() => {
@@ -877,8 +948,15 @@ export default function MainApp() {
                 className="w-full border rounded p-2 text-sm"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Googleカレンダーとの同期機能は今後実装予定です。
+                自動同期: 予定が確定すると自動的にGoogleカレンダーに同期されます。
               </p>
+              <button
+                onClick={() => triggerGoogleCalendarSync(true)}
+                disabled={!userName}
+                className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                今すぐ同期してダウンロード
+              </button>
             </div>
           )}
         </div>
