@@ -130,156 +130,10 @@ export default function AdminDashboard() {
   const eventListContainerRef = useRef(null);
   const eventListScrollPositionRef = useRef(0);
 
-  // Googleカレンダーエクスポート用
-  const [exportLoading, setExportLoading] = useState(false);
-
-  // ユーザー設定（Googleカレンダー同期用）
+  // ユーザー設定
   const [userSettings, setUserSettings] = useState({
     notifications_enabled: true,
-    google_calendar_enabled: false,
-    google_calendar_id: null,
-    has_google_token: false,
   });
-
-  // 日付文字列をDateに変換（JST考慮）
-  const parseDate = (dateStr, timeStr) => {
-    if (!dateStr) return null;
-    const [year, month, day] = dateStr.split('-').map(Number);
-    if (!timeStr) {
-      return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    }
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    // JST (UTC+9) を考慮
-    return new Date(Date.UTC(year, month - 1, day, hours - 9, minutes || 0, 0));
-  };
-
-  // DateをICS形式の文字列に変換（UTC）
-  const dateToICS = (date) => {
-    if (!date) return '';
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-    return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
-  };
-
-  // ICSファイルの内容を生成
-  const generateICS = (eventsWithDecisions) => {
-    let ics = 'BEGIN:VCALENDAR\r\n';
-    ics += 'VERSION:2.0\r\n';
-    ics += 'PRODID:-//Gurisuro Schedule App//EN\r\n';
-    ics += 'CALSCALE:GREGORIAN\r\n';
-    ics += 'METHOD:PUBLISH\r\n';
-
-    eventsWithDecisions.forEach(({ event, driver, attendant }) => {
-      const startDate = parseDate(event.date, event.start_time);
-      const endDate = parseDate(event.date, event.end_time || event.start_time);
-      
-      if (!startDate) return;
-
-      // 終了時間がない場合は開始時間から1時間後
-      if (!event.end_time) {
-        endDate.setUTCHours(endDate.getUTCHours() + 1);
-      }
-
-      const uid = `gurisuro-event-${event.id}@gurisuro-app`;
-      const dtstamp = dateToICS(new Date()); // 現在時刻
-      const dtstart = dateToICS(startDate);
-      const dtend = dateToICS(endDate);
-
-      // イベントタイトル（運転手・添乗員の情報を含める）
-      const driverList = Array.isArray(driver) && driver.length > 0 ? driver.join(', ') : '未定';
-      const attendantList = Array.isArray(attendant) && attendant.length > 0 ? attendant.join(', ') : '未定';
-      const summary = `${event.label || 'イベント'} (運転手: ${driverList}, 添乗員: ${attendantList})`;
-
-      ics += 'BEGIN:VEVENT\r\n';
-      ics += `UID:${uid}\r\n`;
-      ics += `DTSTAMP:${dtstamp}\r\n`;
-      ics += `DTSTART:${dtstart}\r\n`;
-      ics += `DTEND:${dtend}\r\n`;
-      ics += `SUMMARY:${summary.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\r\n`;
-      
-      if (event.label) {
-        ics += `DESCRIPTION:${event.label.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\\n`;
-      }
-      if (event.start_time || event.end_time) {
-        ics += `時間: ${event.start_time || ''}${event.end_time ? `〜${event.end_time}` : ''}\\n`;
-      }
-      if (driver.length > 0 || attendant.length > 0) {
-        ics += `運転手: ${driverList}\\n添乗員: ${attendantList}`;
-      }
-      ics += '\r\n';
-      
-      ics += 'END:VEVENT\r\n';
-    });
-
-    ics += 'END:VCALENDAR\r\n';
-    return ics;
-  };
-
-  // Googleカレンダーエクスポート
-  const handleExportToGoogleCalendar = async () => {
-    setExportLoading(true);
-    try {
-      // すべてのイベントを取得
-      const eventsRes = await apiFetch('/api/events');
-      if (!eventsRes.ok || !Array.isArray(eventsRes.data)) {
-        throw new Error('イベントの取得に失敗しました');
-      }
-
-      // 確定済みイベントのみをフィルタリング（運転手と添乗員が両方確定しているもの）
-      const eventsWithDecisions = [];
-      for (const event of eventsRes.data) {
-        try {
-          const decideRes = await apiFetch(`/api?path=decide&event_id=${event.id}`);
-          if (decideRes.ok && decideRes.data) {
-            const driver = Array.isArray(decideRes.data.driver) ? decideRes.data.driver : [];
-            const attendant = Array.isArray(decideRes.data.attendant) ? decideRes.data.attendant : [];
-            
-            // 運転手と添乗員が両方確定している場合のみ追加
-            if (driver.length > 0 && attendant.length > 0) {
-              eventsWithDecisions.push({
-                event,
-                driver,
-                attendant
-              });
-            }
-          }
-        } catch (e) {
-          console.error(`Event ${event.id} decision fetch error:`, e);
-        }
-      }
-
-      if (eventsWithDecisions.length === 0) {
-        alert('確定済みのイベントがありません。確定されたイベントをGoogleカレンダーにエクスポートできます。');
-        setExportLoading(false);
-        return;
-      }
-
-      // ICSファイルを生成
-      const icsContent = generateICS(eventsWithDecisions);
-
-      // ファイルをダウンロード
-      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      alert(`${eventsWithDecisions.length}件の確定済みイベントをエクスポートしました。\\n\\nダウンロードした.icsファイルをGoogleカレンダーにインポートしてください:\\n1. Googleカレンダーを開く\\n2. 設定（⚙️）> インポートとエクスポート\\n3. 「ファイルを選択」でダウンロードした.icsファイルを選択\\n4. 「インポート」をクリック`);
-    } catch (error) {
-      console.error('Export error:', error);
-      alert(`エクスポートに失敗しました: ${error.message}`);
-    } finally {
-      setExportLoading(false);
-    }
-  };
 
   // 管理者認証
   useEffect(() => {
@@ -321,9 +175,6 @@ export default function AdminDashboard() {
       if (res.ok && res.data) {
         setUserSettings({
           notifications_enabled: res.data.notifications_enabled !== false,
-          google_calendar_enabled: res.data.google_calendar_enabled === true,
-          google_calendar_id: res.data.google_calendar_id || null,
-          has_google_token: res.data.has_google_token || false,
         });
       }
     } catch (e) {
@@ -331,26 +182,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Google OAuthコールバック処理
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthSuccess = params.get('google_oauth_success');
-    const oauthError = params.get('error');
-    
-    if (oauthSuccess === 'true') {
-      alert('Googleアカウントの連携が完了しました！');
-      // URLからパラメータを削除
-      window.history.replaceState({}, '', window.location.pathname + (window.location.search.replace(/[?&]google_oauth_success=true/, '').replace(/[?&]error=[^&]*/, '')));
-      refreshUserSettings();
-    } else if (oauthError) {
-      let errorMsg = 'Google認証に失敗しました';
-      if (oauthError === 'oauth_failed') errorMsg = 'Google認証が中断されました';
-      else if (oauthError === 'token_exchange_failed') errorMsg = 'トークンの取得に失敗しました';
-      alert(errorMsg);
-      // URLからパラメータを削除
-      window.history.replaceState({}, '', window.location.pathname + (window.location.search.replace(/[?&]google_oauth_success=true/, '').replace(/[?&]error=[^&]*/, '')));
-    }
-  }, []);
 
   // ユーザー設定を保存
   const saveUserSettings = async () => {
@@ -361,62 +192,11 @@ export default function AdminDashboard() {
         body: JSON.stringify(userSettings),
       });
       alert("設定を保存しました");
-      
-      // Googleカレンダー同期が有効になった場合、即座に同期を実行
-      if (userSettings.google_calendar_enabled) {
-        triggerGoogleCalendarSync();
-      }
     } catch (e) {
       alert(`設定の保存に失敗しました: ${e.message}`);
     }
   };
 
-  // Googleカレンダー自動同期（管理者用：全確定済みイベント）
-  const triggerGoogleCalendarSync = React.useCallback(async (downloadICS = false) => {
-    if (!userName || !userSettings.google_calendar_enabled) return;
-    
-    try {
-      const res = await apiFetch(`/api?path=google-calendar-sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      
-      if (res.ok) {
-        if (res.data?.needsAuth) {
-          // Google認証が必要
-          alert(res.data.message || 'Google認証が必要です。マイページでGoogleアカウントを連携してください。');
-          return;
-        }
-
-        if (res.data?.synced > 0 || res.data?.googleSynced > 0) {
-          const syncedCount = res.data.googleSynced || res.data.synced;
-          // 成功時は通知
-          if (res.data.googleSynced > 0) {
-            alert(`${syncedCount}件のイベントをGoogleカレンダーに同期しました！`);
-          } else if (downloadICS && res.data?.ics) {
-            // フォールバック：ICSファイルをダウンロード
-            const blob = new Blob([res.data.ics], { type: 'text/calendar;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            alert('ICSファイルをダウンロードしました。Googleカレンダーにインポートしてください。');
-          }
-          console.log(`[Google Calendar Sync] ${syncedCount}件のイベントを同期しました`);
-        } else {
-          console.log('[Google Calendar Sync] 同期するイベントがありませんでした');
-        }
-      }
-    } catch (e) {
-      console.error("Googleカレンダー同期エラー:", e);
-      alert(`同期エラー: ${e.message}`);
-    }
-  }, [userName, userSettings.google_calendar_enabled]);
 
   // ユーザーリスト取得
   const refreshUsers = async () => {
@@ -979,134 +759,6 @@ export default function AdminDashboard() {
             />
             <span className="text-sm">確定通知を有効にする</span>
           </label>
-        </div>
-      </div>
-
-      {/* Googleカレンダー同期設定 */}
-      <div className="mb-6">
-        <h3 className="font-semibold mb-2">Googleカレンダー同期設定</h3>
-        <div className="border rounded p-3 space-y-3">
-          {/* ICSファイル方式（推奨：無料・設定不要） */}
-          <div className="pb-3 border-b">
-            <h4 className="font-medium text-sm mb-2">📥 ICSファイル方式（推奨・無料）</h4>
-            <p className="text-xs text-gray-600 mb-2">
-              クレジットカード登録不要。ICSファイルをダウンロードして、Googleカレンダーに手動でインポートします。
-            </p>
-            <button
-              onClick={handleExportToGoogleCalendar}
-              disabled={exportLoading || !userName}
-              className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {exportLoading ? "エクスポート中..." : "ICSファイルをダウンロード（全確定済みイベント）"}
-            </button>
-            <p className="text-xs text-gray-500 mt-1">
-              📌 使い方: ダウンロードした.icsファイルをGoogleカレンダーの「設定 &gt; インポートとエクスポート」からインポートしてください。
-            </p>
-          </div>
-
-          {/* Google Calendar API直接同期（オプション） */}
-          <div className="pt-3">
-            <h4 className="font-medium text-sm mb-2">🔄 自動同期方式（オプション）</h4>
-            <p className="text-xs text-gray-600 mb-2">
-              予定が確定すると自動的にGoogleカレンダーに同期されます（全確定済みイベントが対象）。※Google Cloud Platformアカウントと設定が必要です。
-            </p>
-            <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs mb-2">
-              <p className="text-blue-800 font-medium mb-1">⚙️ 設定方法:</p>
-              <ol className="list-decimal list-inside text-blue-700 space-y-1">
-                <li>Google Cloud Platformでプロジェクトを作成（無料）</li>
-                <li>Google Calendar APIを有効化</li>
-                <li>OAuth 2.0クライアントIDを作成</li>
-                <li>環境変数に設定: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI</li>
-              </ol>
-              <p className="text-blue-700 mt-1">
-                📌 無料枠で利用可能です。クレジットカード登録が求められる場合がありますが、無料枠内では課金されません。
-              </p>
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={userSettings.google_calendar_enabled}
-                onChange={(e) => setUserSettings({ ...userSettings, google_calendar_enabled: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <span className="text-sm">自動同期を有効にする</span>
-            </label>
-            {userSettings.google_calendar_enabled && (
-              <div className="mt-2 space-y-2">
-                <label className="block text-sm font-medium mb-1">カレンダーID（オプション）</label>
-                <input
-                  type="text"
-                  value={userSettings.google_calendar_id || ""}
-                  onChange={(e) => setUserSettings({ ...userSettings, google_calendar_id: e.target.value })}
-                  placeholder="your-calendar-id@group.calendar.google.com"
-                  className="w-full border rounded p-2 text-sm"
-                />
-                
-                {/* Google認証ステータス */}
-                {!userSettings.has_google_token && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                    <p className="text-yellow-800 mb-2">
-                      Google認証が必要です。下のボタンからGoogleアカウントを連携してください。
-                    </p>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await apiFetch('/api?path=google-oauth');
-                          if (res.ok && res.data?.authUrl) {
-                            window.location.href = res.data.authUrl;
-                          } else {
-                            alert('認証URLの取得に失敗しました。環境変数（GOOGLE_CLIENT_ID等）が設定されているか確認してください。');
-                          }
-                        } catch (e) {
-                          alert(`認証エラー: ${e.message}\n\n環境変数の設定が完了していない可能性があります。`);
-                        }
-                      }}
-                      className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                      Googleアカウントを連携
-                    </button>
-                  </div>
-                )}
-
-                {userSettings.has_google_token && (
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span className="text-green-600">✓ Google認証済み</span>
-                    <button
-                      onClick={async () => {
-                        if (confirm('Google認証を解除しますか？')) {
-                          try {
-                            const res = await apiFetch('/api?path=google-oauth', {
-                              method: 'POST',
-                            });
-                            if (res.ok) {
-                              alert('Google認証を解除しました');
-                              refreshUserSettings();
-                            } else {
-                              alert('認証解除に失敗しました');
-                            }
-                          } catch (e) {
-                            alert(`エラー: ${e.message}`);
-                          }
-                        }
-                      }}
-                      className="px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs"
-                    >
-                      認証解除
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => triggerGoogleCalendarSync(false)}
-                  disabled={!userName || !userSettings.has_google_token}
-                  className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  title={!userSettings.has_google_token ? 'Google認証が必要です' : 'Googleカレンダーに直接同期'}
-                >
-                  今すぐ同期
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

@@ -70,165 +70,7 @@ export default function MainApp() {
   const [showHistory, setShowHistory] = useState(false); // 折り畳み（既定は非表示）
   const [userSettings, setUserSettings] = useState({
     notifications_enabled: true,
-    google_calendar_enabled: false,
-    google_calendar_id: null,
   });
-
-  // Googleカレンダーエクスポート用
-  const [exportLoading, setExportLoading] = useState(false);
-
-  // 日付文字列をDateに変換（JST考慮）
-  const parseDate = (dateStr, timeStr) => {
-    if (!dateStr) return null;
-    const [year, month, day] = dateStr.split('-').map(Number);
-    if (!timeStr) {
-      return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    }
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    // JST (UTC+9) を考慮
-    return new Date(Date.UTC(year, month - 1, day, hours - 9, minutes || 0, 0));
-  };
-
-  // DateをICS形式の文字列に変換（UTC）
-  const dateToICS = (date) => {
-    if (!date) return '';
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-    return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
-  };
-
-  // ICSファイルの内容を生成（ユーザー用：自分が確定したイベントのみ）
-  const generateICS = (eventsWithMyDecisions) => {
-    let ics = 'BEGIN:VCALENDAR\r\n';
-    ics += 'VERSION:2.0\r\n';
-    ics += 'PRODID:-//Gurisuro Schedule App//EN\r\n';
-    ics += 'CALSCALE:GREGORIAN\r\n';
-    ics += 'METHOD:PUBLISH\r\n';
-
-    eventsWithMyDecisions.forEach(({ event, myRole, allDriver, allAttendant }) => {
-      const startDate = parseDate(event.date, event.start_time);
-      const endDate = parseDate(event.date, event.end_time || event.start_time);
-      
-      if (!startDate) return;
-
-      // 終了時間がない場合は開始時間から1時間後
-      if (!event.end_time) {
-        endDate.setUTCHours(endDate.getUTCHours() + 1);
-      }
-
-      const uid = `gurisuro-event-${event.id}-${userName}@gurisuro-app`;
-      const dtstamp = dateToICS(new Date()); // 現在時刻
-      const dtstart = dateToICS(startDate);
-      const dtend = dateToICS(endDate);
-
-      // イベントタイトル（自分の役割を含める）
-      const roleText = myRole === 'driver' ? '運転手' : '添乗員';
-      const summary = `${event.label || 'イベント'} (${roleText})`;
-
-      ics += 'BEGIN:VEVENT\r\n';
-      ics += `UID:${uid}\r\n`;
-      ics += `DTSTAMP:${dtstamp}\r\n`;
-      ics += `DTSTART:${dtstart}\r\n`;
-      ics += `DTEND:${dtend}\r\n`;
-      ics += `SUMMARY:${summary.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\r\n`;
-      
-      let description = '';
-      if (event.label) {
-        description += `${event.label}\\n`;
-      }
-      if (event.start_time || event.end_time) {
-        description += `時間: ${event.start_time || ''}${event.end_time ? `〜${event.end_time}` : ''}\\n`;
-      }
-      description += `役割: ${roleText}\\n`;
-      if (allDriver.length > 0 || allAttendant.length > 0) {
-        description += `運転手: ${allDriver.join(', ')}\\n添乗員: ${allAttendant.join(', ')}`;
-      }
-      
-      if (description) {
-        ics += `DESCRIPTION:${description.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\r\n`;
-      }
-      
-      ics += 'END:VEVENT\r\n';
-    });
-
-    ics += 'END:VCALENDAR\r\n';
-    return ics;
-  };
-
-  // Googleカレンダーエクスポート（ユーザー用：自分が確定したイベントのみ）
-  const handleExportToGoogleCalendar = async () => {
-    if (!userName) {
-      alert('ログインが必要です');
-      return;
-    }
-
-    setExportLoading(true);
-    try {
-      // すべてのイベントを取得
-      const eventsRes = await apiFetch('/api/events');
-      if (!eventsRes.ok || !Array.isArray(eventsRes.data)) {
-        throw new Error('イベントの取得に失敗しました');
-      }
-
-      // 自分が確定したイベントのみをフィルタリング
-      const eventsWithMyDecisions = [];
-      for (const event of eventsRes.data) {
-        try {
-          const decideRes = await apiFetch(`/api?path=decide&event_id=${event.id}`);
-          if (decideRes.ok && decideRes.data) {
-            const driver = Array.isArray(decideRes.data.driver) ? decideRes.data.driver : [];
-            const attendant = Array.isArray(decideRes.data.attendant) ? decideRes.data.attendant : [];
-            
-            // 自分が運転手または添乗員として確定しているかチェック
-            const isDriver = driver.includes(userName);
-            const isAttendant = attendant.includes(userName);
-            
-            if (isDriver || isAttendant) {
-              eventsWithMyDecisions.push({
-                event,
-                myRole: isDriver ? 'driver' : 'attendant',
-                allDriver: driver,
-                allAttendant: attendant
-              });
-            }
-          }
-        } catch (e) {
-          console.error(`Event ${event.id} decision fetch error:`, e);
-        }
-      }
-
-      if (eventsWithMyDecisions.length === 0) {
-        alert('確定済みの予定がありません。あなたが確定した予定がGoogleカレンダーにエクスポートできます。');
-        setExportLoading(false);
-        return;
-      }
-
-      // ICSファイルを生成
-      const icsContent = generateICS(eventsWithMyDecisions);
-
-      // ファイルをダウンロード
-      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `my-gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      alert(`${eventsWithMyDecisions.length}件の確定済み予定をエクスポートしました。\\n\\nダウンロードした.icsファイルをGoogleカレンダーにインポートしてください:\\n1. Googleカレンダーを開く\\n2. 設定（⚙️）> インポートとエクスポート\\n3. 「ファイルを選択」でダウンロードした.icsファイルを選択\\n4. 「インポート」をクリック`);
-    } catch (error) {
-      console.error('Export error:', error);
-      alert(`エクスポートに失敗しました: ${error.message}`);
-    } finally {
-      setExportLoading(false);
-    }
-  };
 
   // ---- ログアウト ----
   const handleLogout = async () => {
@@ -320,9 +162,6 @@ export default function MainApp() {
     if (r.ok && r.data) {
       setUserSettings({
         notifications_enabled: r.data.notifications_enabled !== false,
-        google_calendar_enabled: r.data.google_calendar_enabled === true,
-        google_calendar_id: r.data.google_calendar_id || null,
-        has_google_token: r.data.has_google_token || false,
       });
     }
   }, [userName]);
@@ -393,26 +232,6 @@ export default function MainApp() {
     }
   }, [activeTab, refreshUserSettings, refreshApplicationHistory]);
 
-  // Google OAuthコールバック処理
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthSuccess = params.get('google_oauth_success');
-    const oauthError = params.get('error');
-    
-    if (oauthSuccess === 'true') {
-      alert('Googleアカウントの連携が完了しました！');
-      // URLからパラメータを削除
-      window.history.replaceState({}, '', window.location.pathname);
-      refreshUserSettings();
-    } else if (oauthError) {
-      let errorMsg = 'Google認証に失敗しました';
-      if (oauthError === 'oauth_failed') errorMsg = 'Google認証が中断されました';
-      else if (oauthError === 'token_exchange_failed') errorMsg = 'トークンの取得に失敗しました';
-      alert(errorMsg);
-      // URLからパラメータを削除
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [refreshUserSettings]);
 
   // ---- 通知を既読にする ----
   const markAsRead = async (id) => {
@@ -437,61 +256,11 @@ export default function MainApp() {
         body: JSON.stringify(userSettings),
       });
       alert("設定を保存しました");
-      
-      // Googleカレンダー同期が有効になった場合、即座に同期を実行
-      if (userSettings.google_calendar_enabled) {
-        triggerGoogleCalendarSync();
-      }
     } catch (e) {
       alert(`設定の保存に失敗しました: ${e.message}`);
     }
   };
 
-  // ---- Googleカレンダー自動同期 ----
-  const triggerGoogleCalendarSync = React.useCallback(async (downloadICS = false) => {
-    if (!userName || !userSettings.google_calendar_enabled) return;
-    
-    try {
-      const res = await apiFetch(`/api?path=google-calendar-sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      
-      if (res.ok) {
-        if (res.data?.needsAuth) {
-          // Google認証が必要
-          alert(res.data.message || 'Google認証が必要です。マイページでGoogleアカウントを連携してください。');
-          return;
-        }
-
-        if (res.data?.synced > 0 || res.data?.googleSynced > 0) {
-          const syncedCount = res.data.googleSynced || res.data.synced;
-          // 成功時は通知
-          if (res.data.googleSynced > 0) {
-            alert(`${syncedCount}件のイベントをGoogleカレンダーに同期しました！`);
-          } else if (downloadICS && res.data?.ics) {
-            // フォールバック：ICSファイルをダウンロード
-            const blob = new Blob([res.data.ics], { type: 'text/calendar;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            alert('ICSファイルをダウンロードしました。Googleカレンダーにインポートしてください。');
-          }
-          console.log(`[Google Calendar Sync] ${syncedCount}件のイベントを同期しました`);
-        } else {
-          console.log('[Google Calendar Sync] 同期するイベントがありませんでした');
-        }
-      }
-    } catch (e) {
-      console.error("Googleカレンダー同期エラー:", e);
-    }
-  }, [userName, userSettings.google_calendar_enabled]);
 
   const listOfSelected = useMemo(() => {
     const ymd = toLocalYMD(selectedDate);
@@ -637,36 +406,6 @@ export default function MainApp() {
     })();
   }, [events, selectedDate, userName, myApps]);
 
-  // 確定状況が変更されたときにGoogleカレンダー自動同期を実行
-  useEffect(() => {
-    if (!userName || !userSettings.google_calendar_enabled || Object.keys(decidedMembersByEventId).length === 0) {
-      return;
-    }
-
-    // 少し遅延させて実行（連続更新を防ぐ）
-    const timeoutId = setTimeout(() => {
-      triggerGoogleCalendarSync();
-    }, 2000); // 2秒後に同期
-
-    return () => clearTimeout(timeoutId);
-  }, [decidedMembersByEventId, userName, userSettings.google_calendar_enabled, triggerGoogleCalendarSync]);
-
-  // 定期的なバックグラウンド同期（30分ごと）
-  useEffect(() => {
-    if (!userName || !userSettings.google_calendar_enabled) {
-      return;
-    }
-
-    // 初回は即座に実行（設定が有効になったとき）
-    triggerGoogleCalendarSync();
-
-    // その後は30分ごとに自動同期
-    const intervalId = setInterval(() => {
-      triggerGoogleCalendarSync();
-    }, 30 * 60 * 1000); // 30分
-
-    return () => clearInterval(intervalId);
-  }, [userName, userSettings.google_calendar_enabled, triggerGoogleCalendarSync]);
 
   // すべてのイベントについて確定状況をバックグラウンドで取得し、カレンダーの色がタップ前に反映されるようにする
   useEffect(() => {
@@ -954,131 +693,6 @@ export default function MainApp() {
             />
             <span className="text-sm">確定通知を有効にする</span>
           </label>
-        </div>
-      </div>
-
-      {/* Googleカレンダー同期設定 */}
-      <div className="mb-6">
-        <h3 className="font-semibold mb-2">Googleカレンダー同期設定</h3>
-        <div className="border rounded p-3 space-y-3">
-          {/* ICSファイル方式（推奨：無料・設定不要） */}
-          <div className="pb-3 border-b">
-            <h4 className="font-medium text-sm mb-2">📥 ICSファイル方式（推奨・無料）</h4>
-            <p className="text-xs text-gray-600 mb-2">
-              クレジットカード登録不要。ICSファイルをダウンロードして、Googleカレンダーに手動でインポートします。
-            </p>
-            <button
-              onClick={handleExportToGoogleCalendar}
-              disabled={exportLoading || !userName}
-              className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {exportLoading ? "エクスポート中..." : "ICSファイルをダウンロード"}
-            </button>
-            <p className="text-xs text-gray-500 mt-1">
-              📌 使い方: ダウンロードした.icsファイルをGoogleカレンダーの「設定 > インポートとエクスポート」からインポートしてください。
-            </p>
-          </div>
-
-          {/* Google Calendar API直接同期（オプション） */}
-          <div className="pt-3">
-            <h4 className="font-medium text-sm mb-2">🔄 自動同期方式（オプション）</h4>
-            <p className="text-xs text-gray-600 mb-2">
-              予定が確定すると自動的にGoogleカレンダーに同期されます。※Google Cloud Platformアカウントと設定が必要です。
-            </p>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={userSettings.google_calendar_enabled}
-                onChange={(e) => setUserSettings({ ...userSettings, google_calendar_enabled: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <span className="text-sm">自動同期を有効にする</span>
-            </label>
-            {userSettings.google_calendar_enabled && (
-              <div className="mt-2 space-y-2">
-                <label className="block text-sm font-medium mb-1">カレンダーID（オプション）</label>
-                <input
-                  type="text"
-                  value={userSettings.google_calendar_id || ""}
-                  onChange={(e) => setUserSettings({ ...userSettings, google_calendar_id: e.target.value })}
-                  placeholder="your-calendar-id@group.calendar.google.com"
-                  className="w-full border rounded p-2 text-sm"
-                />
-                
-                {/* Google認証ステータス */}
-                {!userSettings.has_google_token && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                    <p className="text-yellow-800 mb-2 font-medium">
-                      ⚠️ 自動同期を使用するには、管理者がGoogle Cloud Platform（GCP）の設定が必要です。
-                    </p>
-                    <p className="text-yellow-700 mb-2">
-                      ・GCPアカウントの作成（無料）<br/>
-                      ・Google Calendar APIの有効化<br/>
-                      ・OAuth 2.0クライアントIDの作成<br/>
-                      ・環境変数の設定（GOOGLE_CLIENT_ID等）
-                    </p>
-                    <p className="text-yellow-700 mb-2">
-                      📌 設定が完了していない場合は、上記の「ICSファイル方式」をご利用ください（クレジットカード不要）。
-                    </p>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await apiFetch('/api?path=google-oauth');
-                          if (res.ok && res.data?.authUrl) {
-                            window.location.href = res.data.authUrl;
-                          } else {
-                            alert('認証URLの取得に失敗しました。管理者にGCP設定が完了しているか確認してください。');
-                          }
-                        } catch (e) {
-                          alert(`認証エラー: ${e.message}\n\nGCP設定が完了していない可能性があります。ICSファイル方式をご利用ください。`);
-                        }
-                      }}
-                      className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                      Googleアカウントを連携（設定済みの場合）
-                    </button>
-                  </div>
-                )}
-
-                {userSettings.has_google_token && (
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span className="text-green-600">✓ Google認証済み</span>
-                    <button
-                      onClick={async () => {
-                        if (confirm('Google認証を解除しますか？')) {
-                          try {
-                            const res = await apiFetch('/api?path=google-oauth', {
-                              method: 'POST',
-                            });
-                            if (res.ok) {
-                              alert('Google認証を解除しました');
-                              refreshUserSettings();
-                            } else {
-                              alert('認証解除に失敗しました');
-                            }
-                          } catch (e) {
-                            alert(`エラー: ${e.message}`);
-                          }
-                        }
-                      }}
-                      className="px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs"
-                    >
-                      認証解除
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => triggerGoogleCalendarSync(false)}
-                  disabled={!userName || !userSettings.has_google_token}
-                  className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  title={!userSettings.has_google_token ? 'Google認証が必要です' : 'Googleカレンダーに直接同期'}
-                >
-                  今すぐ同期
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
