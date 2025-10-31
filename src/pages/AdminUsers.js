@@ -31,8 +31,9 @@ export default function AdminUsers() {
   const [list, setList] = useState([]);
 
   // 表示強化用UI状態
-  const [q, setQ] = useState("");                 // 検索（空なら一覧は表示しない）
+  const [q, setQ] = useState("");                 // 検索
   const [famFilter, setFamFilter] = useState("all"); // familiar/unfamiliar/unknown/all
+  const [showAll, setShowAll] = useState(false); // 全員表示フラグ
 
   // （任意）追加・削除が元々ある想定
   const [newName, setNewName] = useState("");
@@ -216,7 +217,7 @@ export default function AdminUsers() {
           <div className="flex items-end gap-2">
             <input
               className="flex-1 border rounded p-2 text-sm"
-              placeholder="名前で検索（入力で表示）"
+              placeholder="名前で検索"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -230,6 +231,21 @@ export default function AdminUsers() {
               <option value="unfamiliar">詳しくない</option>
               <option value="unknown">不明</option>
             </select>
+            <button
+              onClick={() => {
+                setShowAll(!showAll);
+                if (!showAll) {
+                  setQ(""); // 全員表示の場合は検索をクリア
+                }
+              }}
+              className={`px-4 py-2 rounded text-sm font-medium ${
+                showAll || q.trim() !== ""
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              {showAll || q.trim() !== "" ? "全員表示中" : "全員表示"}
+            </button>
           </div>
           <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mt-2">
             <div className="border rounded p-2">合計 <span className="font-semibold">{counts.total}</span></div>
@@ -238,12 +254,11 @@ export default function AdminUsers() {
           </div>
         </div>
 
-        {/* 一覧（検索開始まで表示しない） */}
-        {q.trim() === "" ? (
-          <p className="text-sm text-gray-500">上部の検索に文字を入力するとユーザーが表示されます。</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-gray-500">該当するユーザーがいません。</p>
-        ) : (
+        {/* 一覧 */}
+        {(showAll || q.trim() !== "") ? (
+          filtered.length === 0 ? (
+            <p className="p-4 text-sm text-gray-500">該当するユーザーがいません。</p>
+          ) : (
           <ul className="space-y-3 p-4">
             {filtered.map((u) => (
               <li key={u.id} className="border rounded-lg p-3 bg-white shadow-sm">
@@ -381,6 +396,11 @@ export default function AdminUsers() {
               </li>
             ))}
           </ul>
+          )
+        ) : (
+          <div className="p-4 text-center">
+            <p className="text-sm text-gray-500 mb-3">「全員表示」ボタンをクリックしてユーザー一覧を表示します。</p>
+          </div>
         )}
 
         {/* （任意）追加フォーム：既存がある場合はそのUIに合わせてOK */}
