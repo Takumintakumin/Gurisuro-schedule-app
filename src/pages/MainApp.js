@@ -961,94 +961,124 @@ export default function MainApp() {
       <div className="mb-6">
         <h3 className="font-semibold mb-2">Googleカレンダー同期設定</h3>
         <div className="border rounded p-3 space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={userSettings.google_calendar_enabled}
-              onChange={(e) => setUserSettings({ ...userSettings, google_calendar_enabled: e.target.checked })}
-              className="w-4 h-4"
-            />
-            <span className="text-sm">Googleカレンダーと同期する</span>
-          </label>
-          {userSettings.google_calendar_enabled && (
-            <div>
-              <label className="block text-sm font-medium mb-1">カレンダーID（オプション）</label>
-              <input
-                type="text"
-                value={userSettings.google_calendar_id || ""}
-                onChange={(e) => setUserSettings({ ...userSettings, google_calendar_id: e.target.value })}
-                placeholder="your-calendar-id@group.calendar.google.com"
-                className="w-full border rounded p-2 text-sm"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                自動同期: 予定が確定すると自動的にGoogleカレンダーに同期されます。
-              </p>
-              
-              {/* Google認証ステータス */}
-              {!userSettings.has_google_token && (
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                  <p className="text-yellow-800 mb-2">
-                    Google認証が必要です。下のボタンからGoogleアカウントを連携してください。
-                  </p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await apiFetch('/api?path=google-oauth');
-                        if (res.ok && res.data?.authUrl) {
-                          // 新しいウィンドウで認証
-                          window.location.href = res.data.authUrl;
-                        } else {
-                          alert('認証URLの取得に失敗しました');
-                        }
-                      } catch (e) {
-                        alert(`認証エラー: ${e.message}`);
-                      }
-                    }}
-                    className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    Googleアカウントを連携
-                  </button>
-                </div>
-              )}
+          {/* ICSファイル方式（推奨：無料・設定不要） */}
+          <div className="pb-3 border-b">
+            <h4 className="font-medium text-sm mb-2">📥 ICSファイル方式（推奨・無料）</h4>
+            <p className="text-xs text-gray-600 mb-2">
+              クレジットカード登録不要。ICSファイルをダウンロードして、Googleカレンダーに手動でインポートします。
+            </p>
+            <button
+              onClick={handleExportToGoogleCalendar}
+              disabled={exportLoading || !userName}
+              className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {exportLoading ? "エクスポート中..." : "ICSファイルをダウンロード"}
+            </button>
+            <p className="text-xs text-gray-500 mt-1">
+              📌 使い方: ダウンロードした.icsファイルをGoogleカレンダーの「設定 > インポートとエクスポート」からインポートしてください。
+            </p>
+          </div>
 
-              {userSettings.has_google_token && (
-                <div className="mt-2 flex items-center gap-2 text-xs">
-                  <span className="text-green-600">✓ Google認証済み</span>
-                  <button
-                    onClick={async () => {
-                      if (confirm('Google認証を解除しますか？')) {
+          {/* Google Calendar API直接同期（オプション） */}
+          <div className="pt-3">
+            <h4 className="font-medium text-sm mb-2">🔄 自動同期方式（オプション）</h4>
+            <p className="text-xs text-gray-600 mb-2">
+              予定が確定すると自動的にGoogleカレンダーに同期されます。※Google Cloud Platformアカウントと設定が必要です。
+            </p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={userSettings.google_calendar_enabled}
+                onChange={(e) => setUserSettings({ ...userSettings, google_calendar_enabled: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">自動同期を有効にする</span>
+            </label>
+            {userSettings.google_calendar_enabled && (
+              <div className="mt-2 space-y-2">
+                <label className="block text-sm font-medium mb-1">カレンダーID（オプション）</label>
+                <input
+                  type="text"
+                  value={userSettings.google_calendar_id || ""}
+                  onChange={(e) => setUserSettings({ ...userSettings, google_calendar_id: e.target.value })}
+                  placeholder="your-calendar-id@group.calendar.google.com"
+                  className="w-full border rounded p-2 text-sm"
+                />
+                
+                {/* Google認証ステータス */}
+                {!userSettings.has_google_token && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <p className="text-yellow-800 mb-2 font-medium">
+                      ⚠️ 自動同期を使用するには、管理者がGoogle Cloud Platform（GCP）の設定が必要です。
+                    </p>
+                    <p className="text-yellow-700 mb-2">
+                      ・GCPアカウントの作成（無料）<br/>
+                      ・Google Calendar APIの有効化<br/>
+                      ・OAuth 2.0クライアントIDの作成<br/>
+                      ・環境変数の設定（GOOGLE_CLIENT_ID等）
+                    </p>
+                    <p className="text-yellow-700 mb-2">
+                      📌 設定が完了していない場合は、上記の「ICSファイル方式」をご利用ください（クレジットカード不要）。
+                    </p>
+                    <button
+                      onClick={async () => {
                         try {
-                          const res = await apiFetch('/api?path=google-oauth', {
-                            method: 'POST',
-                          });
-                          if (res.ok) {
-                            alert('Google認証を解除しました');
-                            refreshUserSettings();
+                          const res = await apiFetch('/api?path=google-oauth');
+                          if (res.ok && res.data?.authUrl) {
+                            window.location.href = res.data.authUrl;
                           } else {
-                            alert('認証解除に失敗しました');
+                            alert('認証URLの取得に失敗しました。管理者にGCP設定が完了しているか確認してください。');
                           }
                         } catch (e) {
-                          alert(`エラー: ${e.message}`);
+                          alert(`認証エラー: ${e.message}\n\nGCP設定が完了していない可能性があります。ICSファイル方式をご利用ください。`);
                         }
-                      }
-                    }}
-                    className="px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs"
-                  >
-                    認証解除
-                  </button>
-                </div>
-              )}
+                      }}
+                      className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Googleアカウントを連携（設定済みの場合）
+                    </button>
+                  </div>
+                )}
 
-              <button
-                onClick={() => triggerGoogleCalendarSync(true)}
-                disabled={!userName || !userSettings.has_google_token}
-                className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                title={!userSettings.has_google_token ? 'Google認証が必要です' : 'Googleカレンダーに直接同期'}
-              >
-                今すぐ同期
-              </button>
-            </div>
-          )}
+                {userSettings.has_google_token && (
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <span className="text-green-600">✓ Google認証済み</span>
+                    <button
+                      onClick={async () => {
+                        if (confirm('Google認証を解除しますか？')) {
+                          try {
+                            const res = await apiFetch('/api?path=google-oauth', {
+                              method: 'POST',
+                            });
+                            if (res.ok) {
+                              alert('Google認証を解除しました');
+                              refreshUserSettings();
+                            } else {
+                              alert('認証解除に失敗しました');
+                            }
+                          } catch (e) {
+                            alert(`エラー: ${e.message}`);
+                          }
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs"
+                    >
+                      認証解除
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => triggerGoogleCalendarSync(false)}
+                  disabled={!userName || !userSettings.has_google_token}
+                  className="mt-2 px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  title={!userSettings.has_google_token ? 'Google認証が必要です' : 'Googleカレンダーに直接同期'}
+                >
+                  今すぐ同期
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
