@@ -96,6 +96,10 @@ export default function AdminDashboard() {
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
   const [createOpen, setCreateOpen] = useState(false);
+  
+  // イベント一覧の検索・フィルタリング
+  const [eventSearchQuery, setEventSearchQuery] = useState("");
+  const [eventFilterStatus, setEventFilterStatus] = useState("all"); // all, decided, pending
 
   // 応募状況モーダル
   const [fairOpen, setFairOpen] = useState(false);
@@ -116,6 +120,13 @@ export default function AdminDashboard() {
   const [editStart, setEditStart] = useState("10:00");
   const [editEnd, setEditEnd] = useState("12:00");
   const [editDate, setEditDate] = useState("");
+  
+  // イベント複製モーダル
+  const [duplicatingEvent, setDuplicatingEvent] = useState(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateDate, setDuplicateDate] = useState("");
+  const [duplicateCount, setDuplicateCount] = useState(1); // 複製回数
+  const [duplicateInterval, setDuplicateInterval] = useState("day"); // day, week, month
 
   // 手動応募モーダル
   const [manualApplyOpen, setManualApplyOpen] = useState(false);
@@ -360,12 +371,32 @@ export default function AdminDashboard() {
     const endDate = getOneMonthLater(eventListStartDate);
     const isShowingFuture = eventListStartDate >= todayYMD;
     
-    const filteredEvents = events
-      .filter(ev => {
-        if (!ev || typeof ev !== 'object' || !ev.date) return false;
-        // 開始日以上、終了日未満のイベントを表示
-        return ev.date >= eventListStartDate && ev.date < endDate;
+    // 今日以降のイベントでフィルタリング（日付）
+    let filteredEvents = events.filter(ev => {
+      if (!ev || typeof ev !== 'object' || !ev.date) return false;
+      // 開始日以上、終了日未満のイベントを表示
+      return ev.date >= eventListStartDate && ev.date < endDate;
+    });
+    
+    // 検索クエリでフィルタリング
+    if (eventSearchQuery.trim()) {
+      const query = eventSearchQuery.toLowerCase().trim();
+      filteredEvents = filteredEvents.filter(ev => {
+        const label = (ev.label || '').toLowerCase();
+        const date = ev.date || '';
+        return label.includes(query) || date.includes(query);
       });
+    }
+    
+    // 確定状況でフィルタリング
+    if (eventFilterStatus !== 'all') {
+      filteredEvents = filteredEvents.filter(ev => {
+        const isDecided = decidedEventIds.has(ev.id);
+        if (eventFilterStatus === 'decided') return isDecided;
+        if (eventFilterStatus === 'pending') return !isDecided;
+        return true;
+      });
+    }
       
     const sortedEvents = [...filteredEvents]
       .sort((a, b) => {
@@ -383,6 +414,25 @@ export default function AdminDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">登録イベント一覧</h2>
           <div className="flex gap-2 items-center">
+            {/* 検索・フィルター */}
+            <div className="flex gap-2 items-center">
+              <input
+                type="text"
+                placeholder="検索..."
+                value={eventSearchQuery}
+                onChange={(e) => setEventSearchQuery(e.target.value)}
+                className="px-2 py-1 text-sm border rounded w-32"
+              />
+              <select
+                value={eventFilterStatus}
+                onChange={(e) => setEventFilterStatus(e.target.value)}
+                className="px-2 py-1 text-sm border rounded"
+              >
+                <option value="all">全て</option>
+                <option value="decided">確定済み</option>
+                <option value="pending">未確定</option>
+              </select>
+            </div>
             {!isShowingFuture && (
               <button
                 onClick={() => {
@@ -428,6 +478,7 @@ export default function AdminDashboard() {
           )}
         {sortedEvents.map((ev) => {
           const isDecided = decidedEventIds.has(ev.id);
+          const decision = decidedMembersByEventId[ev.id] || { driver: [], attendant: [] };
           const liCls = isDecided ? "border rounded-lg p-3 bg-green-50 border-green-200" : "border rounded-lg p-3 bg-white";
           return (
             <li key={ev.id} className={liCls}>
@@ -443,8 +494,17 @@ export default function AdminDashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="flex gap-2 items-center">
                     <div className="font-semibold text-[15px] truncate">{ev.label || '(無題イベント)'}</div>
+                    {isDecided && (
+                      <span className="px-1.5 py-0.5 text-xs bg-green-600 text-white rounded">確定</span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-600 truncate">{ev.date || '-'} {ev.start_time || ''}〜{ev.end_time || ''}</div>
+                  {isDecided && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      運転手: {decision.driver.length > 0 ? decision.driver.join(', ') : '未定'} | 
+                      添乗員: {decision.attendant.length > 0 ? decision.attendant.join(', ') : '未定'}
+                    </div>
+                  )}
                 </div>
               <div className="flex flex-col gap-2 ml-2">
                 <button
@@ -457,17 +517,33 @@ export default function AdminDashboard() {
                 >
                   応募状況
                 </button>
-                <button
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-800 text-sm"
-                  onClick={() => {
-                    setActiveTab("calendar");
-                    nav("/admin/dashboard?tab=calendar", { replace: true });
-                    setTimeout(() => handleEdit(ev), 0);
-                  }}
-                >
-                  編集
-                </button>
-                <button className="px-3 py-1.5 rounded bg-red-600 text-white text-sm" onClick={() => handleDelete(ev.id)}>削除</button>
+                <div className="flex gap-1">
+                  <button
+                    className="px-2 py-1 rounded bg-gray-100 text-gray-800 text-xs"
+                    onClick={() => {
+                      setActiveTab("calendar");
+                      nav("/admin/dashboard?tab=calendar", { replace: true });
+                      setTimeout(() => handleEdit(ev), 0);
+                    }}
+                    title="編集"
+                  >
+                    編集
+                  </button>
+                  <button
+                    className="px-2 py-1 rounded bg-green-100 text-green-800 text-xs"
+                    onClick={() => handleDuplicate(ev)}
+                    title="複製"
+                  >
+                    複製
+                  </button>
+                  <button 
+                    className="px-2 py-1 rounded bg-red-600 text-white text-xs" 
+                    onClick={() => handleDelete(ev.id)}
+                    title="削除"
+                  >
+                    削除
+                  </button>
+                </div>
                 </div>
               </div>
             </li>
@@ -1397,6 +1473,90 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={() => setEditOpen(false)}
+                    className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* イベント複製モーダル */}
+        {duplicateOpen && duplicatingEvent && (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center" style={{ zIndex: 100000, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+            <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 shadow-lg max-h-[calc(100vh-140px)] overflow-y-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold">イベントを複製</h3>
+                <button onClick={() => setDuplicateOpen(false)} className="text-gray-500">✕</button>
+              </div>
+
+              <div className="mb-3 p-2 bg-gray-50 rounded text-sm">
+                <div className="font-medium">{duplicatingEvent.label || '(無題イベント)'}</div>
+                <div className="text-xs text-gray-600">
+                  {duplicatingEvent.date} {duplicatingEvent.start_time || ''}〜{duplicatingEvent.end_time || ''}
+                </div>
+              </div>
+
+              <form onSubmit={handleDuplicateSubmit} className="space-y-3">
+                {/* 開始日付 */}
+                <label className="block text-sm">
+                  開始日付
+                  <input
+                    type="date"
+                    value={duplicateDate}
+                    onChange={(e) => setDuplicateDate(e.target.value)}
+                    className="mt-1 w-full border rounded p-2"
+                    required
+                  />
+                </label>
+
+                {/* 複製回数 */}
+                <label className="block text-sm">
+                  複製回数
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={duplicateCount}
+                    onChange={(e) => setDuplicateCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                    className="mt-1 w-full border rounded p-2"
+                    required
+                  />
+                </label>
+
+                {/* 間隔 */}
+                <label className="block text-sm">
+                  間隔
+                  <select
+                    value={duplicateInterval}
+                    onChange={(e) => setDuplicateInterval(e.target.value)}
+                    className="mt-1 w-full border rounded p-2"
+                  >
+                    <option value="day">毎日</option>
+                    <option value="week">毎週</option>
+                    <option value="month">毎月</option>
+                  </select>
+                </label>
+
+                <div className="text-xs text-gray-500 p-2 bg-blue-50 rounded">
+                  {duplicateCount}件のイベントを、{duplicateDate}から{
+                    duplicateInterval === "day" ? "毎日" : 
+                    duplicateInterval === "week" ? "毎週" : "毎月"
+                  }の間隔で作成します。
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 px-3 py-2 rounded bg-green-600 text-white text-sm hover:bg-green-700"
+                  >
+                    複製する
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateOpen(false)}
                     className="px-3 py-2 rounded bg-gray-200 text-gray-800 text-sm hover:bg-gray-300"
                   >
                     キャンセル

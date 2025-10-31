@@ -46,6 +46,21 @@ const WeekView = ({
   onSwipeTouchEnd,
   getEventIcon
 }) => {
+  // 画面幅に応じて時間軸の幅を調整（スマホでは小さく、デスクトップでは大きく）
+  const [timeAxisWidth, setTimeAxisWidth] = React.useState(() => {
+    if (typeof window === 'undefined') return '70px';
+    return window.innerWidth < 640 ? '50px' : '70px';
+  });
+
+  React.useEffect(() => {
+    const updateWidth = () => {
+      setTimeAxisWidth(window.innerWidth < 640 ? '50px' : '70px');
+    };
+    window.addEventListener('resize', updateWidth);
+    updateWidth();
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+
   // 週の開始日（日曜日）を計算
   const weekStart = new Date(selectedDate);
   const dayOfWeek = weekStart.getDay();
@@ -101,13 +116,18 @@ const WeekView = ({
     );
   };
 
-  // グリッドの列定義を統一（1回だけ定義）
-  const gridColsStyle = { gridTemplateColumns: '70px repeat(7, 1fr)' };
+  // グリッドの列定義（時間軸 + 7日）
+  const gridColsStyle = { gridTemplateColumns: `${timeAxisWidth} repeat(7, minmax(0, 1fr))` };
 
   return (
     <div 
       className="flex flex-col w-full"
-      style={{ minHeight: '600px', width: '100%' }}
+      style={{ 
+        minHeight: '600px', 
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'hidden'
+      }}
       onTouchStart={onSwipeTouchStart}
       onTouchMove={onSwipeTouchMove}
       onTouchEnd={onSwipeTouchEnd}
@@ -115,9 +135,9 @@ const WeekView = ({
       {/* 曜日ヘッダー - より大きく見やすく */}
       <div 
         className="grid border-b-2 border-gray-400 bg-gradient-to-b from-gray-50 to-gray-100 sticky top-0 z-20" 
-        style={gridColsStyle}
+        style={{ ...gridColsStyle, width: '100%', maxWidth: '100%' }}
       >
-        <div className="border-r-2 border-gray-400"></div>
+        <div className="border-r-2 border-gray-400 flex-shrink-0"></div>
         {weekDays.map((day, idx) => {
           const key = toKey(day);
           const isTodayDay = isToday(day);
@@ -125,16 +145,17 @@ const WeekView = ({
           return (
             <div 
               key={key}
-              className={`text-center py-3 px-1 border-r-2 border-gray-300 cursor-pointer transition-colors ${isTodayDay ? 'bg-blue-200 font-bold' : 'hover:bg-gray-200'}`}
+              className={`text-center py-2 sm:py-3 px-0.5 sm:px-1 border-r-2 border-gray-300 cursor-pointer transition-colors flex-shrink-0 min-w-0 ${isTodayDay ? 'bg-blue-200 font-bold' : 'hover:bg-gray-200'}`}
               onClick={() => onDateSelect?.(day)}
+              style={{ overflow: 'hidden' }}
             >
-              <div className="text-sm font-semibold text-gray-600 mb-1">
+              <div className="text-xs sm:text-sm font-semibold text-gray-600 mb-0.5 sm:mb-1 truncate">
                 {["日","月","火","水","木","金","土"][day.getDay()]}
               </div>
-              <div className={`text-2xl font-extrabold ${dayColor} mb-1`}>
+              <div className={`text-lg sm:text-2xl font-extrabold ${dayColor} mb-0.5 sm:mb-1 truncate`}>
                 {day.getDate()}
               </div>
-              <div className="text-xs text-gray-500 font-medium">
+              <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate">
                 {day.getMonth() + 1}月
               </div>
             </div>
@@ -143,15 +164,34 @@ const WeekView = ({
       </div>
 
       {/* 時間軸とイベント表示 */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 'calc(100vh - 250px)' }}>
-        <div className="grid relative" style={{ ...gridColsStyle, minHeight: '960px' }}>
+      <div 
+        className="flex-1 overflow-y-auto" 
+        style={{ 
+          maxHeight: 'calc(100vh - 250px)',
+          overflowX: 'hidden',
+          width: '100%',
+          maxWidth: '100%'
+        }}
+      >
+        <div 
+          className="grid relative" 
+          style={{ 
+            ...gridColsStyle, 
+            minHeight: '960px',
+            width: '100%',
+            maxWidth: '100%'
+          }}
+        >
           {/* 時間軸 - より大きく見やすく */}
-          <div className="border-r-2 border-gray-300 bg-gray-50 sticky left-0 z-10">
+          <div 
+            className="border-r-2 border-gray-300 bg-gray-50 sticky left-0 z-10 flex-shrink-0"
+            style={{ width: timeAxisWidth }}
+          >
             {timeSlots.map((slot, idx) => (
               <div 
                 key={`time-${idx}`}
-                className={`border-b border-gray-200 text-sm font-medium text-gray-700 pr-2 text-right ${slot.minutes === 0 ? 'border-gray-300' : ''}`}
-                style={{ height: '30px', lineHeight: '30px' }}
+                className={`border-b border-gray-200 text-xs sm:text-sm font-medium text-gray-700 pr-1 sm:pr-2 text-right ${slot.minutes === 0 ? 'border-gray-300' : ''}`}
+                style={{ height: '30px', lineHeight: '30px', overflow: 'hidden' }}
               >
                 {slot.minutes === 0 ? `${slot.hour}:00` : ''}
               </div>
@@ -169,8 +209,9 @@ const WeekView = ({
             return (
               <div 
                 key={key}
-                className={`relative border-r-2 border-gray-200 cursor-pointer ${isTodayDay ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
+                className={`relative border-r-2 border-gray-200 cursor-pointer flex-shrink-0 min-w-0 ${isTodayDay ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}
                 onClick={() => onDateSelect?.(day)}
+                style={{ overflow: 'hidden' }}
               >
                 {/* 時間グリッド */}
                 {timeSlots.map((slot, slotIdx) => (
@@ -193,7 +234,7 @@ const WeekView = ({
                   return (
                     <div
                       key={event.id}
-                      className={`absolute left-1 right-1 rounded-md px-2.5 py-1.5 text-xs cursor-pointer shadow-md z-10 transition-all hover:shadow-lg ${
+                      className={`absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-md px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-xs cursor-pointer shadow-md z-10 transition-all hover:shadow-lg overflow-hidden ${
                         isFullyDecided ? 'bg-emerald-500 text-white border-2 border-emerald-600' :
                         isDecided || isCancelled ? 'bg-rose-200 border-2 border-rose-400' :
                         'bg-amber-100 border-2 border-amber-400 text-gray-800'
@@ -201,7 +242,8 @@ const WeekView = ({
                       style={{
                         top: `${pos.topPercent}%`,
                         height: `${Math.max(pos.heightPercent, 2)}%`,
-                        minHeight: '32px'
+                        minHeight: '28px',
+                        maxWidth: '100%'
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -209,18 +251,18 @@ const WeekView = ({
                       }}
                       title={`${event.label || 'イベント'} ${event.start_time || ''}〜${event.end_time || ''}`}
                     >
-                      <div className="flex items-center gap-1.5 truncate mb-0.5">
+                      <div className="flex items-center gap-1 sm:gap-1.5 truncate mb-0.5">
                         {eventIcon && (
                           <img 
                             src={eventIcon} 
                             alt="" 
-                            className="w-5 h-5 object-contain flex-shrink-0"
+                            className="w-4 h-4 sm:w-5 sm:h-5 object-contain flex-shrink-0"
                           />
                         )}
-                        <span className="font-bold text-sm truncate">{event.label || 'イベント'}</span>
+                        <span className="font-bold text-xs sm:text-sm truncate">{event.label || 'イベント'}</span>
                       </div>
                       {(event.start_time || event.end_time) && (
-                        <div className={`text-[11px] font-medium truncate ${isFullyDecided ? 'text-white' : 'text-gray-600'}`}>
+                        <div className={`text-[10px] sm:text-[11px] font-medium truncate ${isFullyDecided ? 'text-white' : 'text-gray-600'}`}>
                           {event.start_time || ''}{event.end_time ? `〜${event.end_time}` : ''}
                         </div>
                       )}
@@ -732,9 +774,11 @@ export default function Calendar({
         boxShadow: 'none', 
         border: 'none', 
         borderRadius: 0, 
-        maxWidth: viewMode === "week" ? '100%' : '100%', 
+        maxWidth: '100%',
         margin: 0,
-        width: '100%'
+        width: '100%',
+        overflowX: 'hidden',
+        boxSizing: 'border-box'
       }}
     >
       {/* ヘッダー（デカめ・押しやすい） */}
