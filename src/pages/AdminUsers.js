@@ -272,76 +272,49 @@ export default function AdminUsers() {
         </div>
 
         {/* 一覧 */}
-        {(showAll || q.trim() !== "") && (
+        {(showAll || q.trim() !== "") ? (
           filtered.length === 0 ? (
             <p className="p-4 text-sm text-gray-500">該当するユーザーがいません。</p>
           ) : (
-          <div 
-            ref={listContainerRef}
-            className="overflow-y-auto"
-            style={{ maxHeight: 'calc(100vh - 400px)' }}
-          >
-            <ul className="space-y-3 p-4">
-            {filtered.map((u) => (
-              <li key={u.id} className="border rounded-lg p-3 bg-white shadow-sm">
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium text-base truncate">{u.username}</div>
-                    <div className="text-xs text-gray-500">役割: {u.role || "user"}</div>
-                    {/* 表示名の編集 */}
-                    <div className="mt-2 flex gap-2 items-center">
-                      <input
-                        className="border rounded p-2 text-sm w-full"
-                        defaultValue={u.display_name || ""}
-                        placeholder="表示名"
-                        onBlur={async (e) => {
-                          try {
-                            const r = await apiFetch("/api/users", {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ username: u.username, display_name: e.target.value || null }),
-                            });
-                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                          } catch (err) {
-                            alert(`更新に失敗しました: ${err.message}`);
-                          }
-                        }}
-                      />
-                      {/* ヒントを省略してコンパクトに */}
+            <div 
+              ref={listContainerRef}
+              className="overflow-y-auto"
+              style={{ maxHeight: 'calc(100vh - 400px)' }}
+            >
+              <ul className="space-y-3 p-4">
+              {filtered.map((u) => (
+                <li key={u.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-base truncate">{u.username}</div>
+                      <div className="text-xs text-gray-500">役割: {u.role || "user"}</div>
+                      {/* 表示名の編集 */}
+                      <div className="mt-2 flex gap-2 items-center">
+                        <input
+                          className="border rounded p-2 text-sm w-full"
+                          defaultValue={u.display_name || ""}
+                          placeholder="表示名"
+                          onBlur={async (e) => {
+                            try {
+                              const r = await apiFetch("/api/users", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ username: u.username, display_name: e.target.value || null }),
+                              });
+                              if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                            } catch (err) {
+                              alert(`更新に失敗しました: ${err.message}`);
+                            }
+                          }}
+                        />
+                        {/* ヒントを省略してコンパクトに */}
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* 役割変更 */}
-                    <select
-                      className="border rounded p-2 text-sm"
-                      defaultValue={u.role || "user"}
-                      onChange={async (e) => {
-                        // スクロール位置を保存
-                        if (listContainerRef.current) {
-                          scrollPositionRef.current = listContainerRef.current.scrollTop;
-                        }
-                        try {
-                          const r = await apiFetch("/api/users", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ username: u.username, role: e.target.value }),
-                          });
-                          if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                          await refresh();
-                        } catch (err) {
-                          alert(`更新に失敗しました: ${err.message}`);
-                        }
-                      }}
-                    >
-                      <option value="user">一般</option>
-                      <option value="admin">管理者</option>
-                    </select>
-
-                    {/* 応募適性（既存） */}
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* 役割変更 */}
                       <select
                         className="border rounded p-2 text-sm"
-                        value={u.familiar || u.familiarity || "unknown"}
+                        defaultValue={u.role || "user"}
                         onChange={async (e) => {
                           // スクロール位置を保存
                           if (listContainerRef.current) {
@@ -351,7 +324,7 @@ export default function AdminUsers() {
                             const r = await apiFetch("/api/users", {
                               method: "PATCH",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ username: u.username, familiar: e.target.value === "unknown" ? null : e.target.value }),
+                              body: JSON.stringify({ username: u.username, role: e.target.value }),
                             });
                             if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
                             await refresh();
@@ -360,73 +333,101 @@ export default function AdminUsers() {
                           }
                         }}
                       >
-                        <option value="unknown">不明</option>
-                        <option value="familiar">詳しい</option>
-                        <option value="unfamiliar">詳しくない</option>
+                        <option value="user">一般</option>
+                        <option value="admin">管理者</option>
                       </select>
-                      <FamBadge value={u.familiar || u.familiarity || "unknown"} />
-                    </div>
 
-                    {/* 便利アクション */}
-                    <div className="flex flex-wrap gap-2 col-span-2">
-                      <button
-                        className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm"
-                        onClick={async () => {
-                          // 履歴モーダルを開く（下で定義）
-                          setHistoryTarget(u.username);
-                          await openHistory(u.username);
-                        }}
-                      >
-                        履歴
-                      </button>
-                      <button
-                        className="px-3 py-1.5 rounded bg-amber-500 text-white text-sm"
-                        onClick={async () => {
-                          const newPw = prompt("一時パスワードを入力");
-                          if (!newPw) return;
-                          try {
-                            const r = await apiFetch("/api/users", {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ username: u.username, password: newPw }),
-                            });
-                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                            alert("一時パスワードを設定しました");
-                          } catch (err) {
-                            alert(`設定に失敗しました: ${err.message}`);
-                          }
-                        }}
-                      >
-                        一時PW
-                      </button>
-                      <button
-                        className="px-3 py-1.5 rounded bg-gray-200 text-gray-800 text-sm"
-                        onClick={async () => {
-                          if (!confirm("このユーザーを強制ログアウトしますか？")) return;
-                          try {
-                            const r = await apiFetch(`/api?path=logout_user&username=${encodeURIComponent(u.username)}`, { method: "POST" });
-                            if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                            alert("強制ログアウトしました");
-                          } catch (err) {
-                            alert("対応していない環境です（管理者にAPI追加が必要）");
-                          }
-                        }}
-                      >
-                        強制ログアウト
-                      </button>
-                      <button
-                        className="px-3 py-1.5 rounded bg-red-600 text-white text-sm"
-                        onClick={() => handleDelete(u.id)}
-                      >
-                        削除
-                      </button>
+                      {/* 応募適性（既存） */}
+                      <div className="flex items-center gap-2">
+                        <select
+                          className="border rounded p-2 text-sm"
+                          value={u.familiar || u.familiarity || "unknown"}
+                          onChange={async (e) => {
+                            // スクロール位置を保存
+                            if (listContainerRef.current) {
+                              scrollPositionRef.current = listContainerRef.current.scrollTop;
+                            }
+                            try {
+                              const r = await apiFetch("/api/users", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ username: u.username, familiar: e.target.value === "unknown" ? null : e.target.value }),
+                              });
+                              if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                              await refresh();
+                            } catch (err) {
+                              alert(`更新に失敗しました: ${err.message}`);
+                            }
+                          }}
+                        >
+                          <option value="unknown">不明</option>
+                          <option value="familiar">詳しい</option>
+                          <option value="unfamiliar">詳しくない</option>
+                        </select>
+                        <FamBadge value={u.familiar || u.familiarity || "unknown"} />
+                      </div>
+
+                      {/* 便利アクション */}
+                      <div className="flex flex-wrap gap-2 col-span-2">
+                        <button
+                          className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm"
+                          onClick={async () => {
+                            // 履歴モーダルを開く（下で定義）
+                            setHistoryTarget(u.username);
+                            await openHistory(u.username);
+                          }}
+                        >
+                          履歴
+                        </button>
+                        <button
+                          className="px-3 py-1.5 rounded bg-amber-500 text-white text-sm"
+                          onClick={async () => {
+                            const newPw = prompt("一時パスワードを入力");
+                            if (!newPw) return;
+                            try {
+                              const r = await apiFetch("/api/users", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ username: u.username, password: newPw }),
+                              });
+                              if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                              alert("一時パスワードを設定しました");
+                            } catch (err) {
+                              alert(`設定に失敗しました: ${err.message}`);
+                            }
+                          }}
+                        >
+                          一時PW
+                        </button>
+                        <button
+                          className="px-3 py-1.5 rounded bg-gray-200 text-gray-800 text-sm"
+                          onClick={async () => {
+                            if (!confirm("このユーザーを強制ログアウトしますか？")) return;
+                            try {
+                              const r = await apiFetch(`/api?path=logout_user&username=${encodeURIComponent(u.username)}`, { method: "POST" });
+                              if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+                              alert("強制ログアウトしました");
+                            } catch (err) {
+                              alert("対応していない環境です（管理者にAPI追加が必要）");
+                            }
+                          }}
+                        >
+                          強制ログアウト
+                        </button>
+                        <button
+                          className="px-3 py-1.5 rounded bg-red-600 text-white text-sm"
+                          onClick={() => handleDelete(u.id)}
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </li>
-            ))}
-            </ul>
-          </div>
+                </li>
+              ))}
+              </ul>
+            </div>
+          )
         ) : (
           <div className="p-4 text-center">
             <p className="text-sm text-gray-500 mb-3">「全員表示」ボタンをクリックしてユーザー一覧を表示します。</p>
