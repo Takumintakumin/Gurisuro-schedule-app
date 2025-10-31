@@ -198,13 +198,17 @@ export default function AdminDashboard() {
       setDecidedMembersByDate({});
       setDecidedMembersByEventId({});
 
-      // キャンセル・繰上げ・定員不足の検知は通知から集計（非同期）
+      // 通知一覧を取得してキャンセル情報と通知一覧の両方を更新（1回のAPI呼び出し）
       (async () => {
         try {
-          const cancelNotifs = await apiFetch("/api?path=notifications");
-          if (cancelNotifs.ok && Array.isArray(cancelNotifs.data)) {
+          const notifs = await apiFetch("/api?path=notifications");
+          if (notifs.ok && Array.isArray(notifs.data)) {
+            // 通知一覧をセット
+            setNotifications(notifs.data);
+            
+            // キャンセル・繰上げ・定員不足の検知
             const cancelDateSet = new Set();
-            for (const notif of cancelNotifs.data) {
+            for (const notif of notifs.data) {
               if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
                 try {
                   const evDetail = evs.find(e => e.id === notif.event_id);
@@ -214,14 +218,6 @@ export default function AdminDashboard() {
             }
             setCancelledDates(cancelDateSet);
           }
-        } catch {}
-      })();
-
-      // 通知一覧も非同期で更新
-      (async () => {
-        try {
-          const notifs = await apiFetch("/api?path=notifications");
-          if (notifs.ok && Array.isArray(notifs.data)) setNotifications(notifs.data);
         } catch {}
       })();
 

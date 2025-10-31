@@ -233,18 +233,22 @@ export default function AdminUsers() {
             </select>
             <button
               onClick={() => {
-                setShowAll(!showAll);
-                if (!showAll) {
-                  setQ(""); // 全員表示の場合は検索をクリア
+                if (q.trim() !== "") {
+                  // 検索中の場合、検索をクリアして全員表示に切り替え
+                  setQ("");
+                  setShowAll(true);
+                } else {
+                  // 検索欄が空の場合、全員表示のオン/オフを切り替え
+                  setShowAll(!showAll);
                 }
               }}
               className={`px-4 py-2 rounded text-sm font-medium ${
-                showAll || q.trim() !== ""
+                showAll && q.trim() === ""
                   ? "bg-blue-600 text-white hover:bg-blue-700"
                   : "bg-gray-200 text-gray-700 hover:bg-gray-300"
               }`}
             >
-              {showAll || q.trim() !== "" ? "全員表示中" : "全員表示"}
+              {q.trim() !== "" ? "検索中" : showAll ? "全員表示中" : "全員表示"}
             </button>
           </div>
           <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mt-2">
@@ -255,7 +259,7 @@ export default function AdminUsers() {
         </div>
 
         {/* 一覧 */}
-        {(showAll || q.trim() !== "") ? (
+        {(showAll || q.trim() !== "") && (
           filtered.length === 0 ? (
             <p className="p-4 text-sm text-gray-500">該当するユーザーがいません。</p>
           ) : (
@@ -396,7 +400,6 @@ export default function AdminUsers() {
               </li>
             ))}
           </ul>
-          )
         ) : (
           <div className="p-4 text-center">
             <p className="text-sm text-gray-500 mb-3">「全員表示」ボタンをクリックしてユーザー一覧を表示します。</p>
