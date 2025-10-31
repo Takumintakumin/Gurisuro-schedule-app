@@ -14,6 +14,222 @@ const getEventIcon = (label, icon) => {
   return icon || "";
 };
 
+// 時間を分に変換（例: "14:30" -> 870）
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+};
+
+// 分を時間文字列に変換（例: 870 -> "14:30"）
+const minutesToTime = (minutes) => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+// 週表示コンポーネント（Googleカレンダー風）
+const WeekView = ({
+  selectedDate,
+  currentMonth,
+  currentYear,
+  events,
+  eventsByDate,
+  decidedDates,
+  cancelledDates,
+  decidedMembersByDate,
+  myAppliedEventIds,
+  onDateSelect,
+  todayDate,
+  onSwipeTouchStart,
+  onSwipeTouchMove,
+  onSwipeTouchEnd,
+  getEventIcon
+}) => {
+  // 週の開始日（日曜日）を計算
+  const weekStart = new Date(selectedDate);
+  const dayOfWeek = weekStart.getDay();
+  weekStart.setDate(weekStart.getDate() - dayOfWeek);
+  weekStart.setHours(0, 0, 0, 0);
+
+  // 週の7日間を生成
+  const weekDays = [];
+  for (let i = 0; i < 7; i++) {
+    const dayDate = new Date(weekStart);
+    dayDate.setDate(dayDate.getDate() + i);
+    weekDays.push(dayDate);
+  }
+
+  // 時間軸（6:00 〜 22:00、30分間隔）
+  const timeSlots = [];
+  for (let hour = 6; hour <= 22; hour++) {
+    timeSlots.push({ hour, minutes: 0 });
+    if (hour < 22) {
+      timeSlots.push({ hour, minutes: 30 });
+    }
+  }
+
+  // イベントを時間帯で配置する関数
+  const getEventPosition = (event) => {
+    const startMinutes = timeToMinutes(event.start_time);
+    const endMinutes = timeToMinutes(event.end_time) || startMinutes + 60; // 終了時間がない場合は1時間として扱う
+    
+    // 6:00を基準（0分）とした相対位置
+    const baseMinutes = 6 * 60; // 6:00 = 360分
+    const topMinutes = Math.max(0, startMinutes - baseMinutes);
+    const durationMinutes = Math.max(30, endMinutes - startMinutes); // 最小30分
+    
+    // 1時間 = 60px として計算（30分 = 30px）
+    const topPercent = (topMinutes / (16 * 60)) * 100; // 6:00-22:00 = 16時間
+    const heightPercent = (durationMinutes / (16 * 60)) * 100;
+    
+    return { topPercent, heightPercent, startMinutes, endMinutes };
+  };
+
+  const toKey = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const isToday = (date) => {
+    return (
+      date.getFullYear() === todayDate.getFullYear() &&
+      date.getMonth() === todayDate.getMonth() &&
+      date.getDate() === todayDate.getDate()
+    );
+  };
+
+  return (
+    <div 
+      className="flex flex-col"
+      style={{ minHeight: '600px' }}
+      onTouchStart={onSwipeTouchStart}
+      onTouchMove={onSwipeTouchMove}
+      onTouchEnd={onSwipeTouchEnd}
+    >
+      {/* 曜日ヘッダー */}
+      <div className="grid grid-cols-8 border-b border-gray-300 bg-gray-50" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+        <div className="border-r border-gray-300"></div>
+        {weekDays.map((day, idx) => {
+          const key = toKey(day);
+          const isTodayDay = isToday(day);
+          const dayColor = idx === 0 ? "text-red-600" : idx === 6 ? "text-blue-600" : "text-gray-800";
+          return (
+            <div 
+              key={key}
+              className={`text-center py-2 border-r border-gray-300 ${isTodayDay ? 'bg-blue-100' : ''}`}
+              onClick={() => onDateSelect?.(day)}
+            >
+              <div className="text-xs text-gray-500">
+                {["日","月","火","水","木","金","土"][day.getDay()]}
+              </div>
+              <div className={`text-lg font-bold ${dayColor}`}>
+                {day.getDate()}
+              </div>
+              <div className="text-xs text-gray-500">
+                {day.getMonth() + 1}/{day.getDate()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 時間軸とイベント表示 */}
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+        <div className="grid grid-cols-8 relative" style={{ gridTemplateColumns: '80px repeat(7, 1fr)', minHeight: '960px' }}>
+          {/* 時間軸 */}
+          <div className="border-r border-gray-200">
+            {timeSlots.map((slot, idx) => (
+              <div 
+                key={`time-${idx}`}
+                className="border-b border-gray-100 text-xs text-gray-500 pr-2 text-right"
+                style={{ height: '30px', lineHeight: '30px' }}
+              >
+                {slot.minutes === 0 ? `${slot.hour}:00` : ''}
+              </div>
+            ))}
+          </div>
+
+          {/* 各日の列 */}
+          {weekDays.map((day, dayIdx) => {
+            const key = toKey(day);
+            const dayEvents = eventsByDate[key] || [];
+            const isTodayDay = isToday(day);
+            const isDecided = decidedDates.has(key);
+            const isCancelled = cancelledDates.has(key);
+            
+            return (
+              <div 
+                key={key}
+                className={`relative border-r border-gray-200 ${isTodayDay ? 'bg-blue-50' : ''}`}
+                onClick={() => onDateSelect?.(day)}
+              >
+                {/* 時間グリッド */}
+                {timeSlots.map((slot, slotIdx) => (
+                  <div 
+                    key={`grid-${dayIdx}-${slotIdx}`}
+                    className={`border-b border-gray-100 ${slot.minutes === 0 ? 'border-gray-200' : ''}`}
+                    style={{ height: '30px' }}
+                  />
+                ))}
+                
+                {/* イベント */}
+                {dayEvents.map((event) => {
+                  const pos = getEventPosition(event);
+                  const eventIcon = getEventIcon(event.label, event.icon);
+                  const isDecidedEvent = decidedMembersByDate?._byEventId?.[event.id];
+                  const hasDriver = isDecidedEvent?.driver?.length > 0;
+                  const hasAttendant = isDecidedEvent?.attendant?.length > 0;
+                  const isFullyDecided = hasDriver && hasAttendant;
+                  
+                  return (
+                    <div
+                      key={event.id}
+                      className={`absolute left-1 right-1 rounded px-2 py-1 text-xs cursor-pointer shadow-sm z-10 ${
+                        isFullyDecided ? 'bg-emerald-500 text-white' :
+                        isDecided || isCancelled ? 'bg-rose-200' :
+                        'bg-amber-100 border border-amber-300'
+                      }`}
+                      style={{
+                        top: `${pos.topPercent}%`,
+                        height: `${Math.max(pos.heightPercent, 2)}%`,
+                        minHeight: '24px'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDateSelect?.(day);
+                      }}
+                      title={`${event.label || 'イベント'} ${event.start_time || ''}〜${event.end_time || ''}`}
+                    >
+                      <div className="flex items-center gap-1 truncate">
+                        {eventIcon && (
+                          <img 
+                            src={eventIcon} 
+                            alt="" 
+                            className="w-4 h-4 object-contain flex-shrink-0"
+                          />
+                        )}
+                        <span className="font-semibold truncate">{event.label || 'イベント'}</span>
+                      </div>
+                      {(event.start_time || event.end_time) && (
+                        <div className="text-[10px] opacity-90 truncate">
+                          {event.start_time || ''}{event.end_time ? `〜${event.end_time}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const monthNames = [
   "1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"
 ];
@@ -590,31 +806,54 @@ export default function Calendar({
         </div>
       </div>
 
-      {/* 曜日行（固定＆大きめ） */}
-      <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', margin:0, padding:0 }}>
-        {["日","月","火","水","木","金","土"].map((d, idx) => (
-          <div key={d} className={"py-2 "+(idx===0?"text-red-600":idx===6?"text-blue-600":"")} style={{margin:0}}>{d}</div>
-        ))}
-      </div>
+      {/* 週表示の場合は時間軸付きのレイアウト、月表示の場合は通常レイアウト */}
+      {viewMode === "week" && selectedDate ? (
+        <WeekView 
+          selectedDate={selectedDate}
+          currentMonth={currentMonth}
+          currentYear={currentYear}
+          events={events}
+          eventsByDate={eventsByDate}
+          decidedDates={decidedDates}
+          cancelledDates={cancelledDates}
+          decidedMembersByDate={decidedMembersByDate}
+          myAppliedEventIds={myAppliedEventIds}
+          onDateSelect={onDateSelect}
+          todayDate={todayDate}
+          onSwipeTouchStart={onSwipeTouchStart}
+          onSwipeTouchMove={onSwipeTouchMove}
+          onSwipeTouchEnd={onSwipeTouchEnd}
+          getEventIcon={getEventIcon}
+        />
+      ) : (
+        <>
+          {/* 曜日行（固定＆大きめ） */}
+          <div className="grid grid-cols-7 text-center text-[12px] sm:text-sm font-bold text-gray-700 border-b border-green-200 bg-gradient-to-r from-green-50/80 to-emerald-50/80 sticky top-[44px] sm:top-[52px] z-10" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', margin:0, padding:0 }}>
+            {["日","月","火","水","木","金","土"].map((d, idx) => (
+              <div key={d} className={"py-2 "+(idx===0?"text-red-600":idx===6?"text-blue-600":"")} style={{margin:0}}>{d}</div>
+            ))}
+          </div>
 
-      {/* カレンダー本体（タップ幅UP・余白広め） - 横スワイプ対応 */}
-      <div 
-        className="grid grid-cols-7 bg-white" 
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-          gap: '3px',
-          padding: 0,
-          margin: 0
-        }}
-        onTouchStart={onSwipeTouchStart}
-        onTouchMove={onSwipeTouchMove}
-        onTouchEnd={onSwipeTouchEnd}
-      >
-        {visibleCells.map((cell, i) =>
-          cell===null ? <div key={`empty-${i}`}></div> : renderDayCell(cell)
-        )}
-      </div>
+          {/* カレンダー本体（タップ幅UP・余白広め） - 横スワイプ対応 */}
+          <div 
+            className="grid grid-cols-7 bg-white" 
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+              gap: '3px',
+              padding: 0,
+              margin: 0
+            }}
+            onTouchStart={onSwipeTouchStart}
+            onTouchMove={onSwipeTouchMove}
+            onTouchEnd={onSwipeTouchEnd}
+          >
+            {visibleCells.map((cell, i) =>
+              cell===null ? <div key={`empty-${i}`}></div> : renderDayCell(cell)
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
