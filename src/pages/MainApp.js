@@ -419,11 +419,12 @@ export default function MainApp() {
       return;
     }
     
-    // 確定済みチェック（自分が確定済みの場合は応募変更不可）
+    // 確定済みチェック（自分がその役割で確定済みの場合は応募変更不可）
     const dec = decided[ev.id] || { driver: [], attendant: [] };
     const isDecided = (kind === "driver" ? dec.driver : dec.attendant).includes(userName);
     if (isDecided) {
-      alert("このイベントは既に確定済みです。応募を取り消すことはできません。");
+      const kindLabel = kind === "driver" ? "運転手" : "添乗員";
+      alert(`このイベントの${kindLabel}として既に確定済みです。確定済みの役割の応募は変更できません。`);
       return;
     }
     
