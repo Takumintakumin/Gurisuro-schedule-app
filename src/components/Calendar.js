@@ -45,10 +45,6 @@ export default function Calendar({
 }) {
   // 追加: 月/週 表示トグル
   const [viewMode, setViewMode] = React.useState("month");
-  
-  // 横スワイプ用の状態
-  const [touchStart, setTouchStart] = React.useState(null);
-  const [touchEnd, setTouchEnd] = React.useState(null);
 
   // 画面幅による自動コンパクト判定（初期）
   const [isCompact, setIsCompact] = React.useState(() => {
@@ -420,20 +416,36 @@ export default function Calendar({
     }
   };
 
-  // 横スワイプ処理
+  // 横スワイプ処理（スクロール可能なコンテナとの競合を避けるため、カレンダーグリッド部分のみに適用）
   const minSwipeDistance = 50;
-  const onTouchStart = (e) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
+  const swipeTouchStart = React.useRef(null);
+  const swipeTouchEnd = React.useRef(null);
+  const swipeTouchStartY = React.useRef(null);
+  const swipeTouchEndY = React.useRef(null);
+  
+  const onSwipeTouchStart = (e) => {
+    swipeTouchStart.current = e.touches[0].clientX;
+    swipeTouchEnd.current = null;
+    swipeTouchStartY.current = e.touches[0].clientY;
+    swipeTouchEndY.current = null;
   };
-  const onTouchMove = (e) => {
-    setTouchEnd(e.targetTouches[0].clientX);
+  const onSwipeTouchMove = (e) => {
+    swipeTouchEnd.current = e.touches[0].clientX;
+    swipeTouchEndY.current = e.touches[0].clientY;
   };
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
+  const onSwipeTouchEnd = () => {
+    if (!swipeTouchStart.current || !swipeTouchEnd.current) return;
+    
+    const deltaX = swipeTouchStart.current - swipeTouchEnd.current;
+    const deltaY = swipeTouchStartY.current && swipeTouchEndY.current 
+      ? Math.abs(swipeTouchStartY.current - swipeTouchEndY.current) 
+      : 0;
+    
+    // 垂直方向のスクロールが主な場合は横スワイプを無効化
+    if (deltaY > Math.abs(deltaX)) return;
+    
+    const isLeftSwipe = deltaX > minSwipeDistance;
+    const isRightSwipe = deltaX < -minSwipeDistance;
     
     if (isLeftSwipe) {
       // 左スワイプ（次の月/週へ）
@@ -451,6 +463,12 @@ export default function Calendar({
         onMonthChange?.(-1);
       }
     }
+    
+    // リセット
+    swipeTouchStart.current = null;
+    swipeTouchEnd.current = null;
+    swipeTouchStartY.current = null;
+    swipeTouchEndY.current = null;
   };
 
   // weekMode時、選択中日が含まれる週だけ抜き出す（月をまたぐ場合も対応）
@@ -484,9 +502,6 @@ export default function Calendar({
     <div 
       className="mb-0 w-full bg-white" 
       style={{ boxShadow: 'none', border: 'none', borderRadius: 0, maxWidth: '100%', margin: 0 }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
     >
       {/* ヘッダー（デカめ・押しやすい） */}
       <div className="flex items-center justify-between px-0 py-2 border-b border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 sticky top-0 z-10" style={{margin:0}}>
@@ -582,16 +597,24 @@ export default function Calendar({
         ))}
       </div>
 
-      {/* カレンダー本体（タップ幅UP・余白広め） */}
-      <div className="grid grid-cols-7 bg-white" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-        gap: '3px',
-        padding: 0,
-        margin: 0
-      }}>{visibleCells.map((cell, i) =>
+      {/* カレンダー本体（タップ幅UP・余白広め） - 横スワイプ対応 */}
+      <div 
+        className="grid grid-cols-7 bg-white" 
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gap: '3px',
+          padding: 0,
+          margin: 0
+        }}
+        onTouchStart={onSwipeTouchStart}
+        onTouchMove={onSwipeTouchMove}
+        onTouchEnd={onSwipeTouchEnd}
+      >
+        {visibleCells.map((cell, i) =>
           cell===null ? <div key={`empty-${i}`}></div> : renderDayCell(cell)
-        )}</div>
+        )}
+      </div>
     </div>
   );
 }
