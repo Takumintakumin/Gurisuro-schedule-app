@@ -26,6 +26,13 @@ export default function AdminLogin() {
   useEffect(() => {
     console.log("[AdminLogin] mounted");
     
+    // ログアウト直後の場合は自動ログインをスキップ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      return; // 自動ログインしない
+    }
+    
     // ページロード時にクッキーからセッションを復元
     (async () => {
       try {

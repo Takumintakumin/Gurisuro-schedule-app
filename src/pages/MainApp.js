@@ -25,6 +25,14 @@ export default function MainApp() {
   
   // ページロード時にクッキーからセッションを復元
   useEffect(() => {
+    // ログアウト直後の場合は自動ログインをスキップ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      nav("/");
+      return; // 自動ログインしない
+    }
+    
     (async () => {
       // localStorageから取得を試みる
       const storedName = localStorage.getItem("userName");
@@ -67,11 +75,27 @@ export default function MainApp() {
   });
 
   // ---- ログアウト ----
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (!window.confirm("ログアウトしますか？")) return;
-    fetch("/api?path=logout", { method: "POST", credentials: "include" }).catch(() => {});
+    
+    // ログアウトフラグを設定（自動ログインを防ぐ）
+    sessionStorage.setItem("justLoggedOut", "true");
+    
+    // ログアウトAPIを呼び出してクッキーを削除
+    try {
+      await fetch("/api?path=logout", { method: "POST", credentials: "include" });
+    } catch (e) {
+      console.error("Logout API error:", e);
+    }
+    
+    // localStorageをクリア
     localStorage.clear();
-    setTimeout(() => { window.location.replace("/"); window.location.reload(); }, 0);
+    
+    // クッキーが削除されるまで少し待ってからリロード
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // ログインページへ移動（リロードは不要）
+    window.location.href = "/";
   };
 
   // ---- イベント一覧 + 自分の応募一覧取得 ----

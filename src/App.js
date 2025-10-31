@@ -32,6 +32,14 @@ const ProtectedRoute = ({ children }) => {
   const localRole = localStorage.getItem("userRole");
   
   useEffect(() => {
+    // ログアウト直後の場合は自動ログインをスキップ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      setIsChecking(false);
+      return; // 自動ログインしない
+    }
+    
     // localStorageにroleがない場合、クッキーから復元を試みる
     if (!localRole) {
       checkSession().finally(() => {
@@ -44,6 +52,12 @@ const ProtectedRoute = ({ children }) => {
   
   if (isChecking) {
     return <div>読み込み中...</div>; // ロード中表示
+  }
+  
+  // ログアウト直後の場合はログインページへ
+  const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+  if (justLoggedOut === "true") {
+    return <Navigate to="/" replace />;
   }
   
   const role = localStorage.getItem("userRole");

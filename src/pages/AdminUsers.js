@@ -177,9 +177,24 @@ export default function AdminUsers() {
           <h1 className="text-xl font-bold">👥 ユーザー管理</h1>
           <div className="flex gap-3">
             <button
-              onClick={() => {
+              onClick={async () => {
+                // ログアウトフラグを設定（自動ログインを防ぐ）
+                sessionStorage.setItem("justLoggedOut", "true");
+                
+                // ログアウトAPIを呼び出してクッキーを削除
+                try {
+                  await apiFetch("/api?path=logout", { method: "POST" });
+                } catch (e) {
+                  console.error("Logout API error:", e);
+                }
+                
                 localStorage.clear();
-                nav("/");
+                
+                // クッキーが削除されるまで少し待ってからリロード
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // ログインページへ移動
+                window.location.href = "/admin";
               }}
               className="text-gray-600 underline"
             >

@@ -20,6 +20,13 @@ export default function UserLogin() {
   
   // ページロード時にクッキーからセッションを復元
   useEffect(() => {
+    // ログアウト直後の場合は自動ログインをスキップ
+    const justLoggedOut = sessionStorage.getItem("justLoggedOut");
+    if (justLoggedOut === "true") {
+      sessionStorage.removeItem("justLoggedOut");
+      return; // 自動ログインしない
+    }
+    
     (async () => {
       try {
         const { ok, data } = await apiFetch("/api?path=me");

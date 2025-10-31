@@ -6,9 +6,25 @@ export default function AdminLayout() {
   const location = useLocation();
   const nav = useNavigate();
 
-  const logout = () => {
+  const logout = async () => {
+    // ログアウトフラグを設定（自動ログインを防ぐ）
+    sessionStorage.setItem("justLoggedOut", "true");
+    
+    // ログアウトAPIを呼び出してクッキーを削除
+    try {
+      const res = await fetch("/api?path=logout", { method: "POST", credentials: "include" });
+      if (!res.ok) console.error("Logout API error");
+    } catch (e) {
+      console.error("Logout API error:", e);
+    }
+    
     localStorage.clear();
-    nav("/");
+    
+    // クッキーが削除されるまで少し待ってからリロード
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // ログインページへ移動
+    window.location.href = "/admin";
   };
 
   return (
