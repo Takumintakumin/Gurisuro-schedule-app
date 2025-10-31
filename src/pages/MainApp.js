@@ -74,6 +74,162 @@ export default function MainApp() {
     google_calendar_id: null,
   });
 
+  // Googleカレンダーエクスポート用
+  const [exportLoading, setExportLoading] = useState(false);
+
+  // 日付文字列をDateに変換（JST考慮）
+  const parseDate = (dateStr, timeStr) => {
+    if (!dateStr) return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!timeStr) {
+      return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    }
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    // JST (UTC+9) を考慮
+    return new Date(Date.UTC(year, month - 1, day, hours - 9, minutes || 0, 0));
+  };
+
+  // DateをICS形式の文字列に変換（UTC）
+  const dateToICS = (date) => {
+    if (!date) return '';
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+  };
+
+  // ICSファイルの内容を生成（ユーザー用：自分が確定したイベントのみ）
+  const generateICS = (eventsWithMyDecisions) => {
+    let ics = 'BEGIN:VCALENDAR\r\n';
+    ics += 'VERSION:2.0\r\n';
+    ics += 'PRODID:-//Gurisuro Schedule App//EN\r\n';
+    ics += 'CALSCALE:GREGORIAN\r\n';
+    ics += 'METHOD:PUBLISH\r\n';
+
+    eventsWithMyDecisions.forEach(({ event, myRole, allDriver, allAttendant }) => {
+      const startDate = parseDate(event.date, event.start_time);
+      const endDate = parseDate(event.date, event.end_time || event.start_time);
+      
+      if (!startDate) return;
+
+      // 終了時間がない場合は開始時間から1時間後
+      if (!event.end_time) {
+        endDate.setUTCHours(endDate.getUTCHours() + 1);
+      }
+
+      const uid = `gurisuro-event-${event.id}-${userName}@gurisuro-app`;
+      const dtstamp = dateToICS(new Date()); // 現在時刻
+      const dtstart = dateToICS(startDate);
+      const dtend = dateToICS(endDate);
+
+      // イベントタイトル（自分の役割を含める）
+      const roleText = myRole === 'driver' ? '運転手' : '添乗員';
+      const summary = `${event.label || 'イベント'} (${roleText})`;
+
+      ics += 'BEGIN:VEVENT\r\n';
+      ics += `UID:${uid}\r\n`;
+      ics += `DTSTAMP:${dtstamp}\r\n`;
+      ics += `DTSTART:${dtstart}\r\n`;
+      ics += `DTEND:${dtend}\r\n`;
+      ics += `SUMMARY:${summary.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\r\n`;
+      
+      let description = '';
+      if (event.label) {
+        description += `${event.label}\\n`;
+      }
+      if (event.start_time || event.end_time) {
+        description += `時間: ${event.start_time || ''}${event.end_time ? `〜${event.end_time}` : ''}\\n`;
+      }
+      description += `役割: ${roleText}\\n`;
+      if (allDriver.length > 0 || allAttendant.length > 0) {
+        description += `運転手: ${allDriver.join(', ')}\\n添乗員: ${allAttendant.join(', ')}`;
+      }
+      
+      if (description) {
+        ics += `DESCRIPTION:${description.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')}\r\n`;
+      }
+      
+      ics += 'END:VEVENT\r\n';
+    });
+
+    ics += 'END:VCALENDAR\r\n';
+    return ics;
+  };
+
+  // Googleカレンダーエクスポート（ユーザー用：自分が確定したイベントのみ）
+  const handleExportToGoogleCalendar = async () => {
+    if (!userName) {
+      alert('ログインが必要です');
+      return;
+    }
+
+    setExportLoading(true);
+    try {
+      // すべてのイベントを取得
+      const eventsRes = await apiFetch('/api/events');
+      if (!eventsRes.ok || !Array.isArray(eventsRes.data)) {
+        throw new Error('イベントの取得に失敗しました');
+      }
+
+      // 自分が確定したイベントのみをフィルタリング
+      const eventsWithMyDecisions = [];
+      for (const event of eventsRes.data) {
+        try {
+          const decideRes = await apiFetch(`/api?path=decide&event_id=${event.id}`);
+          if (decideRes.ok && decideRes.data) {
+            const driver = Array.isArray(decideRes.data.driver) ? decideRes.data.driver : [];
+            const attendant = Array.isArray(decideRes.data.attendant) ? decideRes.data.attendant : [];
+            
+            // 自分が運転手または添乗員として確定しているかチェック
+            const isDriver = driver.includes(userName);
+            const isAttendant = attendant.includes(userName);
+            
+            if (isDriver || isAttendant) {
+              eventsWithMyDecisions.push({
+                event,
+                myRole: isDriver ? 'driver' : 'attendant',
+                allDriver: driver,
+                allAttendant: attendant
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`Event ${event.id} decision fetch error:`, e);
+        }
+      }
+
+      if (eventsWithMyDecisions.length === 0) {
+        alert('確定済みの予定がありません。あなたが確定した予定がGoogleカレンダーにエクスポートできます。');
+        setExportLoading(false);
+        return;
+      }
+
+      // ICSファイルを生成
+      const icsContent = generateICS(eventsWithMyDecisions);
+
+      // ファイルをダウンロード
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `my-gurisuro-calendar-${toLocalYMD(new Date())}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      alert(`${eventsWithMyDecisions.length}件の確定済み予定をエクスポートしました。\\n\\nダウンロードした.icsファイルをGoogleカレンダーにインポートしてください:\\n1. Googleカレンダーを開く\\n2. 設定（⚙️）> インポートとエクスポート\\n3. 「ファイルを選択」でダウンロードした.icsファイルを選択\\n4. 「インポート」をクリック`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`エクスポートに失敗しました: ${error.message}`);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   // ---- ログアウト ----
   const handleLogout = async () => {
     if (!window.confirm("ログアウトしますか？")) return;
@@ -889,8 +1045,16 @@ export default function MainApp() {
         {/* ヘッダー（ログアウト追加） */}
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-xl font-bold">グリスロ予定調整アプリ</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {userName && <span className="text-sm text-gray-600">ログイン中：{userName}</span>}
+            <button
+              onClick={handleExportToGoogleCalendar}
+              disabled={exportLoading || !userName}
+              className="px-3 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              title="自分が確定した予定をGoogleカレンダー形式（ICS）でエクスポート"
+            >
+              {exportLoading ? 'エクスポート中...' : '📅 Googleカレンダーにエクスポート'}
+            </button>
             <button
               onClick={handleLogout}
               className="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600"
