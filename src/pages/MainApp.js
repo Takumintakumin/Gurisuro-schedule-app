@@ -325,105 +325,100 @@ export default function MainApp() {
   const [decidedDates, setDecidedDates] = useState(new Set()); // 確定済みの日付のSet
   const [cancelledDates, setCancelledDates] = useState(new Set()); // ユーザーが応募したがキャンセルが出た日付
   const [decidedMembersByEventId, setDecidedMembersByEventId] = useState({}); // { eventId: { driver: string[], attendant: string[] } } イベントごとの確定状況
+  // すべてのイベントについて確定状況を取得（カレンダーの色分けとイベント一覧用）
   useEffect(() => {
+    let aborted = false;
     (async () => {
+      if (!Array.isArray(events) || events.length === 0) {
+        if (!aborted) {
+          setDecidedMembersByEventId({});
+          setDecided({});
+          setDecidedDates(new Set());
+          setCancelledDates(new Set());
+          setCounts({});
+        }
+        return;
+      }
+
+      if (!userName) {
+        if (!aborted) {
+          setCounts({});
+          setDecided({});
+          setDecidedDates(new Set());
+          setCancelledDates(new Set());
+          setDecidedMembersByEventId({});
+        }
+        return;
+      }
+
+      // 1. すべてのイベントの確定状況を取得
+      const allDecidedByEventId = {};
+      const tasks = events.map(async (ev) => {
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError);
+          if (dec.ok && dec.data) {
+            allDecidedByEventId[ev.id] = {
+              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+            };
+          } else {
+            allDecidedByEventId[ev.id] = { driver: [], attendant: [] };
+          }
+        } catch {
+          allDecidedByEventId[ev.id] = { driver: [], attendant: [] };
+        }
+      });
+      await Promise.all(tasks);
+      if (aborted) return;
+
+      // 2. 当日のイベントの応募数を取得
       const ymd = toLocalYMD(selectedDate);
       const todays = events.filter((e) => e.date === ymd);
       const out = {};
-      const decOut = {};
-      const decDateSet = new Set();
       
-      if (!userName) {
-        setCounts(out);
-        setDecided(decOut);
-        setDecidedDates(decDateSet);
-        return;
-      }
-      
-      // 当日のイベントのみ処理
       for (const ev of todays) {
-        // 応募数と確定済みメンバーを並列取得
-        const [appsRes, decRes] = await Promise.all([
-          apiFetch(`/api/applications?event_id=${ev.id}`, {}, handleNetworkError).catch(() => ({ ok: false, data: [] })),
-          apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError).catch(() => ({ ok: false, data: null }))
-        ]);
-        
-        // 応募数
-        const arr = Array.isArray(appsRes.data) ? appsRes.data : [];
-        out[ev.id] = {
-          driver: arr.filter(a => a.kind === "driver").length,
-          attendant: arr.filter(a => a.kind === "attendant").length,
-          raw: arr,
-        };
-        
-        // 確定済みメンバー
-        if (decRes.ok && decRes.data) {
-          decOut[ev.id] = {
-            driver: Array.isArray(decRes.data.driver) ? decRes.data.driver : [],
-            attendant: Array.isArray(decRes.data.attendant) ? decRes.data.attendant : [],
+        try {
+          const appsRes = await apiFetch(`/api/applications?event_id=${ev.id}`, {}, handleNetworkError).catch(() => ({ ok: false, data: [] }));
+          const arr = Array.isArray(appsRes.data) ? appsRes.data : [];
+          out[ev.id] = {
+            driver: arr.filter(a => a.kind === "driver").length,
+            attendant: arr.filter(a => a.kind === "attendant").length,
+            raw: arr,
           };
+        } catch {}
+      }
+      if (aborted) return;
+
+      // 3. 自分が確定済みの日付を計算
+      const decDateSet = new Set();
+      if (myApps.length > 0) {
+        const myEventIds = [...new Set(myApps.map(a => a.event_id))];
+        for (const eventId of myEventIds) {
+          const ev = events.find(e => e.id === eventId);
+          if (!ev) continue;
           
-          // 自分が確定済みかチェック
-          const isMyDecided = 
-            (decOut[ev.id].driver.includes(userName)) ||
-            (decOut[ev.id].attendant.includes(userName));
-          
-          if (isMyDecided) {
-            decDateSet.add(ev.date);
+          const evDecided = allDecidedByEventId[eventId];
+          if (evDecided) {
+            const isMyDecided = 
+              (Array.isArray(evDecided.driver) && evDecided.driver.includes(userName)) ||
+              (Array.isArray(evDecided.attendant) && evDecided.attendant.includes(userName));
+            
+            if (isMyDecided) {
+              decDateSet.add(ev.date);
+            }
           }
-        } else {
-          decOut[ev.id] = { driver: [], attendant: [] };
         }
       }
-      
-      // 他の日付の確定済み状況を簡易的に確認（自分の応募があるイベントのみ）
-      const allDecidedByEventId = {};
-      const userCancelledDateSet = new Set(); // 自分が応募したがキャンセルが出た日付
-      
-      if (myApps.length > 0 && events.length > 0) {
-        const myEventIds = [...new Set(myApps.map(a => a.event_id))];
-        const checks = myEventIds.map(async (eventId) => {
-          const ev = events.find(e => e.id === eventId);
-          if (!ev) return null;
-          
-          try {
-            const dec = await apiFetch(`/api?path=decide&event_id=${eventId}`, {}, handleNetworkError);
-            if (dec.ok && dec.data) {
-              // イベントごとの確定状況を保存
-              allDecidedByEventId[eventId] = {
-                driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-                attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-              };
-              
-              const isMyDecided = 
-                (Array.isArray(dec.data.driver) && dec.data.driver.includes(userName)) ||
-                (Array.isArray(dec.data.attendant) && dec.data.attendant.includes(userName));
-              
-              if (isMyDecided) {
-                return { date: ev.date, eventId };
-              }
-            }
-          } catch {}
-          return null;
-        });
-        
-        const results = (await Promise.all(checks)).filter(Boolean);
-        results.forEach(({ date, eventId }) => {
-          decDateSet.add(date);
-          // 確定済みの場合はキャンセルフラグを解除
-        });
-      }
-      
-      // キャンセル通知をチェック（自分が応募したイベントでキャンセルが出た場合）
+
+      // 4. キャンセル通知をチェック
+      const userCancelledDateSet = new Set();
       try {
         const notifsRes = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
         if (notifsRes.ok && Array.isArray(notifsRes.data)) {
           for (const notif of notifsRes.data) {
-            // キャンセル通知で、自分が応募しているイベントの場合
             if (notif.kind?.startsWith("cancel_") && myApps.some(a => a.event_id === notif.event_id)) {
               const ev = events.find(e => e.id === notif.event_id);
               if (ev && ev.date) {
-                // ただし、既に確定済み（キャンセルが埋まった）の場合は追加しない
                 const evDecided = allDecidedByEventId[notif.event_id];
                 const capacityDriver = ev.capacity_driver ?? 1;
                 const capacityAttendant = ev.capacity_attendant ?? 1;
@@ -438,60 +433,18 @@ export default function MainApp() {
           }
         }
       } catch {}
-      
-      // 当日のイベントの確定状況も保存
-      for (const ev of todays) {
-        if (decOut[ev.id]) {
-          allDecidedByEventId[ev.id] = decOut[ev.id];
-        }
-      }
-      
-      // decidedステートには当日のデータとallDecidedByEventIdをマージして設定
-      // （イベント一覧タブでも確定状況を表示するため）
-      const mergedDecided = { ...allDecidedByEventId, ...decOut };
-      
-      setCounts(out);
-      setDecided(mergedDecided);
-      setDecidedDates(decDateSet);
-      setCancelledDates(userCancelledDateSet);
-      setDecidedMembersByEventId(allDecidedByEventId);
-    })();
-  }, [events, selectedDate, userName, myApps, handleNetworkError]);
 
-
-  // すべてのイベントについて確定状況をバックグラウンドで取得し、カレンダーの色がタップ前に反映されるようにする
-  useEffect(() => {
-    let aborted = false;
-    (async () => {
-      if (!Array.isArray(events) || events.length === 0) {
-        setDecidedMembersByEventId({});
-        return;
-      }
-      const map = {};
-      const tasks = events.map(async (ev) => {
-        try {
-          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError);
-          if (dec.ok && dec.data) {
-            map[ev.id] = {
-              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
-              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
-            };
-          } else {
-            map[ev.id] = { driver: [], attendant: [] };
-          }
-        } catch {
-          map[ev.id] = { driver: [], attendant: [] };
-        }
-      });
-      await Promise.all(tasks);
       if (!aborted) {
-        setDecidedMembersByEventId(map);
-        // イベント一覧タブでも確定状況を表示するため、decidedステートにも反映
-        setDecided(prev => ({ ...prev, ...map }));
+        // すべての状態を一度に更新（競合を防ぐ）
+        setCounts(out);
+        setDecided(allDecidedByEventId);
+        setDecidedDates(decDateSet);
+        setCancelledDates(userCancelledDateSet);
+        setDecidedMembersByEventId(allDecidedByEventId);
       }
     })();
     return () => { aborted = true; };
-  }, [events, handleNetworkError]);
+  }, [events, selectedDate, userName, myApps, handleNetworkError]);
 
   const hasApplied = (eventId, kind) =>
     myApps.some((a) => a.event_id === eventId && a.kind === kind);
@@ -550,33 +503,6 @@ export default function MainApp() {
       const otherKind = myApps.find(a => a.event_id === ev.id && a.kind !== kind)?.kind;
       const otherKindLabel = otherKind === "driver" ? "運転手" : "添乗員";
       showToast(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`, 'warning');
-      return;
-    }
-
-    // 同じ時間帯への重複応募をクライアント側でもガード（サーバー側もチェック済み）
-    const targetDate = ev.date;
-    const targetStart = ev.start_time;
-    const targetEnd = ev.end_time || ev.start_time;
-    const eventsMapById = Object.fromEntries(events.map(e => [e.id, e]));
-    const overlapsTime = (a, b) => {
-      if (!a || !b) return false;
-      if (!a.start_time || !b.start_time) return false;
-      const aStart = a.start_time;
-      const aEnd = a.end_time || a.start_time;
-      const bStart = b.start_time;
-      const bEnd = b.end_time || b.start_time;
-      // 文字列の HH:MM 比較で重なり判定
-      if (aStart === bStart) return true;
-      return !(aEnd <= bStart || bEnd <= aStart);
-    };
-    const hasTimeConflict = myApps.some(a => {
-      const ev2 = eventsMapById[a.event_id];
-      if (!ev2) return false;
-      if (ev2.date !== targetDate) return false;
-      return overlapsTime(ev2, { start_time: targetStart, end_time: targetEnd });
-    });
-    if (hasTimeConflict) {
-      showToast("同じ時間帯に既に応募済みです。別の時間帯を選択してください。", 'warning');
       return;
     }
     
@@ -974,26 +900,6 @@ export default function MainApp() {
                     // 同じイベントで既に別の役割に応募しているかチェック
                     const hasAppliedOtherKindDriver = appliedAtt; // 添乗員に応募している場合、運転手は無効
                     const hasAppliedOtherKindAttendant = appliedDriver; // 運転手に応募している場合、添乗員は無効
-                  
-                  // 同日の他イベントと時間帯が重なる応募が既にあるか（UI 無効化用）
-                  const eventsMapById = Object.fromEntries(events.map(e => [e.id, e]));
-                  const overlapsTime = (a, b) => {
-                    if (!a || !b) return false;
-                    if (!a.start_time || !b.start_time) return false;
-                    const aStart = a.start_time;
-                    const aEnd = a.end_time || a.start_time;
-                    const bStart = b.start_time;
-                    const bEnd = b.end_time || b.start_time;
-                    if (aStart === bStart) return true;
-                    return !(aEnd <= bStart || bEnd <= aStart);
-                  };
-                  const hasAnyTimeConflict = myApps.some(a => {
-                    const ev2 = eventsMapById[a.event_id];
-                    if (!ev2) return false;
-                    if (ev2.id === ev.id) return false;
-                    if (ev2.date !== ev.date) return false;
-                    return overlapsTime(ev2, ev);
-                  });
                     
                     const hasDecidedDriver = dec.driver.length > 0;
                     const hasDecidedAttendant = dec.attendant.length > 0;
@@ -1062,9 +968,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver || hasAnyTimeConflict}
+                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver}
                                 onClick={() => apply(ev, "driver")}
-                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
+                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : ""}
                               >
                                 {applying ? "処理中..." : "運転手で応募"}
                               </button>
@@ -1090,9 +996,9 @@ export default function MainApp() {
                             ) : (
                               <button
                                 className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant || hasAnyTimeConflict}
+                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant}
                                 onClick={() => apply(ev, "attendant")}
-                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : (hasAnyTimeConflict ? "同じ時間帯に応募済みです" : "")}
+                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : ""}
                               >
                                 {applying ? "処理中..." : "添乗員で応募"}
                               </button>

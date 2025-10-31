@@ -315,11 +315,8 @@ export default function AdminDashboard() {
       }
 
       // 2) 以降はバックグラウンド更新（描画はブロックしない）
-      // 確定済み情報の大量リクエストは省略（必要時にモーダルで取得）
-      setDecidedDates(new Set());
-      setDecidedMembersByDate({});
-      setDecidedMembersByEventId({});
-
+      // 状態をリセットせず、後続のuseEffectで統一して更新されるまで待つ
+      
       // 通知一覧を取得してキャンセル情報と通知一覧の両方を更新（1回のAPI呼び出し）
       (async () => {
         try {
@@ -327,18 +324,6 @@ export default function AdminDashboard() {
           if (notifs.ok && Array.isArray(notifs.data)) {
             // 通知一覧をセット
             setNotifications(notifs.data);
-            
-            // キャンセル・繰上げ・定員不足の検知
-            const cancelDateSet = new Set();
-            for (const notif of notifs.data) {
-              if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
-                try {
-                  const evDetail = evs.find(e => e.id === notif.event_id);
-                  if (evDetail && evDetail.date) cancelDateSet.add(evDetail.date);
-                } catch {}
-              }
-            }
-            setCancelledDates(cancelDateSet);
           }
         } catch {}
       })();
@@ -348,7 +333,7 @@ export default function AdminDashboard() {
         const ids = new Set();
         for (const ev of evs.slice(0, 60)) {
           try {
-            const d = await apiFetch(`/api?path=decide&event_id=${ev.id}`);
+            const d = await apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError);
             // 管理者一覧の「確定済み」判定: 両役（運転手・添乗員）が揃っているときのみ
             if (
               d.ok && d.data &&
@@ -370,6 +355,82 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   };
+
+  // すべてのイベントの確定状況を取得（カレンダーの色分け用）
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      if (!Array.isArray(events) || events.length === 0) {
+        if (!aborted) {
+          setDecidedMembersByEventId({});
+          setDecidedMembersByDate({});
+          setDecidedDates(new Set());
+          setCancelledDates(new Set());
+        }
+        return;
+      }
+
+      // 1. すべてのイベントの確定状況を取得
+      const allDecidedByEventId = {};
+      const tasks = events.map(async (ev) => {
+        try {
+          const dec = await apiFetch(`/api?path=decide&event_id=${ev.id}`, {}, handleNetworkError);
+          if (dec.ok && dec.data) {
+            allDecidedByEventId[ev.id] = {
+              driver: Array.isArray(dec.data.driver) ? dec.data.driver : [],
+              attendant: Array.isArray(dec.data.attendant) ? dec.data.attendant : [],
+            };
+          } else {
+            allDecidedByEventId[ev.id] = { driver: [], attendant: [] };
+          }
+        } catch {
+          allDecidedByEventId[ev.id] = { driver: [], attendant: [] };
+        }
+      });
+      await Promise.all(tasks);
+      if (aborted) return;
+
+      // 2. 日付ごとに確定済みメンバーをまとめる
+      const decidedByDate = {};
+      const decidedDateSet = new Set();
+      for (const ev of events) {
+        if (!ev.date) continue;
+        const evDecided = allDecidedByEventId[ev.id];
+        if (evDecided && (evDecided.driver?.length > 0 || evDecided.attendant?.length > 0)) {
+          if (!decidedByDate[ev.date]) {
+            decidedByDate[ev.date] = { driver: [], attendant: [] };
+          }
+          // 日付単位では、どれか一つでも確定していればその日付を確定として扱う
+          decidedDateSet.add(ev.date);
+        }
+      }
+
+      // 3. キャンセル通知をチェック
+      const cancelDateSet = new Set();
+      try {
+        const notifsRes = await apiFetch("/api?path=notifications", {}, handleNetworkError);
+        if (notifsRes.ok && Array.isArray(notifsRes.data)) {
+          for (const notif of notifsRes.data) {
+            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
+              const ev = events.find(e => e.id === notif.event_id);
+              if (ev && ev.date) {
+                cancelDateSet.add(ev.date);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      if (!aborted) {
+        // すべての状態を一度に更新（競合を防ぐ）
+        setDecidedMembersByEventId(allDecidedByEventId);
+        setDecidedMembersByDate(decidedByDate);
+        setDecidedDates(decidedDateSet);
+        setCancelledDates(cancelDateSet);
+      }
+    })();
+    return () => { aborted = true; };
+  }, [events, handleNetworkError]);
 
   const ymd = toLocalYMD(selectedDate);
   const todays = useMemo(() => events.filter((e) => e.date === ymd), [events, ymd]);
