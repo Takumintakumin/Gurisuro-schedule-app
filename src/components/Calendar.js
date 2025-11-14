@@ -320,6 +320,7 @@ export default function Calendar({
   decidedMembersByDate = {}, // 管理者用: { "YYYY-MM-DD": { driver: string[], attendant: string[] } }
   cancelledDates = new Set(), // キャンセルされた日付のSet (YYYY-MM-DD形式)
   myAppliedEventIds = new Set(), // ユーザー側用: 自分が応募しているイベントIDのSet（管理者側では空のSet）
+  isAdminView = false,
   compact = false, // モバイルで見やすくするための簡易表示
   currentUserName = "",
 }) {
@@ -459,7 +460,7 @@ export default function Calendar({
     const decidedMembersByEventId = decidedMembersByDate?._byEventId || {}; // 管理者用: イベントIDごとの確定済みメンバー情報
 
     // 管理者用/ユーザー用: 運転手と添乗員が確定済みか、定員不足かチェック
-    const isAdmin = Object.keys(decidedMembersByEventId).length > 0; // 管理者かどうかの判定（decidedMembersByEventIdがある場合）
+    const isAdmin = Boolean(isAdminView); // 管理者表示かどうか（明示的に指定）
     let allConfirmed = false; // 運転手と添乗員が確定済み
     
     if (dayEvents.length > 0) {

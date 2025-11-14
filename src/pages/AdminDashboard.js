@@ -1094,6 +1094,7 @@ export default function AdminDashboard() {
               decidedDates={memoizedDecidedDates}
               decidedMembersByDate={calendarDecidedMembersByDate}
               cancelledDates={memoizedCancelledDates}
+              isAdminView={true}
             />
 
         {/* 募集作成：常時表示をやめ、ボタンで開く */}
