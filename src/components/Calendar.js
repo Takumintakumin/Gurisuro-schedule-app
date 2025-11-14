@@ -496,6 +496,7 @@ export default function Calendar({
       allConfirmed = true;
     }
 
+    const isTodayDate = isToday(date);
     // 背景色の優先度：
     // 1. キャンセル（定員が埋まっていない場合のみ）
     // 2. 確定済みまたは定員が埋まった（緑）
@@ -518,7 +519,11 @@ export default function Calendar({
     else base += " bg-white hover:bg-green-50/50 border-gray-200";
 
     // 選択中はリング・今日アウトライン（より目立つように）
-    if (isSel) base += " ring-3 ring-emerald-400 ring-offset-2 shadow-lg transform scale-105";
+    if (isSel) {
+      base += " ring-3 ring-emerald-400 ring-offset-2 shadow-lg transform scale-105";
+    } else if (isTodayDate) {
+      base += " ring-2 ring-sky-300 ring-offset-1";
+    }
 
     // 土日色（確定済みの場合は白色テキスト）
     const wd = date.getDay();
@@ -528,8 +533,7 @@ export default function Calendar({
       : (wd === 0 ? "text-red-600" : wd === 6 ? "text-blue-600" : "text-gray-800");
     
     // 今日の日付には特別なバッジ
-    const isTodayDate = isToday(date);
-
+    
     return (
       <div
         key={`day-${i}`}
@@ -557,6 +561,13 @@ export default function Calendar({
           if (e.key === "Enter" || e.key === " ") onDateSelect?.(date);
         }}
       >
+        {isTodayDate && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-1 rounded-xl border-2 border-sky-400/70 shadow-[0_0_10px_rgba(14,165,233,0.35)]"
+            style={{ zIndex: 1 }}
+          />
+        )}
         {/* 上段：日付 */}
         <div className="flex items-start justify-between mb-1">
           <span className={`text-[17px] sm:text-[18px] font-extrabold ${dayColor}`}>

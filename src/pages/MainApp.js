@@ -86,6 +86,17 @@ export default function MainApp() {
   const MAX_NOTIFS = 30; // 表示・保持の上限（古いものは自動的に非表示）
   const [applicationHistory, setApplicationHistory] = useState([]); // 応募履歴（イベント情報込み）
   const [showHistory, setShowHistory] = useState(false); // 折り畳み（既定は非表示）
+  const isEventDatePast = useCallback((dateStr) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-').map((p) => parseInt(p, 10));
+    if (parts.length !== 3 || parts.some(isNaN)) return false;
+    const [y, m, d] = parts;
+    const eventDate = new Date(y, m - 1, d);
+    eventDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return eventDate.getTime() < today.getTime();
+  }, []);
   const [userSettings, setUserSettings] = useState({
     notifications_enabled: true,
   });
@@ -481,6 +492,10 @@ export default function MainApp() {
   }, [myAppsKey]);
 
   const apply = async (ev, kind) => {
+    if (isEventDatePast(ev.date)) {
+      showToast("この募集は既に締め切られています。", 'warning');
+      return;
+    }
     if (!userName) {
       showToast("先にログインしてください。", 'error');
       return;
@@ -777,6 +792,7 @@ export default function MainApp() {
             const isConfirmed = (dec.driver.includes(userName) || dec.attendant.includes(userName));
             const isDecidedDriver = dec.driver.includes(userName);
             const isDecidedAttendant = dec.attendant.includes(userName);
+            const isPastDate = isEventDatePast(ev.date);
             return (
               <li key={ev.id} className={"border rounded p-3 bg-white flex items-center gap-3 " + (isConfirmed ? "bg-green-50 border-green-300" : "") }>
                 {ev.icon && <img src={ev.icon} alt="" className="w-7 h-7" />}
@@ -906,6 +922,33 @@ export default function MainApp() {
                     const hasDecidedAttendant = dec.attendant.length > 0;
                     const isDecidedDriver = dec.driver.includes(userName);
                     const isDecidedAttendant = dec.attendant.includes(userName);
+                  const isPastDate = isEventDatePast(ev.date);
+                  const driverButtonDisabled = applying || (!appliedDriver && (hasDecidedDriver || hasAppliedOtherKindDriver || isPastDate));
+                  const attendantButtonDisabled = applying || (!appliedAtt && (hasDecidedAttendant || hasAppliedOtherKindAttendant || isPastDate));
+                  const driverButtonClass = appliedDriver
+                    ? "px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    : isPastDate
+                      ? "px-3 py-1 rounded bg-gray-300 text-gray-600 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                      : "px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed";
+                  const attendantButtonClass = appliedAtt
+                    ? "px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    : isPastDate
+                      ? "px-3 py-1 rounded bg-gray-300 text-gray-600 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                      : "px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed";
+                  const driverButtonTitle = !appliedDriver
+                    ? (isPastDate
+                      ? "この募集は既に終了しています"
+                      : hasAppliedOtherKindDriver
+                        ? "このイベントには既に添乗員として応募しています"
+                        : "")
+                    : "";
+                  const attendantButtonTitle = !appliedAtt
+                    ? (isPastDate
+                      ? "この募集は既に終了しています"
+                      : hasAppliedOtherKindAttendant
+                        ? "このイベントには既に運転手として応募しています"
+                        : "")
+                    : "";
 
                     return (
                       <li key={ev.id} className="border rounded p-3 flex items-center justify-between">
@@ -968,12 +1011,18 @@ export default function MainApp() {
                               </button>
                             ) : (
                               <button
-                                className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={applying || hasDecidedDriver || hasAppliedOtherKindDriver}
-                                onClick={() => apply(ev, "driver")}
-                                title={hasAppliedOtherKindDriver ? "このイベントには既に添乗員として応募しています" : ""}
+                              className={driverButtonClass}
+                              disabled={driverButtonDisabled}
+                              onClick={() => appliedDriver ? cancel(ev, "driver") : apply(ev, "driver")}
+                              title={driverButtonTitle}
                               >
-                                {applying ? "処理中..." : "運転手で応募"}
+                              {applying
+                                ? "処理中..."
+                                : appliedDriver
+                                  ? "応募取消（運転手）"
+                                  : isPastDate
+                                    ? "募集終了"
+                                    : "運転手で応募"}
                               </button>
                             )
                           )}
@@ -996,12 +1045,18 @@ export default function MainApp() {
                               </button>
                             ) : (
                               <button
-                                className="px-3 py-1 rounded bg-emerald-600 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={applying || hasDecidedAttendant || hasAppliedOtherKindAttendant}
-                                onClick={() => apply(ev, "attendant")}
-                                title={hasAppliedOtherKindAttendant ? "このイベントには既に運転手として応募しています" : ""}
+                              className={attendantButtonClass}
+                              disabled={attendantButtonDisabled}
+                              onClick={() => appliedAtt ? cancel(ev, "attendant") : apply(ev, "attendant")}
+                              title={attendantButtonTitle}
                               >
-                                {applying ? "処理中..." : "添乗員で応募"}
+                              {applying
+                                ? "処理中..."
+                                : appliedAtt
+                                  ? "応募取消（添乗員）"
+                                  : isPastDate
+                                    ? "募集終了"
+                                    : "添乗員で応募"}
                               </button>
                             )
                           )}
