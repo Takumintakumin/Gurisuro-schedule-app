@@ -39,6 +39,7 @@ const WeekView = ({
   cancelledDates,
   decidedMembersByDate,
   myAppliedEventIds,
+  currentUserName = "",
   onDateSelect,
   todayDate,
   onSwipeTouchStart,
@@ -230,15 +231,29 @@ const WeekView = ({
                   const hasDriver = isDecidedEvent?.driver?.length > 0;
                   const hasAttendant = isDecidedEvent?.attendant?.length > 0;
                   const isFullyDecided = hasDriver && hasAttendant;
+                  const userName = currentUserName?.trim() || "";
+                  const isUserConfirmed = Boolean(
+                    userName &&
+                    (
+                      isDecidedEvent?.driver?.includes(userName) ||
+                      isDecidedEvent?.attendant?.includes(userName)
+                    )
+                  );
+                  const highlightOnlyMine = Boolean(userName);
+                  const eventColorClass = (() => {
+                    if (isUserConfirmed || (!highlightOnlyMine && isFullyDecided)) {
+                      return 'bg-emerald-500 text-white border-2 border-emerald-600';
+                    }
+                    if (isCancelled || (!highlightOnlyMine && isDecided)) {
+                      return 'bg-rose-200 border-2 border-rose-400';
+                    }
+                    return 'bg-amber-100 border-2 border-amber-400 text-gray-800';
+                  })();
                   
                   return (
                     <div
                       key={event.id}
-                      className={`absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-md px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-xs cursor-pointer shadow-md z-10 transition-all hover:shadow-lg overflow-hidden ${
-                        isFullyDecided ? 'bg-emerald-500 text-white border-2 border-emerald-600' :
-                        isDecided || isCancelled ? 'bg-rose-200 border-2 border-rose-400' :
-                        'bg-amber-100 border-2 border-amber-400 text-gray-800'
-                      }`}
+                      className={`absolute left-0.5 right-0.5 sm:left-1 sm:right-1 rounded-md px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-xs cursor-pointer shadow-md z-10 transition-all hover:shadow-lg overflow-hidden ${eventColorClass}`}
                       style={{
                         top: `${pos.topPercent}%`,
                         height: `${Math.max(pos.heightPercent, 2)}%`,
@@ -306,6 +321,7 @@ export default function Calendar({
   cancelledDates = new Set(), // キャンセルされた日付のSet (YYYY-MM-DD形式)
   myAppliedEventIds = new Set(), // ユーザー側用: 自分が応募しているイベントIDのSet（管理者側では空のSet）
   compact = false, // モバイルで見やすくするための簡易表示
+  currentUserName = "",
 }) {
   // 追加: 月/週 表示トグル
   const [viewMode, setViewMode] = React.useState("month");
@@ -442,16 +458,9 @@ export default function Calendar({
     const decidedMembers = decidedMembersByDate?.[key] || null; // 管理者用: 確定済みメンバー情報（日付単位のまとめ）
     const decidedMembersByEventId = decidedMembersByDate?._byEventId || {}; // 管理者用: イベントIDごとの確定済みメンバー情報
 
-    // 1週間前以内かどうかを判定（イベントがある場合のみ）
-    const eventDate = new Date(date);
-    eventDate.setHours(0, 0, 0, 0);
-    const daysDiff = Math.floor((eventDate - todayDate) / (1000 * 60 * 60 * 24));
-    const isWithinOneWeek = daysDiff >= 0 && daysDiff <= 7;
-    
     // 管理者用/ユーザー用: 運転手と添乗員が確定済みか、定員不足かチェック
     const isAdmin = Object.keys(decidedMembersByEventId).length > 0; // 管理者かどうかの判定（decidedMembersByEventIdがある場合）
     let allConfirmed = false; // 運転手と添乗員が確定済み
-    let insufficientCapacity = false; // 1週間以内で定員不足
     
     if (dayEvents.length > 0) {
       if (isAdmin) {
@@ -474,14 +483,9 @@ export default function Calendar({
         // 確定済みのイベントがある場合は緑色にする（確定済みが優先）
         if (hasConfirmed) {
           allConfirmed = true;
-          insufficientCapacity = false; // 確定済みがある場合は赤色にしない
-        } else if (hasUnconfirmed && isWithinOneWeek) {
-          // 未確定のイベントがあり、1週間以内の場合のみ赤色
-          insufficientCapacity = true;
         }
       } else {
-        // ユーザー用: 自分の応募があるイベントで、定員が埋まっているか、1週間以内で定員が埋まっていないかをチェック
-        let hasInsufficientCapacity = false;
+        // ユーザー用: 自分の応募があるイベントで定員が埋まっているかチェック
         let hasAllCapacityFilled = false; // 自分の応募があるイベントで定員が埋まっている
         
         for (const ev of dayEvents) {
@@ -501,18 +505,12 @@ export default function Calendar({
           if (isCapacityFilled) {
             // 定員が埋まっている場合は緑色にする
             hasAllCapacityFilled = true;
-          } else if (isWithinOneWeek) {
-            // 1週間以内で定員が埋まっていない場合は赤色にする
-            hasInsufficientCapacity = true;
           }
         }
         
         // 定員が埋まっている場合は緑色を優先
         if (hasAllCapacityFilled) {
           allConfirmed = true;
-          insufficientCapacity = false; // 定員が埋まっている場合は赤色にしない
-        } else if (hasInsufficientCapacity) {
-          insufficientCapacity = true;
         }
       }
     }
@@ -520,14 +518,12 @@ export default function Calendar({
     // ユーザー側でも管理者側でも、確定済み（isDecided）の場合は緑色（自分の応募が確定済み）
     if (isDecided) {
       allConfirmed = true;
-      insufficientCapacity = false; // 確定済みがある場合は赤色にしない
     }
 
     // 背景色の優先度：
     // 1. キャンセル（定員が埋まっていない場合のみ）
-    // 2. 1週間以内で定員不足（赤）
-    // 3. 確定済みまたは定員が埋まった（緑）
-    // 4. イベントあり（オレンジ）
+    // 2. 確定済みまたは定員が埋まった（緑）
+    // 3. イベントあり（オレンジ）
     // 注意: キャンセルがあっても定員が埋まった（allConfirmed）場合は緑色を優先
     let base =
       "relative border cursor-pointer select-none transition-all duration-200 min-h-[80px] sm:min-h-[88px] p-2.5 rounded-lg shadow-sm";
@@ -537,9 +533,6 @@ export default function Calendar({
     } else if (isCancelled) {
       // キャンセルがあり、定員が埋まっていない場合
       base += " bg-rose-200 hover:bg-rose-300 border-rose-400 shadow-md";
-    } else if (insufficientCapacity) {
-      // 1週間以内で定員が埋まっていない場合
-      base += " bg-rose-100 hover:bg-rose-200 border-rose-300";
     } else if (dayEvents.length > 0 || hasTags) {
       // イベントがある場合
       base += " bg-amber-50 hover:bg-amber-100 border-amber-200 shadow-sm";
@@ -902,6 +895,7 @@ export default function Calendar({
           cancelledDates={cancelledDates}
           decidedMembersByDate={decidedMembersByDate}
           myAppliedEventIds={myAppliedEventIds}
+          currentUserName={currentUserName}
           onDateSelect={onDateSelect}
           todayDate={todayDate}
           onSwipeTouchStart={onSwipeTouchStart}

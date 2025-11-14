@@ -878,6 +878,7 @@ export default function MainApp() {
               decidedMembersByDate={calendarDecidedMembersByDate}
               myAppliedEventIds={memoizedMyAppliedEventIds}
               compact={true}
+              currentUserName={userName}
             />
 
             <div className="mt-4">
