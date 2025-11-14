@@ -486,33 +486,8 @@ export default function Calendar({
           allConfirmed = true;
         }
       } else {
-        // ユーザー用: 自分の応募があるイベントで定員が埋まっているかチェック
-        let hasAllCapacityFilled = false; // 自分の応募があるイベントで定員が埋まっている
-        
-        for (const ev of dayEvents) {
-          // 自分の応募があるイベントのみチェック
-          const isMyEvent = myAppliedEventIds && myAppliedEventIds.size > 0 && myAppliedEventIds.has(ev.id);
-          if (!isMyEvent) continue;
-          
-          const evDecided = decidedMembersByEventId[ev.id] || null;
-          const capacityDriver = ev.capacity_driver ?? 1;
-          const capacityAttendant = ev.capacity_attendant ?? 1;
-          const confirmedDriverCount = evDecided?.driver?.length || 0;
-          const confirmedAttendantCount = evDecided?.attendant?.length || 0;
-          
-          // 定員が埋まっているかチェック（運転手と添乗員が揃っている）
-          const isCapacityFilled = confirmedDriverCount >= capacityDriver && confirmedAttendantCount >= capacityAttendant;
-          
-          if (isCapacityFilled) {
-            // 定員が埋まっている場合は緑色にする
-            hasAllCapacityFilled = true;
-          }
-        }
-        
-        // 定員が埋まっている場合は緑色を優先
-        if (hasAllCapacityFilled) {
-          allConfirmed = true;
-        }
+        // ユーザー用: 自分が「確定」している場合のみ緑にする（後段のisDecided判定で処理）
+        // 応募枠が埋まっているだけでは色を変えない
       }
     }
     
