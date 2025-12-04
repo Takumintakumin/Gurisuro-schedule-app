@@ -1417,10 +1417,20 @@ export default function AdminDashboard() {
                                       {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                     </span>
                                   </label>
-                                  <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
+                                  <span className="text-xs text-gray-500">
+                                    {u.times ?? 0}回
+                                    {u.count60 !== undefined && (
+                                      <span className="ml-1 text-gray-400">
+                                        (60日: {u.count60}, 役割: {u.roleCount60 ?? 0})
+                                      </span>
+                                    )}
+                                  </span>
                                 </div>
                                 <div className="text-[11px] text-gray-500">
                                   最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                                  {u.gapDays !== undefined && u.gapDays !== 9999 && (
+                                    <span className="ml-2 text-gray-400">(経過: {u.gapDays}日)</span>
+                                  )}
                                 </div>
                               </li>
                             );
@@ -1483,10 +1493,20 @@ export default function AdminDashboard() {
                                       {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                     </span>
                                   </label>
-                                  <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
+                                  <span className="text-xs text-gray-500">
+                                    {u.times ?? 0}回
+                                    {u.count60 !== undefined && (
+                                      <span className="ml-1 text-gray-400">
+                                        (60日: {u.count60}, 役割: {u.roleCount60 ?? 0})
+                                      </span>
+                                    )}
+                                  </span>
                                 </div>
                                 <div className="text-[11px] text-gray-500">
                                   最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                                  {u.gapDays !== undefined && u.gapDays !== 9999 && (
+                                    <span className="ml-2 text-gray-400">(経過: {u.gapDays}日)</span>
+                                  )}
                                 </div>
                               </li>
                             );
