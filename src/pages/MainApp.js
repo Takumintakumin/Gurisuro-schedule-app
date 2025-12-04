@@ -927,16 +927,12 @@ export default function MainApp() {
                   const driverButtonTitle = !appliedDriver
                     ? (isPastDate
                       ? "この募集は既に終了しています"
-                      : hasAppliedOtherKindDriver
-                        ? "このイベントには既に添乗員として応募しています"
-                        : "")
+                      : "")
                     : "";
                   const attendantButtonTitle = !appliedAtt
                     ? (isPastDate
                       ? "この募集は既に終了しています"
-                      : hasAppliedOtherKindAttendant
-                        ? "このイベントには既に運転手として応募しています"
-                        : "")
+                      : "")
                     : "";
 
                     return (

@@ -431,21 +431,8 @@ export default async function handler(req, res) {
             cap = kind === "driver" ? evCheck.rows[0].capacity_driver : evCheck.rows[0].capacity_attendant;
           }
           
-          // 同じイベントで既に別の役割に応募しているかチェック
-          const existingApp = await query(
-            `SELECT kind FROM applications WHERE event_id = $1 AND username = $2`,
-            [event_id, username]
-          );
-          if (existingApp.rows && existingApp.rows.length > 0) {
-            const existingKind = existingApp.rows[0].kind;
-            if (existingKind !== kind) {
-              const existingKindLabel = existingKind === "driver" ? "運転手" : "添乗員";
-              return res.status(403).json({ 
-                error: `このイベントには既に${existingKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。` 
-              });
-            }
-            // 既に同じ役割で応募している場合は重複として処理（ON CONFLICTで処理される）
-          }
+          // 同じイベントで既に別の役割に応募しているかチェック（削除：両方に応募できるようにする）
+          // 既に同じ役割で応募している場合は重複として処理（ON CONFLICTで処理される）
           
           // 定員チェックを削除（何人でも応募できるようにする。管理者が後から選ぶため）
           // 以前の定員制限と自動切り替えロジックは削除
