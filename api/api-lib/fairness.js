@@ -96,15 +96,16 @@ export default async function handler(req, res) {
     console.log(`[fairness] applicant count: ${applicantUsernames.length}`);
     
     // まず、全応募者のselectionsデータを確認（デバッグ用）
+    // 重要：effective_dateは「イベントの日付（event_date）」を使用
     const allSelectionsCheck = await query(
       `SELECT s.username, s.kind, s.decided_at, e.event_date, e.date AS date_text,
-              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date,
-              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date AS is_before_event,
-              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date AS is_within_60days
+              COALESCE(e.event_date, NULLIF(e.date, '')::date) AS effective_date,
+              COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date AS is_before_event,
+              COALESCE(e.event_date, NULLIF(e.date, '')::date) >= $3::date AS is_within_60days
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
-       ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
+       ORDER BY s.username, COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC`,
       [applicantUsernames, eventDateStr, windowStartDate.toISOString().split('T')[0]]
     );
     console.log(`[fairness] all selections for applicants (before date filter):`, allSelectionsCheck.rows.length);
@@ -124,17 +125,18 @@ export default async function handler(req, res) {
     }
     
     // 60日以内の確定履歴を取得（イベント日付より前のみ）
-    // 日付の比較を明示的に行う（NULLの場合はevent_dateを使用）
+    // 重要：60日以内の判定は「イベントの日付（event_date）」で行う
+    // decided_atは確定した日時なので、イベントの日付とは異なる可能性がある
     const historyResult = await query(
       `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
-              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
+              COALESCE(e.event_date, NULLIF(e.date, '')::date) AS effective_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
-         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) IS NOT NULL
-         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date
-         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date
-       ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) >= $3::date
+       ORDER BY s.username, COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC`,
       [
         applicantUsernames,
         eventDateStr,
@@ -167,13 +169,14 @@ export default async function handler(req, res) {
     }
 
     // 4. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
-    // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
+    // 重要：最終確定日は「イベントの日付（event_date）」で判定する
     const lastDecidedResult = await query(
-      `SELECT s.username, MAX(COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date))) AS last_date
+      `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
-         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
        GROUP BY s.username`,
       [
         applicantsResult.rows.map(r => r.username),
