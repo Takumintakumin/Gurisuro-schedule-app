@@ -123,12 +123,15 @@ export default async function handler(req, res) {
       console.log(`[fairness] WARNING: No selections found for any applicant`);
     }
     
+    // 60日以内の確定履歴を取得（イベント日付より前のみ）
+    // 日付の比較を明示的に行う（NULLの場合はevent_dateを使用）
     const historyResult = await query(
       `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
               COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
+         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) IS NOT NULL
          AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date
          AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date
        ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
@@ -138,6 +141,14 @@ export default async function handler(req, res) {
         windowStartDate.toISOString().split('T')[0]
       ]
     );
+    
+    // デバッグ用：クエリパラメータをログ出力
+    console.log(`[fairness] historyResult query params:`, {
+      applicantUsernames: applicantUsernames.length,
+      eventDateStr,
+      windowStart: windowStartDate.toISOString().split('T')[0],
+      daysDiff: Math.floor((new Date(eventDateStr + "T00:00:00Z") - windowStartDate) / (1000 * 60 * 60 * 24))
+    });
     
     // デバッグ用：取得した履歴数をログ出力
     console.log(`[fairness] historyCount (within 60 days): ${historyResult.rows.length}`);
@@ -210,13 +221,25 @@ export default async function handler(req, res) {
       const history = historyByUser[username] || { driver: [], attendant: [] };
       
       // count60: 直近60日で確定した回数（driver+attendant合算）
-      const count60 = (history.driver || []).length + (history.attendant || []).length;
+      const driverCount = (history.driver || []).length;
+      const attendantCount = (history.attendant || []).length;
+      const count60 = driverCount + attendantCount;
       
       // roleCount60: 直近60日でその役割で確定した回数
       const roleCount60 = (history[kind] || []).length;
       
       // デバッグ用：全応募者のカウントをログ出力（0でも出力）
-      console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${(history.driver || []).length}, attendant=${(history.attendant || []).length}, history=${JSON.stringify(history)}`);
+      console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${driverCount}, attendant=${attendantCount}`);
+      if (count60 === 0 && roleCount60 === 0) {
+        // 0の場合、なぜ0なのかを詳しく調べる
+        const allSelectionsForUser = allSelectionsCheck.rows.filter(r => r.username === username);
+        console.log(`[fairness] ${username}: all selections count=${allSelectionsForUser.length}`, allSelectionsForUser.map(r => ({
+          kind: r.kind,
+          effective_date: r.effective_date,
+          is_before_event: r.is_before_event,
+          is_within_60days: r.is_within_60days
+        })));
+      }
       
       // gapDays: 最後に確定した日からの経過日数（経験なしは9999）
       let gapDays = 9999;
