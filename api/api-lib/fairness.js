@@ -33,9 +33,28 @@ export default async function handler(req, res) {
     }
 
     // 日付をDateオブジェクトに変換（UTC基準で扱う）
-    const eventDateObj = new Date(eventDate + "T00:00:00Z");
+    // eventDateが既にDateオブジェクトの場合はそのまま使用、文字列の場合は変換
+    let eventDateStr = eventDate;
+    if (eventDate instanceof Date) {
+      eventDateStr = eventDate.toISOString().split('T')[0];
+    } else if (typeof eventDate === 'string') {
+      // 既にYYYY-MM-DD形式の場合はそのまま使用
+      eventDateStr = eventDate.split('T')[0];
+    } else {
+      return res.status(400).json({ error: "イベントの日付の形式が不正です" });
+    }
+    
+    const eventDateObj = new Date(eventDateStr + "T00:00:00Z");
+    if (isNaN(eventDateObj.getTime())) {
+      return res.status(400).json({ error: `イベントの日付が無効です: ${eventDateStr}` });
+    }
+    
     const windowStartDate = new Date(eventDateObj);
     windowStartDate.setUTCDate(windowStartDate.getUTCDate() - W_DAYS);
+    
+    if (isNaN(windowStartDate.getTime())) {
+      return res.status(400).json({ error: "ウィンドウ開始日の計算に失敗しました" });
+    }
 
     // 2. 応募者リストを取得
     const applicantsResult = await query(
@@ -98,7 +117,7 @@ export default async function handler(req, res) {
        ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
       [
         applicantUsernames,
-        eventDate,
+        eventDateStr,
         windowStartDate.toISOString().split('T')[0]
       ]
     );
@@ -120,7 +139,7 @@ export default async function handler(req, res) {
        GROUP BY s.username`,
       [
         applicantsResult.rows.map(r => r.username),
-        eventDate
+        eventDateStr
       ]
     );
 
@@ -147,7 +166,13 @@ export default async function handler(req, res) {
 
     const lastDecidedByUser = {};
     for (const row of lastDecidedResult.rows) {
-      lastDecidedByUser[row.username] = new Date(row.last_date + "T00:00:00Z");
+      if (row.last_date) {
+        const lastDateStr = typeof row.last_date === 'string' ? row.last_date.split('T')[0] : row.last_date;
+        const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+        if (!isNaN(lastDateObj.getTime())) {
+          lastDecidedByUser[row.username] = lastDateObj;
+        }
+      }
     }
 
     // 6. 各応募者に特徴量とスコアを付与
@@ -166,8 +191,13 @@ export default async function handler(req, res) {
       // gapDays: 最後に確定した日からの経過日数（経験なしは9999）
       let gapDays = 9999;
       if (lastDecidedByUser[username]) {
-        const daysDiff = Math.floor((eventDateObj - lastDecidedByUser[username]) / (1000 * 60 * 60 * 24));
-        gapDays = Math.max(0, daysDiff);
+        try {
+          const daysDiff = Math.floor((eventDateObj - lastDecidedByUser[username]) / (1000 * 60 * 60 * 24));
+          gapDays = Math.max(0, daysDiff);
+        } catch (e) {
+          console.error(`[fairness] Error calculating gapDays for ${username}:`, e);
+          gapDays = 9999;
+        }
       }
       
       // スコア計算
