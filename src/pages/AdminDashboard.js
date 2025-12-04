@@ -937,7 +937,10 @@ export default function AdminDashboard() {
           .slice(0, Math.max(0, capacityDriver))
           .map(item => item.username);
         
+        // 運転手として選出された人は添乗員から除外（同じ人が両方に選ばれないようにする）
+        const autoDriverSet = new Set(autoDrivers);
         const autoAttendants = fairnessData.attendant
+          .filter(item => !autoDriverSet.has(item.username)) // 運転手として選出された人を除外
           .slice(0, Math.max(0, capacityAttendant))
           .map(item => item.username);
 
