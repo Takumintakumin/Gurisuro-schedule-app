@@ -510,16 +510,7 @@ export default function MainApp() {
       return;
     }
     
-    // 同じイベントで既に別の役割に応募しているかチェック
-    const hasAppliedOtherKind = myApps.some(a => 
-      a.event_id === ev.id && a.kind !== kind
-    );
-    if (hasAppliedOtherKind) {
-      const otherKind = myApps.find(a => a.event_id === ev.id && a.kind !== kind)?.kind;
-      const otherKindLabel = otherKind === "driver" ? "運転手" : "添乗員";
-      showToast(`このイベントには既に${otherKindLabel}として応募しています。同じイベントで運転手と添乗員の両方に応募することはできません。`, 'warning');
-      return;
-    }
+    // 同じイベントで既に別の役割に応募しているかチェック（削除：両方に応募できるようにする）
     
     setApplying(true);
     try {
@@ -914,17 +905,15 @@ export default function MainApp() {
                     const appliedDriver = hasApplied(ev.id, "driver");
                     const appliedAtt    = hasApplied(ev.id, "attendant");
                     
-                    // 同じイベントで既に別の役割に応募しているかチェック
-                    const hasAppliedOtherKindDriver = appliedAtt; // 添乗員に応募している場合、運転手は無効
-                    const hasAppliedOtherKindAttendant = appliedDriver; // 運転手に応募している場合、添乗員は無効
+                    // 同じイベントで既に別の役割に応募しているかチェック（削除：両方に応募できるようにする）
                     
                     const hasDecidedDriver = dec.driver.length > 0;
                     const hasDecidedAttendant = dec.attendant.length > 0;
                     const isDecidedDriver = dec.driver.includes(userName);
                     const isDecidedAttendant = dec.attendant.includes(userName);
                   const isPastDate = isEventDatePast(ev.date);
-                  const driverButtonDisabled = applying || (!appliedDriver && (hasDecidedDriver || hasAppliedOtherKindDriver || isPastDate));
-                  const attendantButtonDisabled = applying || (!appliedAtt && (hasDecidedAttendant || hasAppliedOtherKindAttendant || isPastDate));
+                  const driverButtonDisabled = applying || (!appliedDriver && (hasDecidedDriver || isPastDate));
+                  const attendantButtonDisabled = applying || (!appliedAtt && (hasDecidedAttendant || isPastDate));
                   const driverButtonClass = appliedDriver
                     ? "px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     : isPastDate

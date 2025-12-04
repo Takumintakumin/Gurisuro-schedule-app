@@ -271,17 +271,47 @@ export default function AdminDashboard() {
       return;
     }
     try {
-      const r = await apiFetch("/api/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event_id: fairData.event_id,
-          username: selectedUsername,
-          kind: selectedKind,
-        }),
-      }, handleNetworkError);
-      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-      showToast("応募を登録しました", 'success');
+      // 「両方」が選択された場合、運転手と添乗員の両方に応募
+      if (selectedKind === "both") {
+        // 運転手に応募
+        const r1 = await apiFetch("/api/applications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: fairData.event_id,
+            username: selectedUsername,
+            kind: "driver",
+          }),
+        }, handleNetworkError);
+        if (!r1.ok) throw new Error(r1.data?.error || `HTTP ${r1.status}`);
+
+        // 添乗員に応募
+        const r2 = await apiFetch("/api/applications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: fairData.event_id,
+            username: selectedUsername,
+            kind: "attendant",
+          }),
+        }, handleNetworkError);
+        if (!r2.ok) throw new Error(r2.data?.error || `HTTP ${r2.status}`);
+
+        showToast("応募を登録しました（運転手・添乗員の両方）", 'success');
+      } else {
+        // 通常の応募（運転手または添乗員）
+        const r = await apiFetch("/api/applications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_id: fairData.event_id,
+            username: selectedUsername,
+            kind: selectedKind,
+          }),
+        }, handleNetworkError);
+        if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
+        showToast("応募を登録しました", 'success');
+      }
       setManualApplyOpen(false);
       setSelectedUsername("");
       await openFairness(fairData.event_id);
@@ -1791,6 +1821,7 @@ export default function AdminDashboard() {
                   >
                     <option value="driver">運転手</option>
                     <option value="attendant">添乗員</option>
+                    <option value="both">両方</option>
                   </select>
                 </div>
 
