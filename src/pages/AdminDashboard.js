@@ -1360,9 +1360,14 @@ export default function AdminDashboard() {
                       ) : (
                         <ul className="space-y-1">
                           {fairData.driver.map((u) => {
-                            const isSelected = selDriver.includes(u.username);
-                            const isConfirmed = confirmedDriver.includes(u.username);
+                            const isSelectedDriver = selDriver.includes(u.username);
+                            const isSelectedAttendant = selAttendant.includes(u.username);
                             const isBothApplicant = bothApplicants.has(u.username);
+                            // 両方に応募している人の場合、両方の役割が選択されているかどうかでチェック状態を判定
+                            const isSelected = isBothApplicant 
+                              ? (isSelectedDriver && isSelectedAttendant)
+                              : isSelectedDriver;
+                            const isConfirmed = confirmedDriver.includes(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
                               : isSelected 
@@ -1428,9 +1433,14 @@ export default function AdminDashboard() {
                       ) : (
                         <ul className="space-y-1">
                           {fairData.attendant.map((u) => {
-                            const isSelected = selAttendant.includes(u.username);
-                            const isConfirmed = confirmedAttendant.includes(u.username);
+                            const isSelectedDriver = selDriver.includes(u.username);
+                            const isSelectedAttendant = selAttendant.includes(u.username);
                             const isBothApplicant = bothApplicants.has(u.username);
+                            // 両方に応募している人の場合、両方の役割が選択されているかどうかでチェック状態を判定
+                            const isSelected = isBothApplicant 
+                              ? (isSelectedDriver && isSelectedAttendant)
+                              : isSelectedAttendant;
+                            const isConfirmed = confirmedAttendant.includes(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
                               : isSelected 
