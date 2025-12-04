@@ -1363,10 +1363,8 @@ export default function AdminDashboard() {
                             const isSelectedDriver = selDriver.includes(u.username);
                             const isSelectedAttendant = selAttendant.includes(u.username);
                             const isBothApplicant = bothApplicants.has(u.username);
-                            // 両方に応募している人の場合、両方の役割が選択されているかどうかでチェック状態を判定
-                            const isSelected = isBothApplicant 
-                              ? (isSelectedDriver && isSelectedAttendant)
-                              : isSelectedDriver;
+                            // 運転手セクションでは、運転手として選択されているかどうかで判定
+                            const isSelected = isSelectedDriver;
                             const isConfirmed = confirmedDriver.includes(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
@@ -1390,21 +1388,15 @@ export default function AdminDashboard() {
                                       checked={isSelected}
                                       onChange={(e) => {
                                         if (e.target.checked) {
-                                          // 両方に応募している人の場合、両方の役割に追加
+                                          // 運転手として選択
+                                          // 両方に応募している人の場合、添乗員からは削除（同じ人が両方に選ばれないようにする）
                                           if (isBothApplicant) {
-                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
-                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
-                                          } else {
-                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
-                                          }
-                                        } else {
-                                          // 両方に応募している人の場合、両方の役割から削除
-                                          if (isBothApplicant) {
-                                            setSelDriver((prev) => prev.filter((x) => x !== u.username));
                                             setSelAttendant((prev) => prev.filter((x) => x !== u.username));
-                                          } else {
-                                            setSelDriver((prev) => prev.filter((x) => x !== u.username));
                                           }
+                                          setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
+                                        } else {
+                                          // 運転手から削除
+                                          setSelDriver((prev) => prev.filter((x) => x !== u.username));
                                         }
                                       }}
                                     />
@@ -1436,10 +1428,8 @@ export default function AdminDashboard() {
                             const isSelectedDriver = selDriver.includes(u.username);
                             const isSelectedAttendant = selAttendant.includes(u.username);
                             const isBothApplicant = bothApplicants.has(u.username);
-                            // 両方に応募している人の場合、両方の役割が選択されているかどうかでチェック状態を判定
-                            const isSelected = isBothApplicant 
-                              ? (isSelectedDriver && isSelectedAttendant)
-                              : isSelectedAttendant;
+                            // 添乗員セクションでは、添乗員として選択されているかどうかで判定
+                            const isSelected = isSelectedAttendant;
                             const isConfirmed = confirmedAttendant.includes(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
@@ -1463,21 +1453,15 @@ export default function AdminDashboard() {
                                       checked={isSelected}
                                       onChange={(e) => {
                                         if (e.target.checked) {
-                                          // 両方に応募している人の場合、両方の役割に追加
-                                          if (isBothApplicant) {
-                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
-                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
-                                          } else {
-                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
-                                          }
-                                        } else {
-                                          // 両方に応募している人の場合、両方の役割から削除
+                                          // 添乗員として選択
+                                          // 両方に応募している人の場合、運転手からは削除（同じ人が両方に選ばれないようにする）
                                           if (isBothApplicant) {
                                             setSelDriver((prev) => prev.filter((x) => x !== u.username));
-                                            setSelAttendant((prev) => prev.filter((x) => x !== u.username));
-                                          } else {
-                                            setSelAttendant((prev) => prev.filter((x) => x !== u.username));
                                           }
+                                          setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                        } else {
+                                          // 添乗員から削除
+                                          setSelAttendant((prev) => prev.filter((x) => x !== u.username));
                                         }
                                       }}
                                     />
