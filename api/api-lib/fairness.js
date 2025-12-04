@@ -98,16 +98,29 @@ export default async function handler(req, res) {
     // まず、全応募者のselectionsデータを確認（デバッグ用）
     const allSelectionsCheck = await query(
       `SELECT s.username, s.kind, s.decided_at, e.event_date, e.date AS date_text,
-              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
+              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date,
+              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date AS is_before_event,
+              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date AS is_within_60days
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
        ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
-      [applicantUsernames]
+      [applicantUsernames, eventDateStr, windowStartDate.toISOString().split('T')[0]]
     );
     console.log(`[fairness] all selections for applicants (before date filter):`, allSelectionsCheck.rows.length);
     if (allSelectionsCheck.rows.length > 0) {
       console.log(`[fairness] sample selection:`, JSON.stringify(allSelectionsCheck.rows[0], null, 2));
+      console.log(`[fairness] all selections with date check:`, allSelectionsCheck.rows.map(r => ({
+        username: r.username,
+        kind: r.kind,
+        effective_date: r.effective_date,
+        is_before_event: r.is_before_event,
+        is_within_60days: r.is_within_60days,
+        eventDateStr: eventDateStr,
+        windowStart: windowStartDate.toISOString().split('T')[0]
+      })));
+    } else {
+      console.log(`[fairness] WARNING: No selections found for any applicant`);
     }
     
     const historyResult = await query(
@@ -202,10 +215,8 @@ export default async function handler(req, res) {
       // roleCount60: 直近60日でその役割で確定した回数
       const roleCount60 = (history[kind] || []).length;
       
-      // デバッグ用：各応募者のカウントをログ出力
-      if (count60 > 0 || roleCount60 > 0) {
-        console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${(history.driver || []).length}, attendant=${(history.attendant || []).length}`);
-      }
+      // デバッグ用：全応募者のカウントをログ出力（0でも出力）
+      console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${(history.driver || []).length}, attendant=${(history.attendant || []).length}, history=${JSON.stringify(history)}`);
       
       // gapDays: 最後に確定した日からの経過日数（経験なしは9999）
       let gapDays = 9999;
@@ -293,13 +304,27 @@ export default async function handler(req, res) {
     // デバッグ用：レスポンスの内容をログ出力
     console.log(`[fairness] ===== RESPONSE =====`);
     console.log(`[fairness] driver count: ${driver.length}, attendant count: ${attendant.length}`);
+    console.log(`[fairness] all drivers with count60:`, driver.map(d => ({ 
+      username: d.username, 
+      count60: d.count60, 
+      roleCount60: d.roleCount60,
+      times: d.times,
+      hasCount60: d.count60 !== undefined,
+      hasRoleCount60: d.roleCount60 !== undefined
+    })));
+    console.log(`[fairness] all attendants with count60:`, attendant.map(a => ({ 
+      username: a.username, 
+      count60: a.count60, 
+      roleCount60: a.roleCount60,
+      times: a.times,
+      hasCount60: a.count60 !== undefined,
+      hasRoleCount60: a.roleCount60 !== undefined
+    })));
     if (driver.length > 0) {
-      console.log(`[fairness] first driver:`, JSON.stringify(driver[0], null, 2));
-      console.log(`[fairness] all drivers count60:`, driver.map(d => ({ username: d.username, count60: d.count60, roleCount60: d.roleCount60 })));
+      console.log(`[fairness] first driver full:`, JSON.stringify(driver[0], null, 2));
     }
     if (attendant.length > 0) {
-      console.log(`[fairness] first attendant:`, JSON.stringify(attendant[0], null, 2));
-      console.log(`[fairness] all attendants count60:`, attendant.map(a => ({ username: a.username, count60: a.count60, roleCount60: a.roleCount60 })));
+      console.log(`[fairness] first attendant full:`, JSON.stringify(attendant[0], null, 2));
     }
     console.log(`[fairness] ===== END =====`);
     

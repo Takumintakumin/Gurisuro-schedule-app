@@ -881,13 +881,22 @@ export default function AdminDashboard() {
       };
       
       // デバッグ用：fairnessデータの内容をログ出力
+      console.log('[AdminDashboard] ===== FAIRNESS DATA RECEIVED =====');
+      console.log('[AdminDashboard] raw data:', JSON.stringify(data, null, 2));
       console.log('[AdminDashboard] fairnessData:', JSON.stringify(fairnessData, null, 2));
+      console.log('[AdminDashboard] driver count:', fairnessData.driver.length);
+      console.log('[AdminDashboard] attendant count:', fairnessData.attendant.length);
       if (fairnessData.driver.length > 0) {
-        console.log('[AdminDashboard] first driver:', fairnessData.driver[0]);
+        console.log('[AdminDashboard] first driver:', JSON.stringify(fairnessData.driver[0], null, 2));
+        console.log('[AdminDashboard] first driver count60:', fairnessData.driver[0].count60, 'roleCount60:', fairnessData.driver[0].roleCount60);
+        console.log('[AdminDashboard] all drivers count60:', fairnessData.driver.map(d => ({ username: d.username, count60: d.count60, roleCount60: d.roleCount60, hasCount60: d.count60 !== undefined })));
       }
       if (fairnessData.attendant.length > 0) {
-        console.log('[AdminDashboard] first attendant:', fairnessData.attendant[0]);
+        console.log('[AdminDashboard] first attendant:', JSON.stringify(fairnessData.attendant[0], null, 2));
+        console.log('[AdminDashboard] first attendant count60:', fairnessData.attendant[0].count60, 'roleCount60:', fairnessData.attendant[0].roleCount60);
+        console.log('[AdminDashboard] all attendants count60:', fairnessData.attendant.map(a => ({ username: a.username, count60: a.count60, roleCount60: a.roleCount60, hasCount60: a.count60 !== undefined })));
       }
+      console.log('[AdminDashboard] ===== END =====');
       
       setFairData(fairnessData);
     } catch (e) {
