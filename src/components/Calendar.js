@@ -505,8 +505,8 @@ export default function Calendar({
     let base =
       "relative border cursor-pointer select-none transition-all duration-200 min-h-[80px] sm:min-h-[88px] p-2.5 rounded-lg shadow-sm";
     if (allConfirmed || isDecided) {
-      // 確定済みまたは定員が埋まった場合は鮮やかなグリーン
-      base += " bg-emerald-500 hover:bg-emerald-600 border-emerald-600 text-white shadow-md";
+      // 確定済みまたは定員が埋まった場合は柔らかいグリーン
+      base += " bg-emerald-200 hover:bg-emerald-300 border-emerald-300 text-emerald-900 shadow-md";
     } else if (isCancelled) {
       // キャンセルがあり、定員が埋まっていない場合
       base += " bg-rose-200 hover:bg-rose-300 border-rose-400 shadow-md";
@@ -520,9 +520,9 @@ export default function Calendar({
 
     // 選択中はリング・今日アウトライン（より目立つように）
     if (isSel) {
-      base += " ring-3 ring-emerald-400 ring-offset-2 shadow-lg transform scale-105";
+      base += " ring-3 ring-emerald-300 ring-offset-2 shadow-lg transform scale-105";
     } else if (isTodayDate) {
-      base += " ring-2 ring-sky-300 ring-offset-1";
+      base += " ring-2 ring-sky-200 ring-offset-1";
     }
 
     // 土日色（確定済みの場合は白色テキスト）
@@ -564,7 +564,7 @@ export default function Calendar({
         {isTodayDate && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-1 rounded-xl border-2 border-sky-400/70 shadow-[0_0_10px_rgba(14,165,233,0.35)]"
+            className="pointer-events-none absolute inset-1 rounded-xl border-2 border-sky-200/90 shadow-[0_0_8px_rgba(125,211,252,0.4)]"
             style={{ zIndex: 1 }}
           />
         )}
