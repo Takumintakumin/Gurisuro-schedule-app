@@ -794,6 +794,22 @@ export default async function handler(req, res) {
               })();
             }
           }
+          
+          // 確定されなかった方の応募を自動削除
+          // 運転手として確定された人が添乗員にも応募している場合、添乗員の応募を削除
+          for (const driverUsername of driver) {
+            await query(
+              `DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = 'attendant'`,
+              [eventId, driverUsername]
+            );
+          }
+          // 添乗員として確定された人が運転手にも応募している場合、運転手の応募を削除
+          for (const attendantUsername of attendant) {
+            await query(
+              `DELETE FROM applications WHERE event_id = $1 AND username = $2 AND kind = 'driver'`,
+              [eventId, attendantUsername]
+            );
+          }
         }
         return res.status(200).json({ ok: true });
       }
