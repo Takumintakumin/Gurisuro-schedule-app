@@ -821,6 +821,7 @@ export default function AdminDashboard() {
       return r.data;
     };
 
+    let fairnessData = null; // 自動選出用に保持
     try {
       let data = null;
       try {
@@ -831,11 +832,12 @@ export default function AdminDashboard() {
       }
 
       // 期待形 { driver:[], attendant:[] }
-      setFairData({
+      fairnessData = {
         event_id: eventId,
         driver: Array.isArray(data.driver) ? data.driver : [],
         attendant: Array.isArray(data.attendant) ? data.attendant : [],
-      });
+      };
+      setFairData(fairnessData);
     } catch (e) {
       // 3) 最後の保険：生応募を種別で分けて時系列ソートして見せる
       try {
@@ -868,7 +870,8 @@ export default function AdminDashboard() {
             rank: i + 1,
           }));
 
-        setFairData({ event_id: eventId, driver, attendant });
+        fairnessData = { event_id: eventId, driver, attendant };
+        setFairData(fairnessData);
         setFairError("公平スコア（v_participation）が使えないため、応募順の簡易表示です。");
       } catch (e2) {
         setFairError(e2.message || "応募状況の取得に失敗しました。");
@@ -876,6 +879,7 @@ export default function AdminDashboard() {
     }
 
     // 既存の確定を読み込み（成功・失敗に関わらず実行）
+    let hasExistingDecisions = false;
     try {
       const dec = await apiFetch(`/api?path=decide&event_id=${encodeURIComponent(eventId)}`);
       if (dec.ok && dec.data) {
@@ -886,8 +890,35 @@ export default function AdminDashboard() {
         // 確定済みを選択済みにも設定（既存の確定済みは選択済みとしても表示）
         setSelDriver(confirmedDrivers);
         setSelAttendant(confirmedAttendants);
+        hasExistingDecisions = confirmedDrivers.length > 0 || confirmedAttendants.length > 0;
       }
     } catch {}
+
+    // 既存の確定がない場合、fairnessデータに基づいて自動選出
+    if (!hasExistingDecisions && fairnessData && fairnessData.driver && fairnessData.attendant) {
+      try {
+        // イベントの定員情報を取得
+        const eventInfo = events.find(e => e.id === eventId);
+        const capacityDriver = eventInfo?.capacity_driver != null ? Number(eventInfo.capacity_driver) : 1;
+        const capacityAttendant = eventInfo?.capacity_attendant != null ? Number(eventInfo.capacity_attendant) : 1;
+
+        // fairnessデータのrank順に従って、定員に合わせて自動選出
+        const autoDrivers = fairnessData.driver
+          .slice(0, Math.max(0, capacityDriver))
+          .map(item => item.username);
+        
+        const autoAttendants = fairnessData.attendant
+          .slice(0, Math.max(0, capacityAttendant))
+          .map(item => item.username);
+
+        // 自動選出結果を選択済みとして設定
+        setSelDriver(autoDrivers);
+        setSelAttendant(autoAttendants);
+      } catch (err) {
+        // 自動選出に失敗してもエラーを表示しない（静かに失敗）
+        console.error('自動選出エラー:', err);
+      }
+    }
 
     setFairLoading(false);
   };
@@ -1411,38 +1442,6 @@ export default function AdminDashboard() {
 
               {/* 操作行 */}
               <div className="mt-4 flex flex-wrap gap-2 items-center">
-                <button
-                  className="px-3 py-2 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
-                  onClick={async () => {
-                    const confirmed = await showConfirm({
-                      title: '自動選出',
-                      message: '定員に合わせて自動選出しますか？（確定は保存されません。確定を保存ボタンで保存してください）',
-                      confirmText: '自動選出する',
-                      cancelText: 'キャンセル',
-                      type: 'info',
-                    });
-                    if (!confirmed) return;
-                    try {
-                      const r = await apiFetch(`/api?path=decide_auto`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ event_id: fairData.event_id }),
-                      }, handleNetworkError);
-                      if (!r.ok) throw new Error(r.data?.error || `HTTP ${r.status}`);
-                      const autoDrivers = Array.isArray(r.data.driver) ? r.data.driver : [];
-                      const autoAttendants = Array.isArray(r.data.attendant) ? r.data.attendant : [];
-                      // 自動選出は選択済みとして設定（確定済みではない）
-                      setSelDriver(autoDrivers);
-                      setSelAttendant(autoAttendants);
-                      showToast(`自動選出が完了しました。運転手: ${autoDrivers.length}人、添乗員: ${autoAttendants.length}人。※「確定を保存」ボタンで保存してください。`, 'success', 5000);
-                    } catch (err) {
-                      showToast(`自動選出に失敗しました: ${err.message}`, 'error');
-                    }
-                  }}
-                >
-                  定員に合わせて自動選出
-                </button>
-
                 <button
                   className="px-3 py-2 rounded bg-blue-600 text-white text-sm"
                   onClick={async () => {
