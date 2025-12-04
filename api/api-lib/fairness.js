@@ -67,6 +67,26 @@ export default async function handler(req, res) {
       console.log('[fairness] decided_at update skipped:', e.message);
     }
     
+    // デバッグ用：応募者リストをログ出力
+    const applicantUsernames = applicantsResult.rows.map(r => r.username);
+    console.log(`[fairness] event_id: ${eventId}, eventDate: ${eventDate}, windowStart: ${windowStartDate.toISOString().split('T')[0]}`);
+    console.log(`[fairness] applicants:`, applicantUsernames);
+    
+    // まず、全応募者のselectionsデータを確認（デバッグ用）
+    const allSelectionsCheck = await query(
+      `SELECT s.username, s.kind, s.decided_at, e.event_date, e.date AS date_text,
+              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
+       FROM selections s
+       JOIN events e ON e.id = s.event_id
+       WHERE s.username = ANY($1::text[])
+       ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
+      [applicantUsernames]
+    );
+    console.log(`[fairness] all selections for applicants (before date filter):`, allSelectionsCheck.rows.length);
+    if (allSelectionsCheck.rows.length > 0) {
+      console.log(`[fairness] sample selection:`, JSON.stringify(allSelectionsCheck.rows[0], null, 2));
+    }
+    
     const historyResult = await query(
       `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
               COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
@@ -77,14 +97,17 @@ export default async function handler(req, res) {
          AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date
        ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
       [
-        applicantsResult.rows.map(r => r.username),
+        applicantUsernames,
         eventDate,
         windowStartDate.toISOString().split('T')[0]
       ]
     );
     
     // デバッグ用：取得した履歴数をログ出力
-    console.log(`[fairness] event_id: ${eventId}, eventDate: ${eventDate}, windowStart: ${windowStartDate.toISOString().split('T')[0]}, historyCount: ${historyResult.rows.length}`);
+    console.log(`[fairness] historyCount (within 60 days): ${historyResult.rows.length}`);
+    if (historyResult.rows.length > 0) {
+      console.log(`[fairness] sample history row:`, JSON.stringify(historyResult.rows[0], null, 2));
+    }
 
     // 4. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
     // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
