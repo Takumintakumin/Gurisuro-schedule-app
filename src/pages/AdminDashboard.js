@@ -846,8 +846,14 @@ export default function AdminDashboard() {
 
     // 1) 正規ルート
     const tryFairness = async (url) => {
+      console.log(`[AdminDashboard] Trying fairness API: ${url}`);
       const r = await apiFetch(url);
-      if (!r.ok) throw new Error(r.data?.error || r.text || `HTTP ${r.status}`);
+      console.log(`[AdminDashboard] Fairness API response:`, { ok: r.ok, status: r.status, data: r.data });
+      if (!r.ok) {
+        const errorMsg = r.data?.error || r.text || `HTTP ${r.status}`;
+        console.error(`[AdminDashboard] Fairness API failed: ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
       return r.data;
     };
 
@@ -857,8 +863,14 @@ export default function AdminDashboard() {
       try {
         data = await tryFairness(`/api/fairness?event_id=${encodeURIComponent(eventId)}`);
       } catch (e1) {
+        console.error(`[AdminDashboard] /api/fairness failed:`, e1);
         // 2) rewrite 環境用フォールバック
-        data = await tryFairness(`/api?path=fairness&event_id=${encodeURIComponent(eventId)}`);
+        try {
+          data = await tryFairness(`/api?path=fairness&event_id=${encodeURIComponent(eventId)}`);
+        } catch (e2) {
+          console.error(`[AdminDashboard] /api?path=fairness failed:`, e2);
+          throw e2; // 両方失敗した場合はエラーを再スロー
+        }
       }
 
       // 期待形 { driver:[], attendant:[] }
@@ -927,7 +939,7 @@ export default function AdminDashboard() {
 
         fairnessData = { event_id: eventId, driver, attendant };
         setFairData(fairnessData);
-        setFairError("公平スコア（v_participation）が使えないため、応募順の簡易表示です。");
+        setFairError(`公平性アルゴリズムが使用できませんでした。エラー: ${e.message || '不明なエラー'}`);
       } catch (e2) {
         setFairError(e2.message || "応募状況の取得に失敗しました。");
       }
