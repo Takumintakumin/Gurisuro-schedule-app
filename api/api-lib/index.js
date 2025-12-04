@@ -714,6 +714,16 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: `添乗員の選出が定員(${capA})を超えています` });
         }
 
+        // 同じ人が運転手と添乗員の両方に選ばれていないかチェック
+        const driverSet = new Set(driver);
+        const attendantSet = new Set(attendant);
+        const duplicates = [...driverSet].filter(u => attendantSet.has(u));
+        if (duplicates.length > 0) {
+          return res.status(400).json({ 
+            error: `同じ人が運転手と添乗員の両方に選ばれています: ${duplicates.join(", ")}` 
+          });
+        }
+
         await query(`DELETE FROM selections WHERE event_id = $1`, [eventId]);
         const values = [];
         for (const u of Array.from(new Set(driver))) {
@@ -886,13 +896,20 @@ export default async function handler(req, res) {
       }
       
       // 添乗員を公平ランキング順に選出（ただし詳しくない人同士の組み合わせを避ける）
+      // また、既に運転手として選出された人は除外する
       const maxAttendants = capA == null ? attendantRank.length : capA;
       const driverFamiliarMap = Object.fromEntries(
         driverCandidates.map(d => [d.username, d.familiar === 'familiar'])
       );
+      const pickedDriverSet = new Set(pickedDriver);
       
       for (const attendant of attendantRank) {
         if (pickedAttendant.length >= maxAttendants) break;
+        
+        // 既に運転手として選出されている人は添乗員から除外
+        if (pickedDriverSet.has(attendant.username)) {
+          continue;
+        }
         
         // 選出された運転手と組み合わせた時に、両方"unfamiliar"にならないかチェック
         const attendantIsFamiliar = attendant.familiar === 'familiar';
