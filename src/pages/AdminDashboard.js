@@ -1349,10 +1349,10 @@ export default function AdminDashboard() {
               {(() => {
                 // 両方に応募している人を特定
                 const driverUsernames = new Set(fairData.driver.map(u => u.username));
-                const bothApplicants = fairData.attendant.filter(u => driverUsernames.has(u.username));
+                const bothApplicants = new Set(fairData.attendant.filter(u => driverUsernames.has(u.username)).map(u => u.username));
                 
                 return (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <h4 className="font-semibold mb-1">運転手</h4>
                       {fairData.driver.length === 0 ? (
@@ -1362,6 +1362,7 @@ export default function AdminDashboard() {
                           {fairData.driver.map((u) => {
                             const isSelected = selDriver.includes(u.username);
                             const isConfirmed = confirmedDriver.includes(u.username);
+                            const isBothApplicant = bothApplicants.has(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
                               : isSelected 
@@ -1383,15 +1384,28 @@ export default function AdminDashboard() {
                                       type="checkbox"
                                       checked={isSelected}
                                       onChange={(e) => {
-                                        setSelDriver((prev) =>
-                                          e.target.checked
-                                            ? Array.from(new Set([...prev, u.username]))
-                                            : prev.filter((x) => x !== u.username)
-                                        );
+                                        if (e.target.checked) {
+                                          // 両方に応募している人の場合、両方の役割に追加
+                                          if (isBothApplicant) {
+                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
+                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                          } else {
+                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
+                                          }
+                                        } else {
+                                          // 両方に応募している人の場合、両方の役割から削除
+                                          if (isBothApplicant) {
+                                            setSelDriver((prev) => prev.filter((x) => x !== u.username));
+                                            setSelAttendant((prev) => prev.filter((x) => x !== u.username));
+                                          } else {
+                                            setSelDriver((prev) => prev.filter((x) => x !== u.username));
+                                          }
+                                        }
                                       }}
                                     />
                                     <span className={textClass}>
                                       #{u.rank} {u.username}
+                                      {isBothApplicant && <span className="ml-1 text-blue-600 text-xs">(両方)</span>}
                                       {isConfirmed && <span className="ml-1 text-green-600">✓ 確定済み</span>}
                                       {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                     </span>
@@ -1416,6 +1430,7 @@ export default function AdminDashboard() {
                           {fairData.attendant.map((u) => {
                             const isSelected = selAttendant.includes(u.username);
                             const isConfirmed = confirmedAttendant.includes(u.username);
+                            const isBothApplicant = bothApplicants.has(u.username);
                             const bgClass = isConfirmed 
                               ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
                               : isSelected 
@@ -1437,77 +1452,28 @@ export default function AdminDashboard() {
                                       type="checkbox"
                                       checked={isSelected}
                                       onChange={(e) => {
-                                        setSelAttendant((prev) =>
-                                          e.target.checked
-                                            ? Array.from(new Set([...prev, u.username]))
-                                            : prev.filter((x) => x !== u.username)
-                                        );
-                                      }}
-                                    />
-                                    <span className={textClass}>
-                                      #{u.rank} {u.username}
-                                      {isConfirmed && <span className="ml-1 text-green-600">✓ 確定済み</span>}
-                                      {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
-                                    </span>
-                                  </label>
-                                  <span className="text-xs text-gray-500">{u.times ?? 0}回</span>
-                                </div>
-                                <div className="text-[11px] text-gray-500">
-                                  最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-1">両方</h4>
-                      {bothApplicants.length === 0 ? (
-                        <p className="text-xs text-gray-500">応募なし</p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {bothApplicants.map((u) => {
-                            const isSelectedDriver = selDriver.includes(u.username);
-                            const isSelectedAttendant = selAttendant.includes(u.username);
-                            const isSelected = isSelectedDriver && isSelectedAttendant;
-                            const isConfirmedDriver = confirmedDriver.includes(u.username);
-                            const isConfirmedAttendant = confirmedAttendant.includes(u.username);
-                            const isConfirmed = isConfirmedDriver && isConfirmedAttendant;
-                            const bgClass = isConfirmed 
-                              ? 'bg-green-50 border-green-300 ring-1 ring-green-400' 
-                              : isSelected 
-                              ? 'bg-yellow-50 border-yellow-300 ring-1 ring-yellow-400' 
-                              : '';
-                            const textClass = isConfirmed 
-                              ? 'font-semibold text-green-700' 
-                              : isSelected 
-                              ? 'font-semibold text-yellow-700' 
-                              : '';
-                            return (
-                              <li 
-                                key={`b-${u.username}-${u.rank}`} 
-                                className={`border rounded p-2 text-sm ${bgClass}`}
-                              >
-                                <div className="flex justify-between items-center">
-                                  <label className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) => {
                                         if (e.target.checked) {
-                                          // 両方に追加
-                                          setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
-                                          setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                          // 両方に応募している人の場合、両方の役割に追加
+                                          if (isBothApplicant) {
+                                            setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
+                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                          } else {
+                                            setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                          }
                                         } else {
-                                          // 両方から削除
-                                          setSelDriver((prev) => prev.filter((x) => x !== u.username));
-                                          setSelAttendant((prev) => prev.filter((x) => x !== u.username));
+                                          // 両方に応募している人の場合、両方の役割から削除
+                                          if (isBothApplicant) {
+                                            setSelDriver((prev) => prev.filter((x) => x !== u.username));
+                                            setSelAttendant((prev) => prev.filter((x) => x !== u.username));
+                                          } else {
+                                            setSelAttendant((prev) => prev.filter((x) => x !== u.username));
+                                          }
                                         }
                                       }}
                                     />
                                     <span className={textClass}>
-                                      {u.username}
+                                      #{u.rank} {u.username}
+                                      {isBothApplicant && <span className="ml-1 text-blue-600 text-xs">(両方)</span>}
                                       {isConfirmed && <span className="ml-1 text-green-600">✓ 確定済み</span>}
                                       {!isConfirmed && isSelected && <span className="ml-1 text-yellow-600">✓ 選択済み</span>}
                                     </span>
