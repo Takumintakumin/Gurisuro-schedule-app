@@ -26,6 +26,12 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "username と password は必須です" });
       }
 
+      // 既存確認（重複チェック）
+      const dup = await query("SELECT 1 FROM users WHERE username = $1", [username]);
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: "このユーザー名は既に存在します" });
+      }
+
       await query(
         "INSERT INTO users (username, password, role) VALUES ($1, $2, $3)",
         [username, password, role || "user"]
@@ -46,6 +52,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   } catch (err) {
     console.error("[/api/users] Error:", err);
+    // 重複キーエラーの場合、適切なエラーメッセージを返す
+    if (String(err?.message || "").includes("duplicate key") || String(err?.message || "").includes("users_username_key")) {
+      return res.status(409).json({ error: "このユーザー名は既に存在します" });
+    }
     return res.status(500).json({ error: "Server Error: " + err.message });
   }
 }

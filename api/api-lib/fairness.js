@@ -52,28 +52,34 @@ export default async function handler(req, res) {
     }
 
     // 3. 各応募者の直近60日間の確定履歴を取得（イベント日付より前のみ）
+    // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
     const historyResult = await query(
-      `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at
+      `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
+              COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
-         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
-         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) >= $3::date
-       ORDER BY s.username, COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC`,
+         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date
+         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) >= $3::date
+       ORDER BY s.username, COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) DESC`,
       [
         applicantsResult.rows.map(r => r.username),
         eventDate,
         windowStartDate.toISOString().split('T')[0]
       ]
     );
+    
+    // デバッグ用：取得した履歴数をログ出力
+    console.log(`[fairness] event_id: ${eventId}, eventDate: ${eventDate}, windowStart: ${windowStartDate.toISOString().split('T')[0]}, historyCount: ${historyResult.rows.length}`);
 
     // 4. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
+    // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
     const lastDecidedResult = await query(
-      `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+      `SELECT s.username, MAX(COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date))) AS last_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
-         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+         AND COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) < $2::date
        GROUP BY s.username`,
       [
         applicantsResult.rows.map(r => r.username),
@@ -90,6 +96,17 @@ export default async function handler(req, res) {
       }
       historyByUser[username][row.kind].push(row);
     }
+    
+    // デバッグ用：各ユーザーの履歴数をログ出力
+    const debugHistory = {};
+    for (const username in historyByUser) {
+      debugHistory[username] = {
+        driver: historyByUser[username].driver.length,
+        attendant: historyByUser[username].attendant.length,
+        total: historyByUser[username].driver.length + historyByUser[username].attendant.length
+      };
+    }
+    console.log(`[fairness] historyByUser:`, JSON.stringify(debugHistory, null, 2));
 
     const lastDecidedByUser = {};
     for (const row of lastDecidedResult.rows) {

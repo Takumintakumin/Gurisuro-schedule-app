@@ -266,6 +266,13 @@ export default async function handler(req, res) {
         const { username, password, role = "user", familiar = null } = body || {};
         if (!username || !password)
           return res.status(400).json({ error: "必須項目不足" });
+        
+        // 既存確認（重複チェック）
+        const dup = await query("SELECT 1 FROM users WHERE username = $1", [username]);
+        if (dup.rows.length > 0) {
+          return res.status(409).json({ error: "このユーザー名は既に存在します" });
+        }
+        
         await query(
           "INSERT INTO users (username, password, role, familiar) VALUES ($1,$2,$3,$4)",
           [username, password, role, familiar]
@@ -734,10 +741,10 @@ export default async function handler(req, res) {
         }
         if (values.length) {
           const params = values.flatMap((v) => v);
-          const tuples = values.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",");
+          const tuples = values.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3}, now())`).join(",");
           await query(
-            `INSERT INTO selections (event_id, username, kind) VALUES ${tuples}
-             ON CONFLICT (event_id, username, kind) DO NOTHING`,
+            `INSERT INTO selections (event_id, username, kind, decided_at) VALUES ${tuples}
+             ON CONFLICT (event_id, username, kind) DO UPDATE SET decided_at = now()`,
             params
           );
           
@@ -1723,6 +1730,10 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: "Not Found" });
   } catch (err) {
     console.error("[/api/api-lib/index] Error:", err);
+    // 重複キーエラーの場合、適切なエラーメッセージを返す
+    if (String(err?.message || "").includes("duplicate key") || String(err?.message || "").includes("users_username_key")) {
+      return res.status(409).json({ error: "このユーザー名は既に存在します" });
+    }
     return res
       .status(500)
       .json({ error: "Server Error: " + (err?.message || String(err)) });
