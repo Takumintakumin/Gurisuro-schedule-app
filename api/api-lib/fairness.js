@@ -120,8 +120,8 @@ export default async function handler(req, res) {
       const score = 10 * count60 + 3 * roleCount60 - gapDays;
       
       candidates.push({
-        username,
-        kind,
+          username,
+          kind,
         applied_at: app.created_at,
         count60,
         roleCount60,

@@ -392,8 +392,8 @@ export default async function handler(req, res) {
       // 2. 応募者リストを取得
       const applicantsResult = await query(
         `SELECT a.id, a.username, a.kind, a.created_at
-         FROM applications a
-         WHERE a.event_id = $1
+          FROM applications a
+          WHERE a.event_id = $1
          ORDER BY a.kind, a.created_at ASC`,
         [eventId]
       );
