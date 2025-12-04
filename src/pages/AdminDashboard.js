@@ -932,10 +932,10 @@ export default function AdminDashboard() {
         const capacityDriver = eventInfo?.capacity_driver != null ? Number(eventInfo.capacity_driver) : 1;
         const capacityAttendant = eventInfo?.capacity_attendant != null ? Number(eventInfo.capacity_attendant) : 1;
 
-        // fairnessデータのrank順に従って、定員に合わせて自動選出
-        const autoDrivers = fairnessData.driver
-          .slice(0, Math.max(0, capacityDriver))
-          .map(item => item.username);
+        // fairnessデータのrank順に従って、1名ずつ自動選出
+        const autoDrivers = fairnessData.driver.length > 0
+          ? [fairnessData.driver[0].username]
+          : [];
         
         // 運転手として選出された人は添乗員から除外（同じ人が両方に選ばれないようにする）
         const autoDriverSet = new Set(autoDrivers);
@@ -946,9 +946,9 @@ export default function AdminDashboard() {
           }
           return !autoDriverSet.has(item.username);
         });
-        const autoAttendants = filteredAttendants
-          .slice(0, Math.max(0, capacityAttendant))
-          .map(item => item.username);
+        const autoAttendants = filteredAttendants.length > 0
+          ? [filteredAttendants[0].username]
+          : [];
 
         // 自動選出結果を選択済みとして設定
         setSelDriver(autoDrivers);
@@ -1397,15 +1397,16 @@ export default function AdminDashboard() {
                                       checked={isSelected}
                                       onChange={(e) => {
                                         if (e.target.checked) {
-                                          // 運転手として選択
+                                          // 運転手として選択（1名のみ選択可能）
                                           // 両方に応募している人の場合、添乗員からは削除（同じ人が両方に選ばれないようにする）
                                           if (isBothApplicant) {
                                             setSelAttendant((prev) => prev.filter((x) => x !== u.username));
                                           }
-                                          setSelDriver((prev) => Array.from(new Set([...prev, u.username])));
+                                          // 既に選択されている人がいる場合は、その人を解除してから新しい人を選択
+                                          setSelDriver([u.username]);
                                         } else {
                                           // 運転手から削除
-                                          setSelDriver((prev) => prev.filter((x) => x !== u.username));
+                                          setSelDriver([]);
                                         }
                                       }}
                                     />
@@ -1462,15 +1463,16 @@ export default function AdminDashboard() {
                                       checked={isSelected}
                                       onChange={(e) => {
                                         if (e.target.checked) {
-                                          // 添乗員として選択
+                                          // 添乗員として選択（1名のみ選択可能）
                                           // 両方に応募している人の場合、運転手からは削除（同じ人が両方に選ばれないようにする）
                                           if (isBothApplicant) {
                                             setSelDriver((prev) => prev.filter((x) => x !== u.username));
                                           }
-                                          setSelAttendant((prev) => Array.from(new Set([...prev, u.username])));
+                                          // 既に選択されている人がいる場合は、その人を解除してから新しい人を選択
+                                          setSelAttendant([u.username]);
                                         } else {
                                           // 添乗員から削除
-                                          setSelAttendant((prev) => prev.filter((x) => x !== u.username));
+                                          setSelAttendant([]);
                                         }
                                       }}
                                     />
@@ -1515,6 +1517,16 @@ export default function AdminDashboard() {
                   className="px-3 py-2 rounded bg-blue-600 text-white text-sm"
                   onClick={async () => {
                     try {
+                      // バリデーション：運転手と添乗員は各1名のみ
+                      if (selDriver.length > 1) {
+                        showToast("運転手は1名のみ選択できます", 'warning');
+                        return;
+                      }
+                      if (selAttendant.length > 1) {
+                        showToast("添乗員は1名のみ選択できます", 'warning');
+                        return;
+                      }
+                      
                       const r = await apiFetch(`/api?path=decide`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
