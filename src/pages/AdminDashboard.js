@@ -879,6 +879,11 @@ export default function AdminDashboard() {
       
       setFairData(fairnessData);
     } catch (e) {
+      // fairness APIが失敗した原因をログ出力
+      console.error('[AdminDashboard] fairness API failed:', e);
+      console.error('[AdminDashboard] error message:', e.message);
+      console.error('[AdminDashboard] error stack:', e.stack);
+      
       // 3) 最後の保険：生応募を種別で分けて時系列ソートして見せる
       try {
         const r =
@@ -897,6 +902,11 @@ export default function AdminDashboard() {
             last_at: null,
             applied_at: x.created_at,
             rank: i + 1,
+            // フォールバック時は公平性データが取得できないため、デフォルト値を設定
+            count60: 0,
+            roleCount60: 0,
+            gapDays: 9999,
+            score: 9999,
           }));
         const attendant = rows
           .filter((x) => x.kind === "attendant")
@@ -908,6 +918,11 @@ export default function AdminDashboard() {
             last_at: null,
             applied_at: x.created_at,
             rank: i + 1,
+            // フォールバック時は公平性データが取得できないため、デフォルト値を設定
+            count60: 0,
+            roleCount60: 0,
+            gapDays: 9999,
+            score: 9999,
           }));
 
         fairnessData = { event_id: eventId, driver, attendant };
