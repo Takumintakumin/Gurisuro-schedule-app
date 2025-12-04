@@ -88,8 +88,12 @@ export default async function handler(req, res) {
     
     // デバッグ用：応募者リストをログ出力
     const applicantUsernames = applicantsResult.rows.map(r => r.username);
-    console.log(`[fairness] event_id: ${eventId}, eventDate: ${eventDate}, windowStart: ${windowStartDate.toISOString().split('T')[0]}`);
+    console.log(`[fairness] ===== START =====`);
+    console.log(`[fairness] event_id: ${eventId}`);
+    console.log(`[fairness] eventDate: ${eventDateStr}`);
+    console.log(`[fairness] windowStart: ${windowStartDate.toISOString().split('T')[0]}`);
     console.log(`[fairness] applicants:`, applicantUsernames);
+    console.log(`[fairness] applicant count: ${applicantUsernames.length}`);
     
     // まず、全応募者のselectionsデータを確認（デバッグ用）
     const allSelectionsCheck = await query(
@@ -126,6 +130,16 @@ export default async function handler(req, res) {
     console.log(`[fairness] historyCount (within 60 days): ${historyResult.rows.length}`);
     if (historyResult.rows.length > 0) {
       console.log(`[fairness] sample history row:`, JSON.stringify(historyResult.rows[0], null, 2));
+      console.log(`[fairness] all history rows:`, historyResult.rows.map(r => ({
+        username: r.username,
+        kind: r.kind,
+        decided_at: r.decided_at,
+        event_date: r.event_date,
+        date_text: r.date_text,
+        effective_date: r.effective_date
+      })));
+    } else {
+      console.log(`[fairness] WARNING: No history found within 60 days`);
     }
 
     // 4. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
@@ -187,6 +201,11 @@ export default async function handler(req, res) {
       
       // roleCount60: 直近60日でその役割で確定した回数
       const roleCount60 = (history[kind] || []).length;
+      
+      // デバッグ用：各応募者のカウントをログ出力
+      if (count60 > 0 || roleCount60 > 0) {
+        console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${(history.driver || []).length}, attendant=${(history.attendant || []).length}`);
+      }
       
       // gapDays: 最後に確定した日からの経過日数（経験なしは9999）
       let gapDays = 9999;
@@ -271,13 +290,18 @@ export default async function handler(req, res) {
 
     const response = { event_id: Number(eventId), driver, attendant };
     
-    // デバッグ用：レスポンスの最初の要素をログ出力
+    // デバッグ用：レスポンスの内容をログ出力
+    console.log(`[fairness] ===== RESPONSE =====`);
+    console.log(`[fairness] driver count: ${driver.length}, attendant count: ${attendant.length}`);
     if (driver.length > 0) {
-      console.log(`[fairness] first driver response:`, JSON.stringify(driver[0], null, 2));
+      console.log(`[fairness] first driver:`, JSON.stringify(driver[0], null, 2));
+      console.log(`[fairness] all drivers count60:`, driver.map(d => ({ username: d.username, count60: d.count60, roleCount60: d.roleCount60 })));
     }
     if (attendant.length > 0) {
-      console.log(`[fairness] first attendant response:`, JSON.stringify(attendant[0], null, 2));
+      console.log(`[fairness] first attendant:`, JSON.stringify(attendant[0], null, 2));
+      console.log(`[fairness] all attendants count60:`, attendant.map(a => ({ username: a.username, count60: a.count60, roleCount60: a.roleCount60 })));
     }
+    console.log(`[fairness] ===== END =====`);
     
     return res.status(200).json(response);
   } catch (err) {
