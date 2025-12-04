@@ -53,6 +53,20 @@ export default async function handler(req, res) {
 
     // 3. 各応募者の直近60日間の確定履歴を取得（イベント日付より前のみ）
     // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
+    // まず、decided_atがNULLの既存データを更新（一度だけ実行される想定）
+    try {
+      await query(
+        `UPDATE selections s
+         SET decided_at = COALESCE(s.decided_at, 
+             (SELECT COALESCE(e.event_date, NULLIF(e.date, '')::date)::timestamp 
+              FROM events e WHERE e.id = s.event_id))
+         WHERE s.decided_at IS NULL`
+      );
+    } catch (e) {
+      // 更新エラーは無視（既に更新済みの可能性がある）
+      console.log('[fairness] decided_at update skipped:', e.message);
+    }
+    
     const historyResult = await query(
       `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
               COALESCE(s.decided_at::date, COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS effective_date
@@ -202,7 +216,17 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({ event_id: Number(eventId), driver, attendant });
+    const response = { event_id: Number(eventId), driver, attendant };
+    
+    // デバッグ用：レスポンスの最初の要素をログ出力
+    if (driver.length > 0) {
+      console.log(`[fairness] first driver response:`, JSON.stringify(driver[0], null, 2));
+    }
+    if (attendant.length > 0) {
+      console.log(`[fairness] first attendant response:`, JSON.stringify(attendant[0], null, 2));
+    }
+    
+    return res.status(200).json(response);
   } catch (err) {
     console.error("[/api/fairness] Error:", err);
     return res.status(500).json({ error: "Server Error: " + err.message });

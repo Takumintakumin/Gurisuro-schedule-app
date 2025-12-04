@@ -867,6 +867,16 @@ export default function AdminDashboard() {
         driver: Array.isArray(data.driver) ? data.driver : [],
         attendant: Array.isArray(data.attendant) ? data.attendant : [],
       };
+      
+      // デバッグ用：fairnessデータの内容をログ出力
+      console.log('[AdminDashboard] fairnessData:', JSON.stringify(fairnessData, null, 2));
+      if (fairnessData.driver.length > 0) {
+        console.log('[AdminDashboard] first driver:', fairnessData.driver[0]);
+      }
+      if (fairnessData.attendant.length > 0) {
+        console.log('[AdminDashboard] first attendant:', fairnessData.attendant[0]);
+      }
+      
       setFairData(fairnessData);
     } catch (e) {
       // 3) 最後の保険：生応募を種別で分けて時系列ソートして見せる
