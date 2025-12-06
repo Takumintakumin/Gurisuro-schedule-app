@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "ウィンドウ開始日の計算に失敗しました" });
     }
 
-    // 2. 応募者リストを取得
+    // 2. 応募者リストを取得（applicationsテーブルから）
     const applicantsResult = await query(
       `SELECT a.id, a.username, a.kind, a.created_at
        FROM applications a
@@ -65,12 +65,38 @@ export default async function handler(req, res) {
       [eventId]
     );
 
+    // 3. 確定済みユーザーリストを取得（selectionsテーブルから、applicationsに存在しないユーザーも含める）
+    const confirmedResult = await query(
+      `SELECT DISTINCT s.username, s.kind, COALESCE(s.decided_at, NOW()) AS created_at
+       FROM selections s
+       WHERE s.event_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM applications a 
+           WHERE a.event_id = s.event_id 
+             AND a.username = s.username 
+             AND a.kind = s.kind
+         )
+       ORDER BY s.kind, COALESCE(s.decided_at, NOW()) ASC`,
+      [eventId]
+    );
+
+    // 応募者と確定済みユーザーを結合
+    const allApplicants = [
+      ...(applicantsResult.rows || []),
+      ...(confirmedResult.rows || []).map(row => ({
+        id: null,
+        username: row.username,
+        kind: row.kind,
+        created_at: row.created_at || new Date().toISOString()
+      }))
+    ];
+
     // 応募者がいない場合は早期リターン
-    if (!applicantsResult.rows || applicantsResult.rows.length === 0) {
+    if (!allApplicants || allApplicants.length === 0) {
       return res.status(200).json({ event_id: Number(eventId), driver: [], attendant: [] });
     }
 
-    // 3. 各応募者の直近60日間の確定履歴を取得（イベント日付より前のみ）
+    // 4. 各応募者の直近60日間の確定履歴を取得（イベント日付より前のみ）
     // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
     // まず、decided_atがNULLの既存データを更新（一度だけ実行される想定）
     try {
@@ -87,7 +113,7 @@ export default async function handler(req, res) {
     }
     
     // デバッグ用：応募者リストをログ出力
-    const applicantUsernames = applicantsResult.rows.map(r => r.username);
+    const applicantUsernames = allApplicants.map(r => r.username);
     console.log(`[fairness] ===== START =====`);
     console.log(`[fairness] event_id: ${eventId}`);
     console.log(`[fairness] eventDate: ${eventDateStr}`);
@@ -168,7 +194,7 @@ export default async function handler(req, res) {
       console.log(`[fairness] WARNING: No history found within 60 days`);
     }
 
-    // 4. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
+    // 5. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
     // 重要：最終確定日は「イベントの日付（event_date）」で判定する
     const lastDecidedResult = await query(
       `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
@@ -179,12 +205,12 @@ export default async function handler(req, res) {
          AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
        GROUP BY s.username`,
       [
-        applicantsResult.rows.map(r => r.username),
+        allApplicants.map(r => r.username),
         eventDateStr
       ]
     );
 
-    // 5. 特徴量を計算
+    // 6. 特徴量を計算
     const historyByUser = {};
     for (const row of historyResult.rows) {
       const username = row.username;
@@ -250,9 +276,9 @@ export default async function handler(req, res) {
       last_at: lastDecidedByUser[u].toISOString()
     })));
 
-    // 6. 各応募者に特徴量とスコアを付与
+    // 7. 各応募者に特徴量とスコアを付与
     const candidates = [];
-    for (const app of applicantsResult.rows) {
+    for (const app of allApplicants) {
       const username = app.username;
       const kind = app.kind;
       const history = historyByUser[username] || { driver: [], attendant: [] };
@@ -307,7 +333,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 7. 役割ごとにソート（スコア最小、同点時は優先順位に従う）
+    // 8. 役割ごとにソート（スコア最小、同点時は優先順位に従う）
     const compareCandidates = (a, b) => {
       // 1. スコアが小さい順
       if (a.score !== b.score) return a.score - b.score;

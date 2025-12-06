@@ -967,6 +967,91 @@ export default function AdminDashboard() {
         setSelDriver(confirmedDrivers);
         setSelAttendant(confirmedAttendants);
         hasExistingDecisions = confirmedDrivers.length > 0 || confirmedAttendants.length > 0;
+        
+        // 確定済みのユーザーがfairDataに含まれていない場合、fairDataに追加
+        if (fairnessData) {
+          const driverUsernames = new Set(fairnessData.driver.map(d => d.username));
+          const attendantUsernames = new Set(fairnessData.attendant.map(a => a.username));
+          
+          // 確定済みの運転手でfairDataに含まれていないユーザーを追加
+          confirmedDrivers.forEach(username => {
+            if (!driverUsernames.has(username)) {
+              fairnessData.driver.push({
+                username,
+                kind: 'driver',
+                times: 0,
+                last_at: null,
+                applied_at: null,
+                rank: fairnessData.driver.length + 1,
+                count60: 0,
+                roleCount60: 0,
+                gapDays: 9999,
+                score: 9999,
+              });
+            }
+          });
+          
+          // 確定済みの添乗員でfairDataに含まれていないユーザーを追加
+          confirmedAttendants.forEach(username => {
+            if (!attendantUsernames.has(username)) {
+              fairnessData.attendant.push({
+                username,
+                kind: 'attendant',
+                times: 0,
+                last_at: null,
+                applied_at: null,
+                rank: fairnessData.attendant.length + 1,
+                count60: 0,
+                roleCount60: 0,
+                gapDays: 9999,
+                score: 9999,
+              });
+            }
+          });
+          
+          // 確定済みのユーザーのlast_atを更新するため、fairness APIを再度呼び出す
+          // 確定済みのユーザーがapplicationsテーブルに存在する場合は、fairness APIの結果に含まれる
+          if (confirmedDrivers.length > 0 || confirmedAttendants.length > 0) {
+            try {
+              const fairnessDataWithConfirmed = await tryFairness(`/api/fairness?event_id=${encodeURIComponent(eventId)}`).catch(() => 
+                tryFairness(`/api?path=fairness&event_id=${encodeURIComponent(eventId)}`)
+              );
+              
+              if (fairnessDataWithConfirmed) {
+                // 確定済みのユーザーのlast_atを更新
+                const driverMap = new Map(fairnessDataWithConfirmed.driver.map(d => [d.username, d]));
+                const attendantMap = new Map(fairnessDataWithConfirmed.attendant.map(a => [a.username, a]));
+                
+                fairnessData.driver.forEach(d => {
+                  if (driverMap.has(d.username)) {
+                    const updated = driverMap.get(d.username);
+                    d.last_at = updated.last_at;
+                    d.count60 = updated.count60;
+                    d.roleCount60 = updated.roleCount60;
+                    d.gapDays = updated.gapDays;
+                    d.times = updated.times;
+                  }
+                });
+                
+                fairnessData.attendant.forEach(a => {
+                  if (attendantMap.has(a.username)) {
+                    const updated = attendantMap.get(a.username);
+                    a.last_at = updated.last_at;
+                    a.count60 = updated.count60;
+                    a.roleCount60 = updated.roleCount60;
+                    a.gapDays = updated.gapDays;
+                    a.times = updated.times;
+                  }
+                });
+                
+                // 更新されたfairnessDataを再設定
+                setFairData(fairnessData);
+              }
+            } catch (e) {
+              console.error('[AdminDashboard] Failed to update last_at for confirmed users:', e);
+            }
+          }
+        }
       }
     } catch {}
 
