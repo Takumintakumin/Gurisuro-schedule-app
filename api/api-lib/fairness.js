@@ -427,8 +427,45 @@ export default async function handler(req, res) {
     const attendantCandidates = candidates.filter(c => c.kind === 'attendant').sort(compareCandidates);
 
     for (const cand of driverCandidates) {
-      const lastAt = lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null;
-      console.log(`[fairness] driver ${cand.username}: last_at=${lastAt}, hasLastDecidedByUser=${!!lastDecidedByUser[cand.username]}`);
+      // last_atを確実に取得（lastDecidedByUserから取得、なければ再度取得を試みる）
+      let lastAt = null;
+      if (lastDecidedByUser[cand.username]) {
+        lastAt = lastDecidedByUser[cand.username].toISOString();
+      } else {
+        // lastDecidedByUserに含まれていない場合、再度取得を試みる
+        try {
+          const userLastDateResult = await query(
+            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+             FROM selections s
+             JOIN events e ON e.id = s.event_id
+             WHERE s.username = $1
+               AND s.event_id != $2
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+            [cand.username, eventIdNum, eventDateStr]
+          );
+          
+          if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
+            const row = userLastDateResult.rows[0];
+            let lastDateStr;
+            if (typeof row.last_date === 'string') {
+              lastDateStr = row.last_date.split('T')[0];
+            } else if (row.last_date instanceof Date) {
+              lastDateStr = row.last_date.toISOString().split('T')[0];
+            } else {
+              lastDateStr = String(row.last_date).split('T')[0];
+            }
+            const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+            if (!isNaN(lastDateObj.getTime())) {
+              lastAt = lastDateObj.toISOString();
+              lastDecidedByUser[cand.username] = lastDateObj;
+            }
+          }
+        } catch (e) {
+          // エラーが発生した場合はnullのまま
+        }
+      }
+      
       driver.push({
         username: cand.username,
         kind: 'driver',
@@ -445,7 +482,45 @@ export default async function handler(req, res) {
     }
 
     for (const cand of attendantCandidates) {
-      const lastAt = lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null;
+      // last_atを確実に取得（lastDecidedByUserから取得、なければ再度取得を試みる）
+      let lastAt = null;
+      if (lastDecidedByUser[cand.username]) {
+        lastAt = lastDecidedByUser[cand.username].toISOString();
+      } else {
+        // lastDecidedByUserに含まれていない場合、再度取得を試みる
+        try {
+          const userLastDateResult = await query(
+            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+             FROM selections s
+             JOIN events e ON e.id = s.event_id
+             WHERE s.username = $1
+               AND s.event_id != $2
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+            [cand.username, eventIdNum, eventDateStr]
+          );
+          
+          if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
+            const row = userLastDateResult.rows[0];
+            let lastDateStr;
+            if (typeof row.last_date === 'string') {
+              lastDateStr = row.last_date.split('T')[0];
+            } else if (row.last_date instanceof Date) {
+              lastDateStr = row.last_date.toISOString().split('T')[0];
+            } else {
+              lastDateStr = String(row.last_date).split('T')[0];
+            }
+            const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+            if (!isNaN(lastDateObj.getTime())) {
+              lastAt = lastDateObj.toISOString();
+              lastDecidedByUser[cand.username] = lastDateObj;
+            }
+          }
+        } catch (e) {
+          // エラーが発生した場合はnullのまま
+        }
+      }
+      
       attendant.push({
         username: cand.username,
         kind: 'attendant',
