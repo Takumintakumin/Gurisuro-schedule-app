@@ -1045,11 +1045,14 @@ export default function AdminDashboard() {
                 });
                 
                 // 更新されたfairnessDataを再設定
-                setFairData(fairnessData);
+                setFairData({ ...fairnessData });
               }
             } catch (e) {
               console.error('[AdminDashboard] Failed to update last_at for confirmed users:', e);
             }
+          } else {
+            // 確定済みユーザーがfairDataに追加された場合、fairDataを再設定
+            setFairData({ ...fairnessData });
           }
         }
       }
@@ -1563,6 +1566,9 @@ export default function AdminDashboard() {
                                   {u.gapDays === 9999 && (
                                     <span className="ml-2 text-gray-400">(未経験)</span>
                                   )}
+                                  {isConfirmed && !u.last_at && (
+                                    <span className="ml-2 text-red-500 text-xs">[デバッグ: last_at=null]</span>
+                                  )}
                                 </div>
                               </li>
                             );
@@ -1639,6 +1645,9 @@ export default function AdminDashboard() {
                                   )}
                                   {u.gapDays === 9999 && (
                                     <span className="ml-2 text-gray-400">(未経験)</span>
+                                  )}
+                                  {isConfirmed && !u.last_at && (
+                                    <span className="ml-2 text-red-500 text-xs">[デバッグ: last_at=null]</span>
                                   )}
                                 </div>
                               </li>

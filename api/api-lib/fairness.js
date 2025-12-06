@@ -196,6 +196,7 @@ export default async function handler(req, res) {
 
     // 5. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
     // 重要：最終確定日は「イベントの日付（event_date）」で判定する
+    // 現在のイベントIDは除外する（現在のイベントの確定日は「最終確定日」としてカウントしない）
     const lastDecidedResult = await query(
       `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
        FROM selections s
@@ -203,10 +204,12 @@ export default async function handler(req, res) {
        WHERE s.username = ANY($1::text[])
          AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
          AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+         AND s.event_id != $3
        GROUP BY s.username`,
       [
         allApplicants.map(r => r.username),
-        eventDateStr
+        eventDateStr,
+        eventId
       ]
     );
 
@@ -357,11 +360,13 @@ export default async function handler(req, res) {
     const attendantCandidates = candidates.filter(c => c.kind === 'attendant').sort(compareCandidates);
 
     for (const cand of driverCandidates) {
+      const lastAt = lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null;
+      console.log(`[fairness] driver ${cand.username}: last_at=${lastAt}, hasLastDecidedByUser=${!!lastDecidedByUser[cand.username]}`);
       driver.push({
         username: cand.username,
         kind: 'driver',
         times: cand.count60, // 互換性のため
-        last_at: lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null,
+        last_at: lastAt,
         applied_at: cand.applied_at,
         rank: driverRank++,
         // デバッグ用（必要に応じて）
@@ -373,11 +378,13 @@ export default async function handler(req, res) {
     }
 
     for (const cand of attendantCandidates) {
+      const lastAt = lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null;
+      console.log(`[fairness] attendant ${cand.username}: last_at=${lastAt}, hasLastDecidedByUser=${!!lastDecidedByUser[cand.username]}`);
       attendant.push({
         username: cand.username,
         kind: 'attendant',
         times: cand.count60, // 互換性のため
-        last_at: lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null,
+        last_at: lastAt,
         applied_at: cand.applied_at,
         rank: attendantRank++,
         // デバッグ用（必要に応じて）
