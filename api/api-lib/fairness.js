@@ -14,6 +14,7 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const eventId = url.searchParams.get("event_id");
     if (!eventId) return res.status(400).json({ error: "event_id が必要です" });
+    const eventIdNum = Number(eventId); // 数値に変換
 
     // W=60: 直近60日間の履歴を使用
     const W_DAYS = 60;
@@ -22,7 +23,7 @@ export default async function handler(req, res) {
     const eventResult = await query(
       `SELECT COALESCE(event_date, NULLIF(date, '')::date) AS event_date, date AS date_text
        FROM events WHERE id = $1`,
-      [eventId]
+      [eventIdNum]
     );
     if (!eventResult.rows || eventResult.rows.length === 0) {
       return res.status(404).json({ error: "イベントが見つかりません" });
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
        FROM applications a
        WHERE a.event_id = $1
        ORDER BY a.kind, a.created_at ASC`,
-      [eventId]
+      [eventIdNum]
     );
 
     // 3. 確定済みユーザーリストを取得（selectionsテーブルから、applicationsに存在しないユーザーも含める）
@@ -77,7 +78,7 @@ export default async function handler(req, res) {
              AND a.kind = s.kind
          )
        ORDER BY s.kind, COALESCE(s.decided_at, NOW()) ASC`,
-      [eventId]
+      [eventIdNum]
     );
 
     // 応募者と確定済みユーザーを結合
@@ -121,7 +122,7 @@ export default async function handler(req, res) {
     // デバッグ用：応募者リストをログ出力
     const applicantUsernames = allApplicants.map(r => r.username);
     console.log(`[fairness] ===== START =====`);
-    console.log(`[fairness] event_id: ${eventId}`);
+      console.log(`[fairness] event_id: ${eventIdNum}`);
     console.log(`[fairness] eventDate: ${eventDateStr}`);
     console.log(`[fairness] windowStart: ${windowStartDate.toISOString().split('T')[0]}`);
     console.log(`[fairness] applicants:`, applicantUsernames);
@@ -215,7 +216,7 @@ export default async function handler(req, res) {
       [
         [...new Set(allApplicants.map(r => r.username))], // 重複を除去
         eventDateStr,
-        eventId
+        eventIdNum
       ]
     );
 
@@ -243,7 +244,7 @@ export default async function handler(req, res) {
     // デバッグ用：lastDecidedResultの内容をログ出力
     console.log(`[fairness] lastDecidedResult count: ${lastDecidedResult.rows.length}`);
     console.log(`[fairness] allApplicants usernames:`, allApplicants.map(r => r.username));
-    console.log(`[fairness] eventId: ${eventId}, eventDateStr: ${eventDateStr}`);
+      console.log(`[fairness] eventId: ${eventIdNum}, eventDateStr: ${eventDateStr}`);
     if (lastDecidedResult.rows.length > 0) {
       console.log(`[fairness] lastDecidedResult sample:`, JSON.stringify(lastDecidedResult.rows[0], null, 2));
       console.log(`[fairness] all lastDecidedResult:`, lastDecidedResult.rows.map(r => ({
@@ -269,7 +270,7 @@ export default async function handler(req, res) {
         console.log(`[fairness] ${app.username} selections:`, userSelections.rows.map(r => ({
           event_id: r.event_id,
           effective_date: r.effective_date,
-          is_current_event: r.event_id == eventId,
+          is_current_event: r.event_id == eventIdNum,
           is_before_current: r.effective_date && r.effective_date < eventDateStr
         })));
       }
@@ -300,24 +301,26 @@ export default async function handler(req, res) {
     }
     
     // lastDecidedByUserに含まれていないユーザーについて、個別にlast_atを取得
+    // バッチクエリで一度に取得する方が効率的
     const missingUsers = allApplicants.filter(app => !lastDecidedByUser[app.username]);
     if (missingUsers.length > 0) {
       console.log(`[fairness] Missing last_at for users:`, missingUsers.map(u => u.username));
-      for (const app of missingUsers) {
-        try {
-          const userLastDateResult = await query(
-            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
-             FROM selections s
-             JOIN events e ON e.id = s.event_id
-             WHERE s.username = $1
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
-               AND s.event_id != $3`,
-            [app.username, eventDateStr, eventId]
-          );
-          
-          if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
-            const row = userLastDateResult.rows[0];
+      try {
+        const missingUsernames = [...new Set(missingUsers.map(u => u.username))];
+        const missingLastDateResult = await query(
+          `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+           FROM selections s
+           JOIN events e ON e.id = s.event_id
+           WHERE s.username = ANY($1::text[])
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+             AND s.event_id != $3
+           GROUP BY s.username`,
+          [missingUsernames, eventDateStr, eventIdNum]
+        );
+        
+        for (const row of missingLastDateResult.rows) {
+          if (row.last_date) {
             let lastDateStr;
             if (typeof row.last_date === 'string') {
               lastDateStr = row.last_date.split('T')[0];
@@ -328,12 +331,46 @@ export default async function handler(req, res) {
             }
             const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
             if (!isNaN(lastDateObj.getTime())) {
-              lastDecidedByUser[app.username] = lastDateObj;
-              console.log(`[fairness] ${app.username}: last_at set to ${lastDateStr} (individual query)`);
+              lastDecidedByUser[row.username] = lastDateObj;
+              console.log(`[fairness] ${row.username}: last_at set to ${lastDateStr} (batch query)`);
             }
           }
-        } catch (e) {
-          console.error(`[fairness] Error fetching last_at for ${app.username}:`, e);
+        }
+      } catch (e) {
+        console.error(`[fairness] Error fetching last_at for missing users:`, e);
+        // フォールバック：個別に取得
+        for (const app of missingUsers) {
+          try {
+            const userLastDateResult = await query(
+              `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+               FROM selections s
+               JOIN events e ON e.id = s.event_id
+               WHERE s.username = $1
+                 AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+                 AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+                 AND s.event_id != $3`,
+              [app.username, eventDateStr, eventIdNum]
+            );
+            
+            if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
+              const row = userLastDateResult.rows[0];
+              let lastDateStr;
+              if (typeof row.last_date === 'string') {
+                lastDateStr = row.last_date.split('T')[0];
+              } else if (row.last_date instanceof Date) {
+                lastDateStr = row.last_date.toISOString().split('T')[0];
+              } else {
+                lastDateStr = String(row.last_date).split('T')[0];
+              }
+              const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+              if (!isNaN(lastDateObj.getTime())) {
+                lastDecidedByUser[app.username] = lastDateObj;
+                console.log(`[fairness] ${app.username}: last_at set to ${lastDateStr} (individual query)`);
+              }
+            }
+          } catch (e2) {
+            console.error(`[fairness] Error fetching last_at for ${app.username}:`, e2);
+          }
         }
       }
     }
@@ -461,7 +498,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const response = { event_id: Number(eventId), driver, attendant };
+    const response = { event_id: eventIdNum, driver, attendant };
     
     // デバッグ用：レスポンスの内容をログ出力
     console.log(`[fairness] ===== RESPONSE =====`);
