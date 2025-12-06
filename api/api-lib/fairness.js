@@ -204,19 +204,22 @@ export default async function handler(req, res) {
     // 5. 各応募者の最終確定日を取得（全期間、イベント日付より前のみ）
     // 重要：最終確定日は「イベントの日付（event_date）」で判定する
     // 現在のイベントIDは除外する（現在のイベントの確定日は「最終確定日」としてカウントしない）
+    const applicantUsernames = [...new Set(allApplicants.map(r => r.username))]; // 重複を除去
+    console.log(`[fairness] Fetching last_at for ${applicantUsernames.length} users:`, applicantUsernames);
+    
     const lastDecidedResult = await query(
       `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
        FROM selections s
        JOIN events e ON e.id = s.event_id
        WHERE s.username = ANY($1::text[])
+         AND s.event_id != $2
          AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
-         AND s.event_id != $3
+         AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date
        GROUP BY s.username`,
       [
-        [...new Set(allApplicants.map(r => r.username))], // 重複を除去
-        eventDateStr,
-        eventIdNum
+        applicantUsernames,
+        eventIdNum,
+        eventDateStr
       ]
     );
 
@@ -244,7 +247,7 @@ export default async function handler(req, res) {
     // デバッグ用：lastDecidedResultの内容をログ出力
     console.log(`[fairness] lastDecidedResult count: ${lastDecidedResult.rows.length}`);
     console.log(`[fairness] allApplicants usernames:`, allApplicants.map(r => r.username));
-      console.log(`[fairness] eventId: ${eventIdNum}, eventDateStr: ${eventDateStr}`);
+    console.log(`[fairness] eventId: ${eventIdNum}, eventDateStr: ${eventDateStr}`);
     if (lastDecidedResult.rows.length > 0) {
       console.log(`[fairness] lastDecidedResult sample:`, JSON.stringify(lastDecidedResult.rows[0], null, 2));
       console.log(`[fairness] all lastDecidedResult:`, lastDecidedResult.rows.map(r => ({
@@ -255,24 +258,28 @@ export default async function handler(req, res) {
       })));
     } else {
       console.log(`[fairness] WARNING: No lastDecidedResult found for any applicant`);
-      // デバッグ用：各ユーザーについて、selectionsテーブルに存在するか確認
-      for (const app of allApplicants) {
-        const userSelections = await query(
-          `SELECT s.event_id, e.event_date, e.date, 
-                  COALESCE(e.event_date, NULLIF(e.date, '')::date) AS effective_date
-           FROM selections s
-           JOIN events e ON e.id = s.event_id
-           WHERE s.username = $1
-           ORDER BY COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC
-           LIMIT 5`,
-          [app.username]
-        );
-        console.log(`[fairness] ${app.username} selections:`, userSelections.rows.map(r => ({
-          event_id: r.event_id,
-          effective_date: r.effective_date,
-          is_current_event: r.event_id == eventIdNum,
-          is_before_current: r.effective_date && r.effective_date < eventDateStr
-        })));
+      // デバッグ用：各ユーザーについて、selectionsテーブルに存在するか確認（最初の3人だけ）
+      for (const app of allApplicants.slice(0, 3)) {
+        try {
+          const userSelections = await query(
+            `SELECT s.event_id, e.event_date, e.date, 
+                    COALESCE(e.event_date, NULLIF(e.date, '')::date) AS effective_date
+             FROM selections s
+             JOIN events e ON e.id = s.event_id
+             WHERE s.username = $1
+             ORDER BY COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC
+             LIMIT 5`,
+            [app.username]
+          );
+          console.log(`[fairness] ${app.username} selections:`, userSelections.rows.map(r => ({
+            event_id: r.event_id,
+            effective_date: r.effective_date,
+            is_current_event: r.event_id == eventIdNum,
+            is_before_current: r.effective_date && r.effective_date < eventDateStr
+          })));
+        } catch (e) {
+          console.error(`[fairness] Error checking selections for ${app.username}:`, e);
+        }
       }
     }
 
@@ -300,6 +307,48 @@ export default async function handler(req, res) {
       }
     }
     
+    // 全ユーザーについて、last_atが設定されているか確認し、設定されていない場合は再取得
+    const usersWithoutLastAt = applicantUsernames.filter(username => !lastDecidedByUser[username]);
+    if (usersWithoutLastAt.length > 0) {
+      console.log(`[fairness] Users without last_at (${usersWithoutLastAt.length}):`, usersWithoutLastAt);
+      // 全ユーザーについて、個別にlast_atを取得
+      for (const username of usersWithoutLastAt) {
+        try {
+          const userLastDateResult = await query(
+            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+             FROM selections s
+             JOIN events e ON e.id = s.event_id
+             WHERE s.username = $1
+               AND s.event_id != $2
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+            [username, eventIdNum, eventDateStr]
+          );
+          
+          if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
+            const row = userLastDateResult.rows[0];
+            let lastDateStr;
+            if (typeof row.last_date === 'string') {
+              lastDateStr = row.last_date.split('T')[0];
+            } else if (row.last_date instanceof Date) {
+              lastDateStr = row.last_date.toISOString().split('T')[0];
+            } else {
+              lastDateStr = String(row.last_date).split('T')[0];
+            }
+            const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+            if (!isNaN(lastDateObj.getTime())) {
+              lastDecidedByUser[username] = lastDateObj;
+              console.log(`[fairness] ${username}: last_at set to ${lastDateStr} (individual retry)`);
+            }
+          } else {
+            console.log(`[fairness] ${username}: No previous selections found (truly inexperienced)`);
+          }
+        } catch (e) {
+          console.error(`[fairness] Error fetching last_at for ${username}:`, e);
+        }
+      }
+    }
+    
     // lastDecidedByUserに含まれていないユーザーについて、個別にlast_atを取得
     // バッチクエリで一度に取得する方が効率的
     const missingUsers = allApplicants.filter(app => !lastDecidedByUser[app.username]);
@@ -312,11 +361,11 @@ export default async function handler(req, res) {
            FROM selections s
            JOIN events e ON e.id = s.event_id
            WHERE s.username = ANY($1::text[])
+             AND s.event_id != $2
              AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
-             AND s.event_id != $3
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date
            GROUP BY s.username`,
-          [missingUsernames, eventDateStr, eventIdNum]
+          [missingUsernames, eventIdNum, eventDateStr]
         );
         
         for (const row of missingLastDateResult.rows) {
@@ -346,10 +395,10 @@ export default async function handler(req, res) {
                FROM selections s
                JOIN events e ON e.id = s.event_id
                WHERE s.username = $1
+                 AND s.event_id != $2
                  AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-                 AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
-                 AND s.event_id != $3`,
-              [app.username, eventDateStr, eventIdNum]
+                 AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+              [app.username, eventIdNum, eventDateStr]
             );
             
             if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
