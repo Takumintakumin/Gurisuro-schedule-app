@@ -67,6 +67,7 @@ export default async function handler(req, res) {
     );
 
     // 3. 確定済みユーザーリストを取得（selectionsテーブルから、applicationsに存在しないユーザーも含める）
+    // 重要：確定済みユーザーもallApplicantsに含めることで、last_atを取得できるようにする
     const confirmedResult = await query(
       `SELECT DISTINCT s.username, s.kind, COALESCE(s.decided_at, NOW()) AS created_at
        FROM selections s
