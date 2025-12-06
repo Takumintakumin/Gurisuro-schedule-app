@@ -1471,7 +1471,7 @@ export default function AdminDashboard() {
                                   </span>
                                 </div>
                                 <div className="text-[11px] text-gray-500">
-                                  最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                                  最終: {u.last_at ? toLocalYMD(u.last_at) : "なし"}
                                   {u.gapDays !== undefined && u.gapDays !== 9999 && (
                                     <span className="ml-2 text-gray-400">(経過: {u.gapDays}日)</span>
                                   )}
@@ -1548,7 +1548,7 @@ export default function AdminDashboard() {
                                   </span>
                                 </div>
                                 <div className="text-[11px] text-gray-500">
-                                  最終: {u.last_at ? new Date(u.last_at).toLocaleDateString() : "なし"}
+                                  最終: {u.last_at ? toLocalYMD(u.last_at) : "なし"}
                                   {u.gapDays !== undefined && u.gapDays !== 9999 && (
                                     <span className="ml-2 text-gray-400">(経過: {u.gapDays}日)</span>
                                   )}

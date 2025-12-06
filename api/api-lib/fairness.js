@@ -335,6 +335,7 @@ export default async function handler(req, res) {
       count60: d.count60, 
       roleCount60: d.roleCount60,
       times: d.times,
+      last_at: d.last_at,
       hasCount60: d.count60 !== undefined,
       hasRoleCount60: d.roleCount60 !== undefined
     })));
@@ -343,6 +344,7 @@ export default async function handler(req, res) {
       count60: a.count60, 
       roleCount60: a.roleCount60,
       times: a.times,
+      last_at: a.last_at,
       hasCount60: a.count60 !== undefined,
       hasRoleCount60: a.roleCount60 !== undefined
     })));
