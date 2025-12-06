@@ -210,15 +210,20 @@ export default async function handler(req, res) {
     const lastAtPromises = applicantUsernames.map(async (username) => {
       try {
         // 現在のイベントIDを除外し、過去のイベントでの最終確定日を取得
-        // 日付の比較を確実に行うため、CASTを使用
+        // イベントに日付が未設定の場合は決定日時(decided_at)を代用
+        // 日付比較はCASTで厳密に行う
         const userLastDateResult = await query(
-          `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+          `SELECT MAX(COALESCE(
+                     e.event_date,
+                     NULLIF(e.date, '')::date,
+                     s.decided_at::date
+                   )) AS last_date
            FROM selections s
            JOIN events e ON e.id = s.event_id
            WHERE s.username = $1
              AND s.event_id != $2
-             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-             AND COALESCE(e.event_date, NULLIF(e.date, '')::date)::date < $3::date`,
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date) IS NOT NULL
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date)::date < $3::date`,
           [username, eventIdNum, eventDateStr]
         );
         
@@ -441,13 +446,17 @@ export default async function handler(req, res) {
         // lastDecidedByUserに含まれていない場合、再度取得を試みる
         try {
           const userLastDateResult = await query(
-            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+            `SELECT MAX(COALESCE(
+                     e.event_date,
+                     NULLIF(e.date, '')::date,
+                     s.decided_at::date
+                   )) AS last_date
              FROM selections s
              JOIN events e ON e.id = s.event_id
              WHERE s.username = $1
                AND s.event_id != $2
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date)::date < $3::date`,
             [cand.username, eventIdNum, eventDateStr]
           );
           
@@ -496,13 +505,17 @@ export default async function handler(req, res) {
         // lastDecidedByUserに含まれていない場合、再度取得を試みる
         try {
           const userLastDateResult = await query(
-            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+            `SELECT MAX(COALESCE(
+                     e.event_date,
+                     NULLIF(e.date, '')::date,
+                     s.decided_at::date
+                   )) AS last_date
              FROM selections s
              JOIN events e ON e.id = s.event_id
              WHERE s.username = $1
                AND s.event_id != $2
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date, s.decided_at::date)::date < $3::date`,
             [cand.username, eventIdNum, eventDateStr]
           );
           
