@@ -205,16 +205,50 @@ export default async function handler(req, res) {
     }
     console.log(`[fairness] historyByUser:`, JSON.stringify(debugHistory, null, 2));
 
+    // デバッグ用：lastDecidedResultの内容をログ出力
+    console.log(`[fairness] lastDecidedResult count: ${lastDecidedResult.rows.length}`);
+    if (lastDecidedResult.rows.length > 0) {
+      console.log(`[fairness] lastDecidedResult sample:`, JSON.stringify(lastDecidedResult.rows[0], null, 2));
+      console.log(`[fairness] all lastDecidedResult:`, lastDecidedResult.rows.map(r => ({
+        username: r.username,
+        last_date: r.last_date,
+        last_date_type: typeof r.last_date,
+        last_date_value: r.last_date ? String(r.last_date) : null
+      })));
+    } else {
+      console.log(`[fairness] WARNING: No lastDecidedResult found for any applicant`);
+    }
+
     const lastDecidedByUser = {};
     for (const row of lastDecidedResult.rows) {
       if (row.last_date) {
-        const lastDateStr = typeof row.last_date === 'string' ? row.last_date.split('T')[0] : row.last_date;
+        let lastDateStr;
+        if (typeof row.last_date === 'string') {
+          lastDateStr = row.last_date.split('T')[0];
+        } else if (row.last_date instanceof Date) {
+          lastDateStr = row.last_date.toISOString().split('T')[0];
+        } else {
+          // PostgreSQLのdate型は文字列として返されることが多いが、念のため
+          lastDateStr = String(row.last_date).split('T')[0];
+        }
         const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
         if (!isNaN(lastDateObj.getTime())) {
           lastDecidedByUser[row.username] = lastDateObj;
+          console.log(`[fairness] ${row.username}: last_at set to ${lastDateStr}`);
+        } else {
+          console.error(`[fairness] ${row.username}: Invalid last_date format: ${row.last_date}`);
         }
+      } else {
+        console.log(`[fairness] ${row.username}: last_date is null/undefined`);
       }
     }
+    
+    // デバッグ用：lastDecidedByUserの内容をログ出力
+    console.log(`[fairness] lastDecidedByUser count: ${Object.keys(lastDecidedByUser).length}`);
+    console.log(`[fairness] lastDecidedByUser:`, Object.keys(lastDecidedByUser).map(u => ({
+      username: u,
+      last_at: lastDecidedByUser[u].toISOString()
+    })));
 
     // 6. 各応募者に特徴量とスコアを付与
     const candidates = [];
@@ -250,10 +284,13 @@ export default async function handler(req, res) {
         try {
           const daysDiff = Math.floor((eventDateObj - lastDecidedByUser[username]) / (1000 * 60 * 60 * 24));
           gapDays = Math.max(0, daysDiff);
+          console.log(`[fairness] ${username}: gapDays calculated = ${gapDays} (eventDate: ${eventDateStr}, lastDate: ${lastDecidedByUser[username].toISOString().split('T')[0]})`);
         } catch (e) {
           console.error(`[fairness] Error calculating gapDays for ${username}:`, e);
           gapDays = 9999;
         }
+      } else {
+        console.log(`[fairness] ${username}: gapDays = 9999 (no lastDecidedByUser)`);
       }
       
       // スコア計算
@@ -336,8 +373,10 @@ export default async function handler(req, res) {
       roleCount60: d.roleCount60,
       times: d.times,
       last_at: d.last_at,
+      gapDays: d.gapDays,
       hasCount60: d.count60 !== undefined,
-      hasRoleCount60: d.roleCount60 !== undefined
+      hasRoleCount60: d.roleCount60 !== undefined,
+      hasLastAt: d.last_at !== null && d.last_at !== undefined
     })));
     console.log(`[fairness] all attendants with count60:`, attendant.map(a => ({ 
       username: a.username, 
@@ -345,8 +384,10 @@ export default async function handler(req, res) {
       roleCount60: a.roleCount60,
       times: a.times,
       last_at: a.last_at,
+      gapDays: a.gapDays,
       hasCount60: a.count60 !== undefined,
-      hasRoleCount60: a.roleCount60 !== undefined
+      hasRoleCount60: a.roleCount60 !== undefined,
+      hasLastAt: a.last_at !== null && a.last_at !== undefined
     })));
     if (driver.length > 0) {
       console.log(`[fairness] first driver full:`, JSON.stringify(driver[0], null, 2));
