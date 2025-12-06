@@ -93,11 +93,6 @@ export default async function handler(req, res) {
       }))
     ];
     
-    // デバッグ用：allApplicantsの内容をログ出力
-    console.log(`[fairness] applicantsResult count: ${applicantsResult.rows?.length || 0}`);
-    console.log(`[fairness] confirmedResult count: ${confirmedResult.rows?.length || 0}`);
-    console.log(`[fairness] allApplicants count: ${allApplicants.length}`);
-    console.log(`[fairness] allApplicants:`, allApplicants.map(a => ({ username: a.username, kind: a.kind })));
 
     // 応募者がいない場合は早期リターン
     if (!allApplicants || allApplicants.length === 0) {
@@ -214,6 +209,8 @@ export default async function handler(req, res) {
     // 並列処理で高速化
     const lastAtPromises = applicantUsernames.map(async (username) => {
       try {
+        // 現在のイベントIDを除外し、過去のイベントでの最終確定日を取得
+        // 日付の比較を確実に行うため、CASTを使用
         const userLastDateResult = await query(
           `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
            FROM selections s
@@ -221,7 +218,7 @@ export default async function handler(req, res) {
            WHERE s.username = $1
              AND s.event_id != $2
              AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-             AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date`,
+             AND COALESCE(e.event_date, NULLIF(e.date, '')::date)::date < $3::date`,
           [username, eventIdNum, eventDateStr]
         );
         
