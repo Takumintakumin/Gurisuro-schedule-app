@@ -209,47 +209,8 @@ export default async function handler(req, res) {
     // 全ユーザーについて、個別にlast_atを取得（確実に取得するため）
     const lastDecidedByUser = {};
     
-    // バッチクエリで一度に取得を試みる
-    try {
-      const lastDecidedResult = await query(
-        `SELECT s.username, MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
-         FROM selections s
-         JOIN events e ON e.id = s.event_id
-         WHERE s.username = ANY($1::text[])
-           AND s.event_id != $2
-           AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
-           AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $3::date
-         GROUP BY s.username`,
-        [
-          applicantUsernames,
-          eventIdNum,
-          eventDateStr
-        ]
-      );
-      
-      for (const row of lastDecidedResult.rows) {
-        if (row.last_date) {
-          let lastDateStr;
-          if (typeof row.last_date === 'string') {
-            lastDateStr = row.last_date.split('T')[0];
-          } else if (row.last_date instanceof Date) {
-            lastDateStr = row.last_date.toISOString().split('T')[0];
-          } else {
-            lastDateStr = String(row.last_date).split('T')[0];
-          }
-          const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
-          if (!isNaN(lastDateObj.getTime())) {
-            lastDecidedByUser[row.username] = lastDateObj;
-          }
-        }
-      }
-    } catch (e) {
-      // バッチクエリが失敗した場合は個別に取得
-    }
-    
-    // バッチクエリで取得できなかったユーザーについて、個別に取得
-    const usersWithoutLastAt = applicantUsernames.filter(username => !lastDecidedByUser[username]);
-    for (const username of usersWithoutLastAt) {
+    // 全ユーザーについて、個別にlast_atを取得（確実に取得するため）
+    for (const username of applicantUsernames) {
       try {
         const userLastDateResult = await query(
           `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
@@ -278,7 +239,7 @@ export default async function handler(req, res) {
           }
         }
       } catch (e) {
-        // 個別取得も失敗した場合はスキップ
+        // 個別取得が失敗した場合はスキップ
       }
     }
 
@@ -484,7 +445,6 @@ export default async function handler(req, res) {
 
     for (const cand of attendantCandidates) {
       const lastAt = lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null;
-      console.log(`[fairness] attendant ${cand.username}: last_at=${lastAt}, hasLastDecidedByUser=${!!lastDecidedByUser[cand.username]}`);
       attendant.push({
         username: cand.username,
         kind: 'attendant',
