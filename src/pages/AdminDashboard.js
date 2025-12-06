@@ -1551,9 +1551,6 @@ export default function AdminDashboard() {
                                   </label>
                                   <span className="text-xs text-gray-500">
                                     {u.times ?? 0}回
-                                    <span className="ml-1 text-gray-400">
-                                      (60日: {u.count60 ?? 0}, 役割: {u.roleCount60 ?? 0})
-                                    </span>
                                   </span>
                                 </div>
                               </li>
@@ -1619,9 +1616,6 @@ export default function AdminDashboard() {
                                   </label>
                                   <span className="text-xs text-gray-500">
                                     {u.times ?? 0}回
-                                    <span className="ml-1 text-gray-400">
-                                      (60日: {u.count60 ?? 0}, 役割: {u.roleCount60 ?? 0})
-                                    </span>
                                   </span>
                                 </div>
                               </li>
