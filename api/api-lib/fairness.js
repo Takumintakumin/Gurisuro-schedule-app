@@ -211,7 +211,8 @@ export default async function handler(req, res) {
     const lastDecidedByUser = {};
     
     // 全ユーザーについて、個別にlast_atを取得（確実に取得するため）
-    for (const username of applicantUsernames) {
+    // 並列処理で高速化
+    const lastAtPromises = applicantUsernames.map(async (username) => {
       try {
         const userLastDateResult = await query(
           `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
@@ -236,11 +237,19 @@ export default async function handler(req, res) {
           }
           const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
           if (!isNaN(lastDateObj.getTime())) {
-            lastDecidedByUser[username] = lastDateObj;
+            return { username, lastDate: lastDateObj };
           }
         }
       } catch (e) {
-        // 個別取得が失敗した場合はスキップ
+        // エラーが発生した場合はnullを返す
+      }
+      return { username, lastDate: null };
+    });
+    
+    const lastAtResults = await Promise.all(lastAtPromises);
+    for (const result of lastAtResults) {
+      if (result.lastDate) {
+        lastDecidedByUser[result.username] = result.lastDate;
       }
     }
 

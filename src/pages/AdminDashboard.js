@@ -1564,9 +1564,6 @@ export default function AdminDashboard() {
                                   {u.gapDays === 9999 && (
                                     <span className="ml-2 text-gray-400">(未経験)</span>
                                   )}
-                                  {isConfirmed && !u.last_at && (
-                                    <span className="ml-2 text-red-500 text-xs">[デバッグ: last_at=null]</span>
-                                  )}
                                 </div>
                               </li>
                             );
@@ -1643,9 +1640,6 @@ export default function AdminDashboard() {
                                   )}
                                   {u.gapDays === 9999 && (
                                     <span className="ml-2 text-gray-400">(未経験)</span>
-                                  )}
-                                  {isConfirmed && !u.last_at && (
-                                    <span className="ml-2 text-red-500 text-xs">[デバッグ: last_at=null]</span>
                                   )}
                                 </div>
                               </li>
