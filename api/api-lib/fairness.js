@@ -90,6 +90,12 @@ export default async function handler(req, res) {
         created_at: row.created_at || new Date().toISOString()
       }))
     ];
+    
+    // デバッグ用：allApplicantsの内容をログ出力
+    console.log(`[fairness] applicantsResult count: ${applicantsResult.rows?.length || 0}`);
+    console.log(`[fairness] confirmedResult count: ${confirmedResult.rows?.length || 0}`);
+    console.log(`[fairness] allApplicants count: ${allApplicants.length}`);
+    console.log(`[fairness] allApplicants:`, allApplicants.map(a => ({ username: a.username, kind: a.kind })));
 
     // 応募者がいない場合は早期リターン
     if (!allApplicants || allApplicants.length === 0) {
@@ -207,7 +213,7 @@ export default async function handler(req, res) {
          AND s.event_id != $3
        GROUP BY s.username`,
       [
-        allApplicants.map(r => r.username),
+        [...new Set(allApplicants.map(r => r.username))], // 重複を除去
         eventDateStr,
         eventId
       ]
@@ -236,6 +242,8 @@ export default async function handler(req, res) {
 
     // デバッグ用：lastDecidedResultの内容をログ出力
     console.log(`[fairness] lastDecidedResult count: ${lastDecidedResult.rows.length}`);
+    console.log(`[fairness] allApplicants usernames:`, allApplicants.map(r => r.username));
+    console.log(`[fairness] eventId: ${eventId}, eventDateStr: ${eventDateStr}`);
     if (lastDecidedResult.rows.length > 0) {
       console.log(`[fairness] lastDecidedResult sample:`, JSON.stringify(lastDecidedResult.rows[0], null, 2));
       console.log(`[fairness] all lastDecidedResult:`, lastDecidedResult.rows.map(r => ({
@@ -246,6 +254,25 @@ export default async function handler(req, res) {
       })));
     } else {
       console.log(`[fairness] WARNING: No lastDecidedResult found for any applicant`);
+      // デバッグ用：各ユーザーについて、selectionsテーブルに存在するか確認
+      for (const app of allApplicants) {
+        const userSelections = await query(
+          `SELECT s.event_id, e.event_date, e.date, 
+                  COALESCE(e.event_date, NULLIF(e.date, '')::date) AS effective_date
+           FROM selections s
+           JOIN events e ON e.id = s.event_id
+           WHERE s.username = $1
+           ORDER BY COALESCE(e.event_date, NULLIF(e.date, '')::date) DESC
+           LIMIT 5`,
+          [app.username]
+        );
+        console.log(`[fairness] ${app.username} selections:`, userSelections.rows.map(r => ({
+          event_id: r.event_id,
+          effective_date: r.effective_date,
+          is_current_event: r.event_id == eventId,
+          is_before_current: r.effective_date && r.effective_date < eventDateStr
+        })));
+      }
     }
 
     const lastDecidedByUser = {};
@@ -269,6 +296,45 @@ export default async function handler(req, res) {
         }
       } else {
         console.log(`[fairness] ${row.username}: last_date is null/undefined`);
+      }
+    }
+    
+    // lastDecidedByUserに含まれていないユーザーについて、個別にlast_atを取得
+    const missingUsers = allApplicants.filter(app => !lastDecidedByUser[app.username]);
+    if (missingUsers.length > 0) {
+      console.log(`[fairness] Missing last_at for users:`, missingUsers.map(u => u.username));
+      for (const app of missingUsers) {
+        try {
+          const userLastDateResult = await query(
+            `SELECT MAX(COALESCE(e.event_date, NULLIF(e.date, '')::date)) AS last_date
+             FROM selections s
+             JOIN events e ON e.id = s.event_id
+             WHERE s.username = $1
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) IS NOT NULL
+               AND COALESCE(e.event_date, NULLIF(e.date, '')::date) < $2::date
+               AND s.event_id != $3`,
+            [app.username, eventDateStr, eventId]
+          );
+          
+          if (userLastDateResult.rows && userLastDateResult.rows.length > 0 && userLastDateResult.rows[0].last_date) {
+            const row = userLastDateResult.rows[0];
+            let lastDateStr;
+            if (typeof row.last_date === 'string') {
+              lastDateStr = row.last_date.split('T')[0];
+            } else if (row.last_date instanceof Date) {
+              lastDateStr = row.last_date.toISOString().split('T')[0];
+            } else {
+              lastDateStr = String(row.last_date).split('T')[0];
+            }
+            const lastDateObj = new Date(lastDateStr + "T00:00:00Z");
+            if (!isNaN(lastDateObj.getTime())) {
+              lastDecidedByUser[app.username] = lastDateObj;
+              console.log(`[fairness] ${app.username}: last_at set to ${lastDateStr} (individual query)`);
+            }
+          }
+        } catch (e) {
+          console.error(`[fairness] Error fetching last_at for ${app.username}:`, e);
+        }
       }
     }
     
