@@ -902,7 +902,10 @@ export default async function handler(req, res) {
           if (eventInfo.rows?.[0]) {
             const ev = eventInfo.rows[0];
             const kindLabels = { driver: "運転手", attendant: "添乗員" };
-            for (const u of Array.from(new Set([...driver, ...attendant]))) {
+            
+            // 確定された人に通知
+            const decidedSet = new Set([...driver, ...attendant]);
+            for (const u of Array.from(decidedSet)) {
               const userKinds = [];
               if (driver.includes(u)) userKinds.push("driver");
               if (attendant.includes(u)) userKinds.push("attendant");
@@ -935,6 +938,46 @@ export default async function handler(req, res) {
                   console.error(`[Google Calendar Sync] Error for user ${u}:`, e);
                 }
               })();
+            }
+            
+            // 確定されなかった人に通知
+            try {
+              // イベントに応募した全員を取得
+              const applicantsResult = await query(
+                `SELECT username, kind FROM applications WHERE event_id = $1`,
+                [eventId]
+              );
+              
+              // 確定されなかった人を特定（username -> [kinds]）
+              const notDecidedUsers = new Map();
+              for (const app of applicantsResult.rows) {
+                const { username, kind } = app;
+                // その役割で確定されているかチェック
+                const isDecidedForThisKind = 
+                  (kind === "driver" && driver.includes(username)) ||
+                  (kind === "attendant" && attendant.includes(username));
+                
+                // 確定されていない場合のみ追加
+                if (!isDecidedForThisKind) {
+                  if (!notDecidedUsers.has(username)) {
+                    notDecidedUsers.set(username, []);
+                  }
+                  notDecidedUsers.get(username).push(kind);
+                }
+              }
+              
+              // 確定されなかった人に通知を送信
+              for (const [username, kinds] of notDecidedUsers.entries()) {
+                const kindLabelsForUser = kinds.map(k => kindLabels[k]).join("・");
+                const message = `${ev.label}（${ev.date} ${ev.start_time}〜）の${kindLabelsForUser}として応募されましたが、今回は確定されませんでした。`;
+                await query(
+                  `INSERT INTO notifications (username, event_id, kind, message) VALUES ($1, $2, $3, $4)`,
+                  [username, eventId, `not_decided_${kinds.join(",")}`, message]
+                );
+              }
+            } catch (e) {
+              // 確定されなかった人への通知エラーはログのみ（確定処理自体は成功させる）
+              console.error(`[decide] 確定されなかった人への通知エラー:`, e);
             }
           }
           
