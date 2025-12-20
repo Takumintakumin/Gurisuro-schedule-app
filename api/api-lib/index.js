@@ -1228,88 +1228,12 @@ export default async function handler(req, res) {
       }
       const ev = eventInfo.rows[0];
 
-      // キャンセル履歴テーブルを作成
-      await query(`
-        CREATE TABLE IF NOT EXISTS cancellations (
-          id BIGSERIAL PRIMARY KEY,
-          username TEXT NOT NULL,
-          event_id BIGINT NOT NULL,
-          kind TEXT NOT NULL CHECK (kind IN ('driver', 'attendant')),
-          event_date DATE,
-          cancelled_at TIMESTAMPTZ DEFAULT now(),
-          UNIQUE (event_id, username, kind)
-        )
-      `);
-      await query(`CREATE INDEX IF NOT EXISTS idx_cancellations_username_kind ON cancellations(username, kind)`);
-      await query(`CREATE INDEX IF NOT EXISTS idx_cancellations_event_date ON cancellations(event_date)`);
-
-      // 過去60日以内のキャンセル回数をチェック
-      // event_date または date から日付を取得
-      let eventDateStr = null;
-      if (ev.event_date) {
-        eventDateStr = ev.event_date instanceof Date 
-          ? ev.event_date.toISOString().split('T')[0] 
-          : (typeof ev.event_date === 'string' ? ev.event_date.split('T')[0] : null);
-      } else if (ev.date) {
-        eventDateStr = typeof ev.date === 'string' ? ev.date.split('T')[0] : null;
-      }
-      
-      if (eventDateStr) {
-        const windowStartDate = new Date(eventDateStr + "T00:00:00Z");
-        windowStartDate.setUTCDate(windowStartDate.getUTCDate() - 60);
-        const windowStartStr = windowStartDate.toISOString().split('T')[0];
-
-        const cancelCountResult = await query(
-          `SELECT COUNT(*) as count
-           FROM cancellations
-           WHERE username = $1
-             AND kind = $2
-             AND event_date IS NOT NULL
-             AND event_date >= $3
-             AND event_date < $4`,
-          [session.username, kind, windowStartStr, eventDateStr]
-        );
-
-        const cancelCount = parseInt(cancelCountResult.rows[0]?.count || 0, 10);
-        const MAX_CANCELLATIONS = 3; // 過去60日以内の最大キャンセル回数
-
-        if (cancelCount >= MAX_CANCELLATIONS) {
-          const kindLabels = { driver: "運転手", attendant: "添乗員" };
-          return res.status(400).json({ 
-            error: `過去60日以内に${kindLabels[kind]}として${MAX_CANCELLATIONS}回以上キャンセルしているため、これ以上キャンセルできません。` 
-          });
-        }
-      } else {
-        // イベント日付が取得できない場合は警告を出すが、キャンセルは許可する
-        console.warn(`[cancel] イベント日付が取得できませんでした (event_id: ${eventId})`);
-      }
-
       // キャンセル実行（確定から削除のみ。応募は残すため再投票可能）
       await query(
         `DELETE FROM selections WHERE event_id = $1 AND username = $2 AND kind = $3`,
         [eventId, session.username, kind]
       );
       // 応募は削除しない（確定後のキャンセルでも再投票できるようにする）
-
-      // キャンセル履歴を記録
-      if (eventDateStr) {
-        await query(
-          `INSERT INTO cancellations (username, event_id, kind, event_date)
-           VALUES ($1, $2, $3, $4::date)
-           ON CONFLICT (event_id, username, kind) DO UPDATE
-           SET event_date = EXCLUDED.event_date, cancelled_at = now()`,
-          [session.username, eventId, kind, eventDateStr]
-        );
-      } else {
-        // イベント日付が取得できない場合でも履歴は記録（event_dateはNULL）
-        await query(
-          `INSERT INTO cancellations (username, event_id, kind, event_date)
-           VALUES ($1, $2, $3, NULL)
-           ON CONFLICT (event_id, username, kind) DO UPDATE
-           SET cancelled_at = now()`,
-          [session.username, eventId, kind]
-        );
-      }
 
       // 管理者への通知を作成
       try {

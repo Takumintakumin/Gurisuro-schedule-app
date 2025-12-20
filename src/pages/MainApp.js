@@ -421,14 +421,14 @@ export default function MainApp() {
         }
       }
 
-      // 4. 確定後のキャンセル通知をチェック（運転手・添乗員として確定された人がキャンセルした場合のみ）
+      // 4. 確定後のキャンセル通知をチェック（その日付にキャンセルがあった場合は赤く表示）
       const userCancelledDateSet = new Set();
       try {
         const notifsRes = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
         if (notifsRes.ok && Array.isArray(notifsRes.data)) {
           for (const notif of notifsRes.data) {
             // cancel_driver または cancel_attendant のみ（確定後のキャンセル）
-            if ((notif.kind === "cancel_driver" || notif.kind === "cancel_attendant") && myApps.some(a => a.event_id === notif.event_id)) {
+            if (notif.kind === "cancel_driver" || notif.kind === "cancel_attendant") {
               const ev = events.find(e => e.id === notif.event_id);
               if (ev && ev.date) {
                 userCancelledDateSet.add(ev.date);
