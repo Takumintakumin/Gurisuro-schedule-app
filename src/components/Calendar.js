@@ -241,10 +241,14 @@ const WeekView = ({
                   );
                   const highlightOnlyMine = Boolean(userName);
                   const eventColorClass = (() => {
+                    if (isCancelled) {
+                      // キャンセル（確定後のキャンセルを含む）は赤色で表示
+                      return 'bg-red-500 text-white border-2 border-red-600';
+                    }
                     if (isUserConfirmed || (!highlightOnlyMine && isFullyDecided)) {
                       return 'bg-emerald-500 text-white border-2 border-emerald-600';
                     }
-                    if (isCancelled || (!highlightOnlyMine && isDecided)) {
+                    if (!highlightOnlyMine && isDecided) {
                       return 'bg-rose-200 border-2 border-rose-400';
                     }
                     return 'bg-amber-100 border-2 border-amber-400 text-gray-800';
@@ -498,18 +502,18 @@ export default function Calendar({
 
     const isTodayDate = isToday(date);
     // 背景色の優先度：
-    // 1. キャンセル（定員が埋まっていない場合のみ）
+    // 1. キャンセル（確定後のキャンセルを含む、最優先）
     // 2. 確定済みまたは定員が埋まった（緑）
     // 3. イベントあり（オレンジ）
-    // 注意: キャンセルがあっても定員が埋まった（allConfirmed）場合は緑色を優先
+    // 注意: 確定後のキャンセルも赤色で表示
     let base =
       "relative border cursor-pointer select-none transition-all duration-200 min-h-[80px] sm:min-h-[88px] p-2.5 rounded-lg shadow-sm";
-    if (allConfirmed || isDecided) {
+    if (isCancelled) {
+      // キャンセル（確定後のキャンセルを含む）は赤色で表示
+      base += " bg-red-500 hover:bg-red-600 border-red-600 text-white shadow-md";
+    } else if (allConfirmed || isDecided) {
       // 確定済みまたは定員が埋まった場合は柔らかいグリーン
       base += " bg-emerald-200 hover:bg-emerald-300 border-emerald-300 text-emerald-900 shadow-md";
-    } else if (isCancelled) {
-      // キャンセルがあり、定員が埋まっていない場合
-      base += " bg-rose-200 hover:bg-rose-300 border-rose-400 shadow-md";
     } else if (dayEvents.length > 0 || hasTags) {
       // イベントがある場合
       base += " bg-amber-50 hover:bg-amber-100 border-amber-200 shadow-sm";
@@ -525,10 +529,10 @@ export default function Calendar({
       base += " ring-2 ring-sky-200 ring-offset-1";
     }
 
-    // 土日色（確定済みの場合は白色テキスト）
+    // 土日色（確定済みまたはキャンセルの場合は白色テキスト）
     const wd = date.getDay();
     const isConfirmedDay = allConfirmed || isDecided;
-    const dayColor = isConfirmedDay 
+    const dayColor = (isCancelled || isConfirmedDay)
       ? "text-white" 
       : (wd === 0 ? "text-red-600" : wd === 6 ? "text-blue-600" : "text-gray-800");
     
@@ -805,11 +809,11 @@ export default function Calendar({
             // 同じ月の場合は "X月 Y日〜Z日"
             // 月をまたぐ場合は "X月 Y日〜Z月 W日"
             if (weekStart.getMonth() === weekEnd.getMonth()) {
-              return `${weekStart.getFullYear()}年 ${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getDate()}日`;
+              return `${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getDate()}日`;
             } else {
-              return `${weekStart.getFullYear()}年 ${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getMonth() + 1}月 ${weekEnd.getDate()}日`;
+              return `${weekStart.getMonth() + 1}月 ${weekStart.getDate()}日〜${weekEnd.getMonth() + 1}月 ${weekEnd.getDate()}日`;
             }
-          })() : `${currentYear}年 ${monthNames[currentMonth]}`}
+          })() : `${monthNames[currentMonth]}`}
         </h2>
 
         <button

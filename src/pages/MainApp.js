@@ -421,24 +421,17 @@ export default function MainApp() {
         }
       }
 
-      // 4. キャンセル通知をチェック
+      // 4. 確定後のキャンセル通知をチェック（運転手・添乗員として確定された人がキャンセルした場合のみ）
       const userCancelledDateSet = new Set();
       try {
         const notifsRes = await apiFetch(`/api?path=notifications`, {}, handleNetworkError);
         if (notifsRes.ok && Array.isArray(notifsRes.data)) {
           for (const notif of notifsRes.data) {
-            if (notif.kind?.startsWith("cancel_") && myApps.some(a => a.event_id === notif.event_id)) {
+            // cancel_driver または cancel_attendant のみ（確定後のキャンセル）
+            if ((notif.kind === "cancel_driver" || notif.kind === "cancel_attendant") && myApps.some(a => a.event_id === notif.event_id)) {
               const ev = events.find(e => e.id === notif.event_id);
               if (ev && ev.date) {
-                const evDecided = allDecidedByEventId[notif.event_id];
-                const capacityDriver = ev.capacity_driver ?? 1;
-                const capacityAttendant = ev.capacity_attendant ?? 1;
-                const confirmedDriverCount = evDecided?.driver?.length || 0;
-                const confirmedAttendantCount = evDecided?.attendant?.length || 0;
-                // 定員が埋まっている場合はキャンセルフラグを付けない
-                if (confirmedDriverCount < capacityDriver || confirmedAttendantCount < capacityAttendant) {
-                  userCancelledDateSet.add(ev.date);
-                }
+                userCancelledDateSet.add(ev.date);
               }
             }
           }

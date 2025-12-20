@@ -435,13 +435,14 @@ export default function AdminDashboard() {
         }
       }
 
-      // 3. キャンセル通知をチェック
+      // 3. 確定後のキャンセル通知をチェック（運転手・添乗員として確定された人がキャンセルした場合のみ）
       const cancelDateSet = new Set();
       try {
         const notifsRes = await apiFetch("/api?path=notifications", {}, handleNetworkError);
         if (notifsRes.ok && Array.isArray(notifsRes.data)) {
           for (const notif of notifsRes.data) {
-            if (notif.kind?.startsWith("cancel_") || notif.kind?.startsWith("promote_") || notif.kind?.startsWith("insufficient_")) {
+            // cancel_driver または cancel_attendant のみ（確定後のキャンセル）
+            if (notif.kind === "cancel_driver" || notif.kind === "cancel_attendant") {
               const ev = events.find(e => e.id === notif.event_id);
               if (ev && ev.date) {
                 cancelDateSet.add(ev.date);
