@@ -52,6 +52,19 @@ create table if not exists notifications (
   read_at timestamptz
 );
 
+-- キャンセル履歴テーブル（運転手・添乗員のキャンセル回数制限用）
+create table if not exists cancellations (
+  id bigserial primary key,
+  username text not null,
+  event_id bigint not null,
+  kind text not null check (kind in ('driver', 'attendant')),
+  event_date date,
+  cancelled_at timestamptz default now(),
+  unique (event_id, username, kind)
+);
+create index if not exists idx_cancellations_username_kind on cancellations(username, kind);
+create index if not exists idx_cancellations_event_date on cancellations(event_date);
+
 insert into users (username, password, role)
 values ('admin', 'admin123', 'admin')
 on conflict (username) do nothing;
