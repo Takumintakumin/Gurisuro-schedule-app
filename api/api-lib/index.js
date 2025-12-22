@@ -706,17 +706,20 @@ export default async function handler(req, res) {
           })));
         }
         
-        // gapDays: 最後に確定した日からの経過日数（経験なしは9999）
-        let gapDays = 9999;
+        // gapDays(i): 最後に確定した日からの経過日数
+        let gapDays = W_DAYS; // 直近確定がない人は一旦30扱い（極端にしない）
         if (lastDecidedByUser[username]) {
           try {
-            const daysDiff = Math.floor((eventDateObj - lastDecidedByUser[username]) / (1000 * 60 * 60 * 24));
+            const daysDiff = Math.floor(
+              (eventDateObj - lastDecidedByUser[username]) / (1000 * 60 * 60 * 24)
+            );
             gapDays = Math.max(0, daysDiff);
           } catch (e) {
             console.error(`[fairness] Error calculating gapDays for ${username}:`, e);
-            gapDays = 9999;
+            gapDays = W_DAYS;
           }
         }
+        gapDays = Math.min(gapDays, W_DAYS); // 30で上限
         
         // スコア計算
         const score = 4 * count30 + 1 * roleCount30 - 3 * gapDays;
