@@ -401,7 +401,7 @@ export default async function handler(req, res) {
       }
       
       // スコア計算
-      const score = 10 * count60 + 3 * roleCount60 - gapDays;
+      const score = 4 * count60 + 1 * roleCount60 - 3 * gapDays;
       
       candidates.push({
           username,
