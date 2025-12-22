@@ -492,8 +492,8 @@ export default async function handler(req, res) {
       if (!eventId)
         return res.status(400).json({ error: "event_id が必要です" });
 
-      // W=60: 直近60日間の履歴を使用
-      const W_DAYS = 60;
+      // W=30: 直近30日間の履歴を使用
+      const W_DAYS = 30;
 
       // 1. イベントの日付を取得
       const eventResult = await query(
@@ -546,7 +546,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ event_id: Number(eventId), driver: [], attendant: [] });
       }
 
-      // 3. 各応募者の直近60日間の確定履歴を取得（イベント日付より前のみ）
+      // 3. 各応募者の直近30日間の確定履歴を取得（イベント日付より前のみ）
       // decided_atがNULLの場合はevent_dateを使用（後方互換性のため）
       // まず、decided_atがNULLの既存データを更新（一度だけ実行される想定）
       try {
@@ -596,8 +596,8 @@ export default async function handler(req, res) {
         console.log(`[fairness] WARNING: No selections found for any applicant`);
       }
       
-      // 60日以内の確定履歴を取得（イベント日付より前のみ）
-      // 重要：60日以内の判定は「イベントの日付（event_date）」で行う
+      // 30日以内の確定履歴を取得（イベント日付より前のみ）
+      // 重要：30日以内の判定は「イベントの日付（event_date）」で行う
       // decided_atは確定した日時なので、イベントの日付とは異なる可能性がある
       const historyResult = await query(
         `SELECT s.username, s.kind, e.event_date, e.date AS date_text, s.decided_at,
@@ -625,7 +625,7 @@ export default async function handler(req, res) {
       });
       
       // デバッグ用：取得した履歴数をログ出力
-      console.log(`[fairness] historyCount (within 60 days): ${historyResult.rows.length}`);
+      console.log(`[fairness] historyCount (within 30 days): ${historyResult.rows.length}`);
       if (historyResult.rows.length > 0) {
         console.log(`[fairness] sample history row:`, JSON.stringify(historyResult.rows[0], null, 2));
       }
@@ -685,12 +685,12 @@ export default async function handler(req, res) {
         const kind = app.kind;
         const history = historyByUser[username] || { driver: [], attendant: [] };
         
-        // count60: 直近60日で確定した回数（driver+attendant合算）
+        // count60: 直近30日で確定した回数（driver+attendant合算）
         const driverCount = (history.driver || []).length;
         const attendantCount = (history.attendant || []).length;
         const count60 = driverCount + attendantCount;
         
-        // roleCount60: 直近60日でその役割で確定した回数
+        // roleCount60: 直近30日でその役割で確定した回数
         const roleCount60 = (history[kind] || []).length;
         
         // デバッグ用：全応募者のカウントをログ出力（0でも出力）

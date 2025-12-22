@@ -1004,7 +1004,7 @@ export default function MainApp() {
                               </button>
                             )
                           )}
-                          {["添乘員","両方"].includes(userRolePref) && (
+                          {["添乗員","両方"].includes(userRolePref) && (
                             isDecidedAttendant ? (
                               <button
                                 className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
