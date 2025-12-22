@@ -889,13 +889,13 @@ export default function AdminDashboard() {
       console.log('[AdminDashboard] attendant count:', fairnessData.attendant.length);
       if (fairnessData.driver.length > 0) {
         console.log('[AdminDashboard] first driver:', JSON.stringify(fairnessData.driver[0], null, 2));
-        console.log('[AdminDashboard] first driver count60:', fairnessData.driver[0].count60, 'roleCount60:', fairnessData.driver[0].roleCount60);
-        console.log('[AdminDashboard] all drivers count60:', fairnessData.driver.map(d => ({ username: d.username, count60: d.count60, roleCount60: d.roleCount60, hasCount60: d.count60 !== undefined })));
+        console.log('[AdminDashboard] first driver count30:', fairnessData.driver[0].count30, 'roleCount30:', fairnessData.driver[0].roleCount30);
+        console.log('[AdminDashboard] all drivers count30:', fairnessData.driver.map(d => ({ username: d.username, count30: d.count30, roleCount30: d.roleCount30, hasCount30: d.count30 !== undefined })));
       }
       if (fairnessData.attendant.length > 0) {
         console.log('[AdminDashboard] first attendant:', JSON.stringify(fairnessData.attendant[0], null, 2));
-        console.log('[AdminDashboard] first attendant count60:', fairnessData.attendant[0].count60, 'roleCount60:', fairnessData.attendant[0].roleCount60);
-        console.log('[AdminDashboard] all attendants count60:', fairnessData.attendant.map(a => ({ username: a.username, count60: a.count60, roleCount60: a.roleCount60, hasCount60: a.count60 !== undefined })));
+        console.log('[AdminDashboard] first attendant count30:', fairnessData.attendant[0].count30, 'roleCount30:', fairnessData.attendant[0].roleCount30);
+        console.log('[AdminDashboard] all attendants count30:', fairnessData.attendant.map(a => ({ username: a.username, count30: a.count30, roleCount30: a.roleCount30, hasCount30: a.count30 !== undefined })));
       }
       console.log('[AdminDashboard] ===== END =====');
       
@@ -925,8 +925,8 @@ export default function AdminDashboard() {
             applied_at: x.created_at,
             rank: i + 1,
             // フォールバック時は公平性データが取得できないため、デフォルト値を設定
-            count60: 0,
-            roleCount60: 0,
+            count30: 0,
+            roleCount30: 0,
             gapDays: 9999,
             score: 9999,
           }));
@@ -941,8 +941,8 @@ export default function AdminDashboard() {
             applied_at: x.created_at,
             rank: i + 1,
             // フォールバック時は公平性データが取得できないため、デフォルト値を設定
-            count60: 0,
-            roleCount60: 0,
+            count30: 0,
+            roleCount30: 0,
             gapDays: 9999,
             score: 9999,
           }));
@@ -1027,8 +1027,8 @@ export default function AdminDashboard() {
                 if (driverMap.has(d.username)) {
                   const updated = driverMap.get(d.username);
                   d.last_at = updated.last_at;
-                  d.count60 = updated.count60;
-                  d.roleCount60 = updated.roleCount60;
+                  d.count30 = updated.count30;
+                  d.roleCount30 = updated.roleCount30;
                   d.gapDays = updated.gapDays;
                   d.times = updated.times;
                 }
@@ -1038,8 +1038,8 @@ export default function AdminDashboard() {
                 if (attendantMap.has(a.username)) {
                   const updated = attendantMap.get(a.username);
                   a.last_at = updated.last_at;
-                  a.count60 = updated.count60;
-                  a.roleCount60 = updated.roleCount60;
+                  a.count30 = updated.count30;
+                  a.roleCount30 = updated.roleCount30;
                   a.gapDays = updated.gapDays;
                   a.times = updated.times;
                 }

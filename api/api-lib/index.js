@@ -685,17 +685,17 @@ export default async function handler(req, res) {
         const kind = app.kind;
         const history = historyByUser[username] || { driver: [], attendant: [] };
         
-        // count60: 直近30日で確定した回数（driver+attendant合算）
+        // count30: 直近30日で確定した回数（driver+attendant合算）
         const driverCount = (history.driver || []).length;
         const attendantCount = (history.attendant || []).length;
-        const count60 = driverCount + attendantCount;
+        const count30 = driverCount + attendantCount;
         
-        // roleCount60: 直近30日でその役割で確定した回数
-        const roleCount60 = (history[kind] || []).length;
+        // roleCount30: 直近30日でその役割で確定した回数
+        const roleCount30 = (history[kind] || []).length;
         
         // デバッグ用：全応募者のカウントをログ出力（0でも出力）
-        console.log(`[fairness] ${username} (${kind}): count60=${count60}, roleCount60=${roleCount60}, driver=${driverCount}, attendant=${attendantCount}`);
-        if (count60 === 0 && roleCount60 === 0) {
+        console.log(`[fairness] ${username} (${kind}): count30=${count30}, roleCount30=${roleCount30}, driver=${driverCount}, attendant=${attendantCount}`);
+        if (count30 === 0 && roleCount30 === 0) {
           // 0の場合、なぜ0なのかを詳しく調べる
           const allSelectionsForUser = allSelectionsCheck.rows.filter(r => r.username === username);
           console.log(`[fairness] ${username}: all selections count=${allSelectionsForUser.length}`, allSelectionsForUser.map(r => ({
@@ -719,14 +719,14 @@ export default async function handler(req, res) {
         }
         
         // スコア計算
-        const score = 4 * count60 + 1 * roleCount60 - 3 * gapDays;
+        const score = 4 * count30 + 1 * roleCount30 - 3 * gapDays;
         
         candidates.push({
           username,
           kind,
           applied_at: app.created_at,
-          count60,
-          roleCount60,
+          count30,
+          roleCount30,
           gapDays,
           score,
         });
@@ -736,10 +736,10 @@ export default async function handler(req, res) {
       const compareCandidates = (a, b) => {
         // 1. スコアが小さい順
         if (a.score !== b.score) return a.score - b.score;
-        // 2. roleCount60が少ない順
-        if (a.roleCount60 !== b.roleCount60) return a.roleCount60 - b.roleCount60;
-        // 3. count60が少ない順
-        if (a.count60 !== b.count60) return a.count60 - b.count60;
+        // 2. roleCount30が少ない順
+        if (a.roleCount30 !== b.roleCount30) return a.roleCount30 - b.roleCount30;
+        // 3. count30が少ない順
+        if (a.count30 !== b.count30) return a.count30 - b.count30;
         // 4. gapDaysが大きい順（最後に確定してから長い順）
         if (a.gapDays !== b.gapDays) return b.gapDays - a.gapDays;
         // 5. 五十音順（usernameで比較）
@@ -759,13 +759,13 @@ export default async function handler(req, res) {
         driver.push({
           username: cand.username,
           kind: 'driver',
-          times: cand.count60, // 互換性のため
+          times: cand.count30, // 互換性のため
           last_at: lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null,
           applied_at: cand.applied_at,
           rank: driverRank++,
           // デバッグ用（必要に応じて）
-          count60: cand.count60,
-          roleCount60: cand.roleCount60,
+          count30: cand.count30,
+          roleCount30: cand.roleCount30,
           gapDays: cand.gapDays,
           score: cand.score,
         });
@@ -775,13 +775,13 @@ export default async function handler(req, res) {
         attendant.push({
           username: cand.username,
           kind: 'attendant',
-          times: cand.count60, // 互換性のため
+          times: cand.count30, // 互換性のため
           last_at: lastDecidedByUser[cand.username] ? lastDecidedByUser[cand.username].toISOString() : null,
           applied_at: cand.applied_at,
           rank: attendantRank++,
           // デバッグ用（必要に応じて）
-          count60: cand.count60,
-          roleCount60: cand.roleCount60,
+          count30: cand.count30,
+          roleCount30: cand.roleCount30,
           gapDays: cand.gapDays,
           score: cand.score,
         });
