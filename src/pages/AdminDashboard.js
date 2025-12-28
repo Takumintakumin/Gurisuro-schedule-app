@@ -1247,7 +1247,7 @@ export default function AdminDashboard() {
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">🗓 管理者ダッシュボード</h1>
+          <h1 className="text-xl font-bold">調整者 ページ</h1>
           <div className="flex items-center gap-3 text-sm">
             {userName && (
               <span className="text-gray-600">ログイン中: <span className="font-semibold">{userName}</span></span>
@@ -2059,7 +2059,7 @@ export default function AdminDashboard() {
           <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span style={{ fontSize: '12px', fontWeight: '500' }}>運行日一覧</span>
+          <span style={{ fontSize: '12px', fontWeight: '500' }}></span>
         </button>
         <button
           onClick={() => {
