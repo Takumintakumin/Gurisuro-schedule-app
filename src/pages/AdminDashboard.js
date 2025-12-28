@@ -1247,7 +1247,7 @@ export default function AdminDashboard() {
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-4 sm:p-6">
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold">調整者 ページ</h1>
+          <h1 className="text-xl font-bold">調整者    ページ</h1>
           <div className="flex items-center gap-3 text-sm">
             {userName && (
               <span className="text-gray-600">ログイン中: <span className="font-semibold">{userName}</span></span>
