@@ -871,7 +871,16 @@ export default function MainApp() {
                 const nd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + d, 1);
                 setSelectedDate(nd);
               }}
-              onDateSelect={setSelectedDate}
+              onDateSelect={(date) => {
+                setSelectedDate(date);
+                // 日付選択時に一番下までスクロール
+                setTimeout(() => {
+                  window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'smooth'
+                  });
+                }, 100);
+              }}
               events={events}
               decidedDates={memoizedDecidedDates}
               cancelledDates={memoizedCancelledDates}
