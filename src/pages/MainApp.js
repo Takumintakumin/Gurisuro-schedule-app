@@ -1161,7 +1161,8 @@ export default function MainApp() {
             <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-6h6v6M9 21h6a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span style={{ fontSize: '12px', fontWeight: '500' }}>応募状況</span>
+            <span style={{ fontSize: '12px', fontWeight: '500' }}>運行日一覧
+            </span>
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
